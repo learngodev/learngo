@@ -69,7 +69,11 @@ func (h *Handler) RegisterRoutes(r *gin.Engine, adminGuard gin.HandlerFunc, teac
 		admin.POST("/teachers", h.CreateTeacher)
 		admin.POST("/students", h.CreateStudent)
 		admin.POST("/departments", h.CreateDepartment)
+		admin.PATCH("/departments/:id", h.UpdateDepartment)
+		admin.DELETE("/departments/:id", h.DeleteDepartment)
 		admin.POST("/classes", h.CreateClass)
+		admin.PATCH("/classes/:id", h.UpdateClass)
+		admin.DELETE("/classes/:id", h.DeleteClass)
 		admin.GET("/departments", h.ListDepartments)
 		admin.GET("/departments/:id/classes", h.ListClasses)
 
@@ -241,6 +245,63 @@ func (h *Handler) CreateDepartment(c *gin.Context) {
 	response.Success(c, http.StatusCreated, gin.H{"department_id": department.ID})
 }
 
+type updateDepartmentRequest struct {
+	SchoolID string `json:"school_id" validate:"required"`
+	Name     string `json:"name" validate:"required"`
+}
+
+func (h *Handler) UpdateDepartment(c *gin.Context) {
+	departmentID := strings.TrimSpace(c.Param("id"))
+	if departmentID == "" {
+		response.Error(c, http.StatusBadRequest, "department id is required", nil)
+		return
+	}
+
+	var req updateDepartmentRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		return
+	}
+	if err := h.validate.Struct(req); err != nil {
+		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		return
+	}
+
+	department, err := h.admin.UpdateDepartment(c.Request.Context(), req.SchoolID, departmentID, req.Name)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "unable to update department", err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, gin.H{"department": gin.H{
+		"id":         department.ID,
+		"school_id":  department.SchoolID,
+		"name":       department.Name,
+		"created_at": department.CreatedAt,
+		"updated_at": department.UpdatedAt,
+	}})
+}
+
+func (h *Handler) DeleteDepartment(c *gin.Context) {
+	departmentID := strings.TrimSpace(c.Param("id"))
+	if departmentID == "" {
+		response.Error(c, http.StatusBadRequest, "department id is required", nil)
+		return
+	}
+	schoolID := strings.TrimSpace(c.Query("school_id"))
+	if schoolID == "" {
+		response.Error(c, http.StatusBadRequest, "school_id is required", nil)
+		return
+	}
+
+	if err := h.admin.DeleteDepartment(c.Request.Context(), schoolID, departmentID); err != nil {
+		response.Error(c, http.StatusBadRequest, "unable to delete department", err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, gin.H{"deleted": true})
+}
+
 type createClassRequest struct {
 	SchoolID     string `json:"school_id" validate:"required"`
 	DepartmentID string `json:"department_id" validate:"required"`
@@ -265,6 +326,64 @@ func (h *Handler) CreateClass(c *gin.Context) {
 	}
 
 	response.Success(c, http.StatusCreated, gin.H{"class_id": class.ID})
+}
+
+type updateClassRequest struct {
+	SchoolID string `json:"school_id" validate:"required"`
+	Name     string `json:"name" validate:"required"`
+}
+
+func (h *Handler) UpdateClass(c *gin.Context) {
+	classID := strings.TrimSpace(c.Param("id"))
+	if classID == "" {
+		response.Error(c, http.StatusBadRequest, "class id is required", nil)
+		return
+	}
+
+	var req updateClassRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		return
+	}
+	if err := h.validate.Struct(req); err != nil {
+		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		return
+	}
+
+	class, err := h.admin.UpdateClass(c.Request.Context(), req.SchoolID, classID, req.Name)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "unable to update class", err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, gin.H{"class": gin.H{
+		"id":            class.ID,
+		"school_id":     class.SchoolID,
+		"department_id": class.DepartmentID,
+		"name":          class.Name,
+		"created_at":    class.CreatedAt,
+		"updated_at":    class.UpdatedAt,
+	}})
+}
+
+func (h *Handler) DeleteClass(c *gin.Context) {
+	classID := strings.TrimSpace(c.Param("id"))
+	if classID == "" {
+		response.Error(c, http.StatusBadRequest, "class id is required", nil)
+		return
+	}
+	schoolID := strings.TrimSpace(c.Query("school_id"))
+	if schoolID == "" {
+		response.Error(c, http.StatusBadRequest, "school_id is required", nil)
+		return
+	}
+
+	if err := h.admin.DeleteClass(c.Request.Context(), schoolID, classID); err != nil {
+		response.Error(c, http.StatusBadRequest, "unable to delete class", err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, gin.H{"deleted": true})
 }
 
 func (h *Handler) ListDepartments(c *gin.Context) {

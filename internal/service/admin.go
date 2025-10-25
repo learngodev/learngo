@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -185,4 +186,96 @@ func (s *AdminService) ListClasses(ctx context.Context, schoolID, departmentID s
 		return nil, errors.New("department_id required")
 	}
 	return s.classes.ListByDepartment(ctx, schoolID, departmentID)
+}
+
+// UpdateDepartment renames a department within a school.
+func (s *AdminService) UpdateDepartment(ctx context.Context, schoolID, departmentID, name string) (*domain.Department, error) {
+	trimmed := strings.TrimSpace(name)
+	if schoolID == "" || departmentID == "" {
+		return nil, errors.New("school_id and department_id required")
+	}
+	if trimmed == "" {
+		return nil, errors.New("department name required")
+	}
+
+	department, err := s.departments.GetByID(ctx, departmentID)
+	if err != nil {
+		return nil, err
+	}
+	if department.SchoolID != schoolID {
+		return nil, errors.New("department does not belong to school")
+	}
+
+	if err := s.departments.UpdateName(ctx, departmentID, schoolID, trimmed); err != nil {
+		return nil, err
+	}
+	department.Name = trimmed
+	return department, nil
+}
+
+// DeleteDepartment removes a department if it has no classes.
+func (s *AdminService) DeleteDepartment(ctx context.Context, schoolID, departmentID string) error {
+	if schoolID == "" || departmentID == "" {
+		return errors.New("school_id and department_id required")
+	}
+
+	department, err := s.departments.GetByID(ctx, departmentID)
+	if err != nil {
+		return err
+	}
+	if department.SchoolID != schoolID {
+		return errors.New("department does not belong to school")
+	}
+
+	classes, err := s.classes.ListByDepartment(ctx, schoolID, departmentID)
+	if err != nil {
+		return err
+	}
+	if len(classes) > 0 {
+		return errors.New("department contains classes")
+	}
+
+	return s.departments.Delete(ctx, departmentID, schoolID)
+}
+
+// UpdateClass renames a class.
+func (s *AdminService) UpdateClass(ctx context.Context, schoolID, classID, name string) (*domain.Class, error) {
+	trimmed := strings.TrimSpace(name)
+	if schoolID == "" || classID == "" {
+		return nil, errors.New("school_id and class_id required")
+	}
+	if trimmed == "" {
+		return nil, errors.New("class name required")
+	}
+
+	class, err := s.classes.GetByID(ctx, classID)
+	if err != nil {
+		return nil, err
+	}
+	if class.SchoolID != schoolID {
+		return nil, errors.New("class does not belong to school")
+	}
+
+	if err := s.classes.UpdateName(ctx, classID, schoolID, trimmed); err != nil {
+		return nil, err
+	}
+	class.Name = trimmed
+	return class, nil
+}
+
+// DeleteClass removes a class record.
+func (s *AdminService) DeleteClass(ctx context.Context, schoolID, classID string) error {
+	if schoolID == "" || classID == "" {
+		return errors.New("school_id and class_id required")
+	}
+
+	class, err := s.classes.GetByID(ctx, classID)
+	if err != nil {
+		return err
+	}
+	if class.SchoolID != schoolID {
+		return errors.New("class does not belong to school")
+	}
+
+	return s.classes.Delete(ctx, classID, schoolID)
 }

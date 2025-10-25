@@ -38,6 +38,9 @@ type TeacherStudentRepository interface {
 type DepartmentRepository interface {
 	Create(ctx context.Context, department *domain.Department) error
 	List(ctx context.Context, schoolID string) ([]domain.Department, error)
+	GetByID(ctx context.Context, id string) (*domain.Department, error)
+	UpdateName(ctx context.Context, id, schoolID, name string) error
+	Delete(ctx context.Context, id, schoolID string) error
 }
 
 // ClassRepository handles classes.
@@ -45,6 +48,8 @@ type ClassRepository interface {
 	Create(ctx context.Context, class *domain.Class) error
 	ListByDepartment(ctx context.Context, schoolID, departmentID string) ([]domain.Class, error)
 	GetByID(ctx context.Context, id string) (*domain.Class, error)
+	UpdateName(ctx context.Context, id, schoolID, name string) error
+	Delete(ctx context.Context, id, schoolID string) error
 }
 
 // AssignmentRepository handles assignments.

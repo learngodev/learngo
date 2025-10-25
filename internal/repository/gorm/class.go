@@ -42,4 +42,17 @@ func (s *ClassStore) GetByID(ctx context.Context, id string) (*domain.Class, err
 	return &class, nil
 }
 
+func (s *ClassStore) UpdateName(ctx context.Context, id, schoolID, name string) error {
+	return s.db.WithContext(ctx).
+		Model(&domain.Class{}).
+		Where("id = ? AND school_id = ?", id, schoolID).
+		Update("name", name).Error
+}
+
+func (s *ClassStore) Delete(ctx context.Context, id, schoolID string) error {
+	return s.db.WithContext(ctx).
+		Where("id = ? AND school_id = ?", id, schoolID).
+		Delete(&domain.Class{}).Error
+}
+
 var _ repository.ClassRepository = (*ClassStore)(nil)

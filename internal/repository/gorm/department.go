@@ -30,4 +30,25 @@ func (s *DepartmentStore) List(ctx context.Context, schoolID string) ([]domain.D
 	return departments, nil
 }
 
+func (s *DepartmentStore) GetByID(ctx context.Context, id string) (*domain.Department, error) {
+	var department domain.Department
+	if err := s.db.WithContext(ctx).First(&department, "id = ?", id).Error; err != nil {
+		return nil, err
+	}
+	return &department, nil
+}
+
+func (s *DepartmentStore) UpdateName(ctx context.Context, id, schoolID, name string) error {
+	return s.db.WithContext(ctx).
+		Model(&domain.Department{}).
+		Where("id = ? AND school_id = ?", id, schoolID).
+		Update("name", name).Error
+}
+
+func (s *DepartmentStore) Delete(ctx context.Context, id, schoolID string) error {
+	return s.db.WithContext(ctx).
+		Where("id = ? AND school_id = ?", id, schoolID).
+		Delete(&domain.Department{}).Error
+}
+
 var _ repository.DepartmentRepository = (*DepartmentStore)(nil)
