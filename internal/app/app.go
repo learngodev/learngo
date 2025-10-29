@@ -1,15 +1,20 @@
 package app
 
 import (
+	"errors"
 	"fmt"
+	"net"
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"google.golang.org/grpc"
 
+	apigrpc "learn-go/internal/api/grpcpb"
+	"learn-go/internal/api/grpcserver"
 	apihandlers "learn-go/internal/api/http"
-	"learn-go/internal/api/ws"
 	"learn-go/internal/config"
 	"learn-go/internal/domain"
+	"learn-go/internal/realtime"
 	gormrepo "learn-go/internal/repository/gorm"
 	"learn-go/internal/service"
 	"learn-go/pkg/logger"
@@ -27,6 +32,7 @@ type Application struct {
 	engine *gin.Engine
 	db     *gorm.DB
 	log    *logger.Logger
+	grpc   *grpc.Server
 }
 
 // New creates the application, preparing dependencies.
@@ -77,13 +83,18 @@ func New() (*Application, error) {
 	conversationService := service.NewConversationService(conversationRepo, messageRepo, receiptRepo, accountRepo)
 	noteService := service.NewNoteService(noteRepo, accountRepo)
 	noteCommentService := service.NewNoteCommentService(noteRepo, noteCommentRepo, accountRepo)
-	wsHub := ws.NewHub()
+	streamHub := realtime.NewHub()
 
 	engine := gin.New()
 	engine.Use(gin.Recovery())
 	engine.Use(gin.Logger())
 
-	handler := apihandlers.NewHandler(authService, adminService, assignmentService, conversationService, noteService, noteCommentService, wsHub)
+	grpcServer := grpc.NewServer(
+		grpc.StreamInterceptor(grpcserver.StreamAuthInterceptor(cfg.JWTSecret, []string{string(domain.RoleStudent), string(domain.RoleTeacher), string(domain.RoleAdmin)})),
+	)
+	apigrpc.RegisterConversationServiceServer(grpcServer, grpcserver.NewConversationServer(conversationService, streamHub))
+
+	handler := apihandlers.NewHandler(authService, adminService, assignmentService, conversationService, noteService, noteCommentService, streamHub)
 
 	adminGuard := middleware.JWTAuth(middleware.AuthConfig{Secret: cfg.JWTSecret, AllowedRoles: []string{string(domain.RoleAdmin)}})
 	teacherGuard := middleware.JWTAuth(middleware.AuthConfig{Secret: cfg.JWTSecret, AllowedRoles: []string{string(domain.RoleTeacher), string(domain.RoleAdmin)}})
@@ -91,11 +102,28 @@ func New() (*Application, error) {
 
 	handler.RegisterRoutes(engine, adminGuard, teacherGuard, studentGuard)
 
-	return &Application{cfg: cfg, engine: engine, db: db, log: log}, nil
+	return &Application{cfg: cfg, engine: engine, db: db, log: log, grpc: grpcServer}, nil
 }
 
 // Run starts the HTTP server.
 func (a *Application) Run() error {
+	grpcAddr := fmt.Sprintf(":%s", a.cfg.GRPCPort)
+	lis, err := net.Listen("tcp", grpcAddr)
+	if err != nil {
+		return fmt.Errorf("listen grpc: %w", err)
+	}
+
+	go func() {
+		a.log.Printf("starting grpc server on %s", grpcAddr)
+		if err := a.grpc.Serve(lis); err != nil && !errors.Is(err, grpc.ErrServerStopped) {
+			a.log.Printf("grpc server stopped: %v", err)
+		}
+	}()
+	defer func() {
+		a.grpc.GracefulStop()
+		_ = lis.Close()
+	}()
+
 	address := fmt.Sprintf(":%s", a.cfg.HTTPPort)
 	a.log.Printf("starting http server on %s", address)
 	return a.engine.Run(address)

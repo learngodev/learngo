@@ -1,0 +1,107 @@
+syntax = "proto3";
+
+package learngo.api.v1;
+
+option go_package = "learn-go/internal/api/grpcpb;grpcpb";
+
+import "google/protobuf/timestamp.proto";
+
+message JoinConversation {
+  string conversation_id = 1;
+}
+
+message ConversationRead {
+  string message_id = 1;
+}
+
+message MessageCreate {
+  string conversation_id = 1;
+  string kind = 2;
+  string text = 3;
+  string media_uri = 4;
+  string metadata = 5;
+}
+
+message ConversationStreamRequest {
+  oneof payload {
+    JoinConversation join = 1;
+    ConversationRead read = 2;
+    MessageCreate create = 3;
+  }
+}
+
+message ConversationSnapshot {
+  ConversationSummary summary = 1;
+  repeated Message messages = 2;
+}
+
+message ConversationSummary {
+  Conversation conversation = 1;
+  repeated ConversationMember members = 2;
+  Message last_message = 3;
+  int64 unread_count = 4;
+}
+
+message Conversation {
+  string id = 1;
+  string type = 2;
+  string school_id = 3;
+  google.protobuf.Timestamp created_at = 4;
+  google.protobuf.Timestamp updated_at = 5;
+}
+
+message ConversationMember {
+  string id = 1;
+  string conversation_id = 2;
+  string account_id = 3;
+  string role = 4;
+  google.protobuf.Timestamp created_at = 5;
+}
+
+message Message {
+  string id = 1;
+  string conversation_id = 2;
+  string sender_id = 3;
+  string sender_role = 4;
+  string kind = 5;
+  string text = 6;
+  string media_uri = 7;
+  string metadata = 8;
+  google.protobuf.Timestamp created_at = 9;
+}
+
+message ConversationReadEvent {
+  string message_id = 1;
+  string reader_id = 2;
+}
+
+message MessageCreatedEvent {
+  Message message = 1;
+}
+
+message ConversationReadAck {
+  string message_id = 1;
+}
+
+message MessageCreateAck {
+  Message message = 1;
+}
+
+message Error {
+  string message = 1;
+}
+
+message ConversationStreamResponse {
+  oneof payload {
+    ConversationSnapshot snapshot = 1;
+    ConversationReadEvent read_event = 2;
+    MessageCreatedEvent message_event = 3;
+    ConversationReadAck read_ack = 4;
+    MessageCreateAck message_ack = 5;
+    Error error = 6;
+  }
+}
+
+service ConversationService {
+  rpc Stream (stream ConversationStreamRequest) returns (stream ConversationStreamResponse);
+}

@@ -1,11 +1,18 @@
 package middleware
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+)
+
+var (
+	errInvalidToken       = errors.New("invalid token")
+	errInvalidTokenClaims = errors.New("invalid token claims")
+	errInvalidTokenSub    = errors.New("invalid token subject")
 )
 
 // Context keys.
@@ -36,28 +43,9 @@ func JWTAuth(cfg AuthConfig) gin.HandlerFunc {
 
 		tokenString := strings.TrimSpace(authHeader[7:])
 
-		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, jwt.ErrTokenSignatureInvalid
-			}
-			return []byte(cfg.Secret), nil
-		})
-		if err != nil || !token.Valid {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"success": false, "error": gin.H{"message": "invalid token"}})
-			return
-		}
-
-		claims, ok := token.Claims.(jwt.MapClaims)
-		if !ok {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"success": false, "error": gin.H{"message": "invalid token claims"}})
-			return
-		}
-
-		accountID, _ := claims["sub"].(string)
-		role, _ := claims["role"].(string)
-
-		if accountID == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"success": false, "error": gin.H{"message": "invalid token subject"}})
+		accountID, role, err := ValidateJWT(tokenString, cfg.Secret)
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
 			return
 		}
 
@@ -72,4 +60,34 @@ func JWTAuth(cfg AuthConfig) gin.HandlerFunc {
 		c.Set(ContextRole, role)
 		c.Next()
 	}
+}
+
+// ValidateJWT parses and validates the JWT token, returning account ID and role if successful.
+func ValidateJWT(tokenString, secret string) (string, string, error) {
+	if strings.TrimSpace(tokenString) == "" {
+		return "", "", errInvalidToken
+	}
+
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, jwt.ErrTokenSignatureInvalid
+		}
+		return []byte(secret), nil
+	})
+	if err != nil || !token.Valid {
+		return "", "", errInvalidToken
+	}
+
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return "", "", errInvalidTokenClaims
+	}
+
+	accountID, _ := claims["sub"].(string)
+	role, _ := claims["role"].(string)
+	if accountID == "" {
+		return "", "", errInvalidTokenSub
+	}
+
+	return accountID, role, nil
 }

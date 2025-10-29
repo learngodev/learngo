@@ -1,8 +1,6 @@
 package http
 
 import (
-	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -11,26 +9,14 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
-	"github.com/gorilla/websocket"
 
-	"learn-go/internal/api/ws"
+	"learn-go/internal/api/grpcmapper"
+	"learn-go/internal/api/grpcpb"
 	"learn-go/internal/domain"
+	"learn-go/internal/realtime"
 	"learn-go/internal/service"
 	"learn-go/pkg/middleware"
 	"learn-go/pkg/response"
-)
-
-var wsUpgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
-	CheckOrigin: func(r *http.Request) bool {
-		return true
-	},
-}
-
-const (
-	conversationStreamHistoryLimit = 50
-	conversationStreamWriteTimeout = 5 * time.Second
 )
 
 // Handler aggregates dependencies for HTTP handlers.
@@ -41,12 +27,12 @@ type Handler struct {
 	notes         *service.NoteService
 	noteComments  *service.NoteCommentService
 	conversations *service.ConversationService
-	wsHub         *ws.Hub
+	streamHub     *realtime.Hub
 	validate      *validator.Validate
 }
 
 // NewHandler constructs a Handler instance.
-func NewHandler(auth *service.AuthService, admin *service.AdminService, assignments *service.AssignmentService, conversations *service.ConversationService, notes *service.NoteService, noteComments *service.NoteCommentService, wsHub *ws.Hub) *Handler {
+func NewHandler(auth *service.AuthService, admin *service.AdminService, assignments *service.AssignmentService, conversations *service.ConversationService, notes *service.NoteService, noteComments *service.NoteCommentService, streamHub *realtime.Hub) *Handler {
 	return &Handler{
 		auth:          auth,
 		admin:         admin,
@@ -54,7 +40,7 @@ func NewHandler(auth *service.AuthService, admin *service.AdminService, assignme
 		notes:         notes,
 		noteComments:  noteComments,
 		conversations: conversations,
-		wsHub:         wsHub,
+		streamHub:     streamHub,
 		validate:      validator.New(),
 	}
 }
@@ -109,7 +95,6 @@ func (h *Handler) RegisterRoutes(r *gin.Engine, adminGuard gin.HandlerFunc, teac
 		conversations.GET(":id/messages", h.ListMessages)
 		conversations.POST(":id/messages", h.SendMessage)
 		conversations.POST(":id/read", h.MarkConversationRead)
-		conversations.GET(":id/stream", h.ConversationStream)
 	}
 }
 
@@ -1435,7 +1420,12 @@ func (h *Handler) SendMessage(c *gin.Context) {
 	payload := messagePayload(*msg)
 	response.Success(c, http.StatusCreated, gin.H{"message": payload})
 
-	h.wsHub.Broadcast(conversationID, "message.created", payload)
+	protoMsg := grpcmapper.Message(*msg)
+	h.streamHub.Broadcast(conversationID, &grpcpb.ConversationStreamResponse{
+		Payload: &grpcpb.ConversationStreamResponse_MessageEvent{
+			MessageEvent: &grpcpb.MessageCreatedEvent{Message: protoMsg},
+		},
+	})
 }
 
 func (h *Handler) ListMessages(c *gin.Context) {
@@ -1520,186 +1510,14 @@ func (h *Handler) MarkConversationRead(c *gin.Context) {
 
 	response.Success(c, http.StatusOK, gin.H{"read": true})
 
-	h.wsHub.Broadcast(conversationID, "conversation.read", gin.H{
-		"message_id": req.MessageID,
-		"reader_id":  accountID,
+	h.streamHub.Broadcast(conversationID, &grpcpb.ConversationStreamResponse{
+		Payload: &grpcpb.ConversationStreamResponse_ReadEvent{
+			ReadEvent: &grpcpb.ConversationReadEvent{
+				MessageId: req.MessageID,
+				ReaderId:  accountID,
+			},
+		},
 	})
-}
-
-func (h *Handler) ConversationStream(c *gin.Context) {
-	accountID := getAccountID(c)
-	if accountID == "" {
-		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
-		return
-	}
-
-	conversationID := c.Param("id")
-	if conversationID == "" {
-		response.Error(c, http.StatusBadRequest, "missing conversation id", nil)
-		return
-	}
-
-	summary, err := h.conversations.GetConversationSummary(c.Request.Context(), accountID, conversationID)
-	if err != nil {
-		switch {
-		case errors.Is(err, service.ErrConversationForbidden):
-			response.Error(c, http.StatusForbidden, "not allowed to join conversation", nil)
-		case errors.Is(err, service.ErrConversationNotFound):
-			response.Error(c, http.StatusNotFound, "conversation not found", nil)
-		default:
-			response.Error(c, http.StatusInternalServerError, "unable to load conversation", err.Error())
-		}
-		return
-	}
-
-	messages, err := h.conversations.ListMessages(c.Request.Context(), accountID, conversationID, conversationStreamHistoryLimit, "")
-	if err != nil {
-		switch {
-		case errors.Is(err, service.ErrConversationForbidden):
-			response.Error(c, http.StatusForbidden, "not allowed to view messages", nil)
-		case errors.Is(err, service.ErrConversationNotFound):
-			response.Error(c, http.StatusNotFound, "conversation not found", nil)
-		default:
-			response.Error(c, http.StatusInternalServerError, "unable to load messages", err.Error())
-		}
-		return
-	}
-
-	conn, err := wsUpgrader.Upgrade(c.Writer, c.Request, nil)
-	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "websocket upgrade failed", err.Error())
-		return
-	}
-
-	history := make([]gin.H, 0, len(messages))
-	for _, msg := range messages {
-		history = append(history, messagePayload(msg))
-	}
-
-	snapshot := gin.H{
-		"conversation": conversationPayload(*summary),
-		"messages":     history,
-	}
-
-	if err := conn.SetWriteDeadline(time.Now().Add(conversationStreamWriteTimeout)); err == nil {
-		// deadline applied; ignore error to avoid interrupting initial write
-	}
-	if err := conn.WriteJSON(gin.H{
-		"type": "conversation.snapshot",
-		"data": snapshot,
-	}); err != nil {
-		_ = conn.Close()
-		return
-	}
-	_ = conn.SetWriteDeadline(time.Time{})
-
-	client := ws.NewClient(h.wsHub, conn, accountID, conversationID, func(ctx context.Context, wsClient *ws.Client, payload []byte) {
-		h.handleConversationSocketMessage(ctx, wsClient, accountID, conversationID, payload)
-	})
-	client.Run()
-}
-
-func (h *Handler) handleConversationSocketMessage(ctx context.Context, client *ws.Client, accountID, conversationID string, payload []byte) {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-
-	var envelope struct {
-		Type string          `json:"type"`
-		Data json.RawMessage `json:"data"`
-	}
-	if err := json.Unmarshal(payload, &envelope); err != nil {
-		_ = client.SendJSON(gin.H{"type": "error", "data": gin.H{"message": "invalid payload"}})
-		return
-	}
-
-	switch envelope.Type {
-	case "conversation.read":
-		h.handleConversationReadEvent(ctx, client, accountID, conversationID, envelope.Data)
-	case "message.create":
-		h.handleConversationMessageCreateEvent(ctx, client, accountID, conversationID, envelope.Data)
-	default:
-		_ = client.SendJSON(gin.H{"type": "error", "data": gin.H{"message": "unsupported event"}})
-	}
-}
-
-func (h *Handler) handleConversationReadEvent(ctx context.Context, client *ws.Client, accountID, conversationID string, raw json.RawMessage) {
-	var payload struct {
-		MessageID string `json:"message_id"`
-	}
-	if err := json.Unmarshal(raw, &payload); err != nil {
-		_ = client.SendJSON(gin.H{"type": "error", "data": gin.H{"message": "invalid conversation.read data"}})
-		return
-	}
-	if payload.MessageID == "" {
-		_ = client.SendJSON(gin.H{"type": "error", "data": gin.H{"message": "message_id required"}})
-		return
-	}
-
-	if err := h.conversations.MarkRead(ctx, accountID, conversationID, payload.MessageID); err != nil {
-		switch {
-		case errors.Is(err, service.ErrConversationForbidden):
-			_ = client.SendJSON(gin.H{"type": "error", "data": gin.H{"message": "not allowed to mark read"}})
-		case errors.Is(err, service.ErrConversationNotFound):
-			_ = client.SendJSON(gin.H{"type": "error", "data": gin.H{"message": "conversation or message not found"}})
-		default:
-			_ = client.SendJSON(gin.H{"type": "error", "data": gin.H{"message": "unable to mark read"}})
-		}
-		return
-	}
-
-	_ = client.SendJSON(gin.H{"type": "conversation.read.ack", "data": gin.H{"message_id": payload.MessageID}})
-
-	h.wsHub.Broadcast(conversationID, "conversation.read", gin.H{
-		"message_id": payload.MessageID,
-		"reader_id":  accountID,
-	})
-}
-
-func (h *Handler) handleConversationMessageCreateEvent(ctx context.Context, client *ws.Client, accountID, conversationID string, raw json.RawMessage) {
-	var payload sendMessageRequest
-	if err := json.Unmarshal(raw, &payload); err != nil {
-		_ = client.SendJSON(gin.H{"type": "error", "data": gin.H{"message": "invalid message.create data"}})
-		return
-	}
-
-	if err := h.validate.Struct(payload); err != nil {
-		_ = client.SendJSON(gin.H{"type": "error", "data": gin.H{"message": "validation failed"}})
-		return
-	}
-
-	if payload.Kind == "text" {
-		if strings.TrimSpace(payload.Text) == "" {
-			_ = client.SendJSON(gin.H{"type": "error", "data": gin.H{"message": "text message requires content"}})
-			return
-		}
-	} else if payload.MediaURI == "" {
-		_ = client.SendJSON(gin.H{"type": "error", "data": gin.H{"message": "media message requires media_uri"}})
-		return
-	}
-
-	msg, err := h.conversations.SendMessage(ctx, accountID, service.SendMessageInput{
-		ConversationID: conversationID,
-		Kind:           payload.Kind,
-		Text:           payload.Text,
-		MediaURI:       payload.MediaURI,
-		Metadata:       payload.Metadata,
-	})
-	if err != nil {
-		switch {
-		case errors.Is(err, service.ErrConversationForbidden):
-			_ = client.SendJSON(gin.H{"type": "error", "data": gin.H{"message": "not allowed to send message"}})
-		case errors.Is(err, service.ErrConversationNotFound):
-			_ = client.SendJSON(gin.H{"type": "error", "data": gin.H{"message": "conversation not found"}})
-		default:
-			_ = client.SendJSON(gin.H{"type": "error", "data": gin.H{"message": "unable to send message"}})
-		}
-		return
-	}
-
-	msgPayload := messagePayload(*msg)
-	_ = client.SendJSON(gin.H{"type": "message.create.ack", "data": msgPayload})
-
-	h.wsHub.Broadcast(conversationID, "message.created", msgPayload)
 }
 
 func assignmentPayload(assignment domain.Assignment, questions []domain.AssignmentQuestion) gin.H {

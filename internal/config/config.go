@@ -15,6 +15,7 @@ type AppConfig struct {
 	AppName         string
 	Environment     string
 	HTTPPort        string
+	GRPCPort        string
 	DatabaseDriver  string
 	DatabaseDSN     string
 	JWTSecret       string
@@ -41,6 +42,7 @@ func Load() AppConfig {
 			AppName:         getEnv("APP_NAME", "LearnGo"),
 			Environment:     getEnv("APP_ENV", "local"),
 			HTTPPort:        getEnv("HTTP_PORT", "8080"),
+			GRPCPort:        getEnv("GRPC_PORT", "9090"),
 			DatabaseDriver:  getEnv("DATABASE_DRIVER", "sqlite"),
 			DatabaseDSN:     getEnv("DATABASE_DSN", "file:learn-go.db?cache=shared&_foreign_keys=on"),
 			JWTSecret:       mustEnv("JWT_SECRET"),
