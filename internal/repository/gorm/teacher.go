@@ -2,6 +2,7 @@ package gormrepo
 
 import (
 	"context"
+	"errors"
 
 	"learn-go/internal/domain"
 	"learn-go/internal/repository"
@@ -34,6 +35,17 @@ func (s *TeacherStore) GetByNumber(ctx context.Context, schoolID, number string)
 func (s *TeacherStore) GetByID(ctx context.Context, id string) (*domain.Teacher, error) {
 	var teacher domain.Teacher
 	if err := s.db.WithContext(ctx).First(&teacher, "id = ?", id).Error; err != nil {
+		return nil, err
+	}
+	return &teacher, nil
+}
+
+func (s *TeacherStore) GetByAccountID(ctx context.Context, accountID string) (*domain.Teacher, error) {
+	var teacher domain.Teacher
+	if err := s.db.WithContext(ctx).Where("account_id = ?", accountID).First(&teacher).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
 		return nil, err
 	}
 	return &teacher, nil

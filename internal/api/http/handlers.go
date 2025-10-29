@@ -76,6 +76,11 @@ func (h *Handler) RegisterRoutes(r *gin.Engine, adminGuard gin.HandlerFunc, teac
 		admin.DELETE("/classes/:id", h.DeleteClass)
 		admin.GET("/departments", h.ListDepartments)
 		admin.GET("/departments/:id/classes", h.ListClasses)
+		admin.GET("/accounts", h.ListAccounts)
+		admin.POST("/accounts/:id/password/reset", h.ResetAccountPassword)
+		admin.POST("/accounts/:id/lock", h.LockAccount)
+		admin.POST("/accounts/:id/unlock", h.UnlockAccount)
+		admin.DELETE("/accounts/:id", h.DeleteAccount)
 
 		assignments := api.Group("/assignments", teacherGuard)
 		assignments.POST("", h.CreateAssignment)
@@ -127,7 +132,16 @@ func (h *Handler) Login(c *gin.Context) {
 
 	access, refresh, account, err := h.auth.Login(c.Request.Context(), req.SchoolID, req.Identifier, req.Password)
 	if err != nil {
-		response.Error(c, http.StatusUnauthorized, "invalid credentials", err.Error())
+		switch {
+		case errors.Is(err, service.ErrAccountLocked):
+			response.Error(c, http.StatusForbidden, "account locked", nil)
+		case errors.Is(err, service.ErrPasswordResetRequired):
+			response.Error(c, http.StatusForbidden, "password reset required", nil)
+		case errors.Is(err, service.ErrInvalidCredentials):
+			response.Error(c, http.StatusUnauthorized, "invalid credentials", nil)
+		default:
+			response.Error(c, http.StatusInternalServerError, "login failed", err.Error())
+		}
 		return
 	}
 
@@ -218,6 +232,258 @@ func (h *Handler) CreateStudent(c *gin.Context) {
 	}
 
 	response.Success(c, http.StatusCreated, gin.H{"student_id": student.ID})
+}
+
+func (h *Handler) ListAccounts(c *gin.Context) {
+	schoolID := strings.TrimSpace(c.Query("school_id"))
+	if schoolID == "" {
+		response.Error(c, http.StatusBadRequest, "school_id required", nil)
+		return
+	}
+
+	roleParam := strings.ToLower(strings.TrimSpace(c.DefaultQuery("role", "all")))
+	var role domain.Role
+	switch roleParam {
+	case "", "all":
+		role = ""
+	case "teacher", "teachers":
+		role = domain.RoleTeacher
+	case "student", "students":
+		role = domain.RoleStudent
+	default:
+		response.Error(c, http.StatusBadRequest, "invalid role", roleParam)
+		return
+	}
+
+	page, err := strconv.Atoi(c.DefaultQuery("page", "1"))
+	if err != nil || page <= 0 {
+		page = 1
+	}
+	size, err := strconv.Atoi(c.DefaultQuery("page_size", "50"))
+	if err != nil || size <= 0 {
+		size = 50
+	}
+
+	query := strings.TrimSpace(c.Query("query"))
+
+	statusParam := strings.ToLower(strings.TrimSpace(c.Query("status")))
+	var status domain.AccountStatus
+	switch statusParam {
+	case "", "all":
+		status = ""
+	case string(domain.AccountStatusActive):
+		status = domain.AccountStatusActive
+	case string(domain.AccountStatusLocked):
+		status = domain.AccountStatusLocked
+	case string(domain.AccountStatusPasswordResetRequired):
+		status = domain.AccountStatusPasswordResetRequired
+	default:
+		response.Error(c, http.StatusBadRequest, "invalid status", statusParam)
+		return
+	}
+
+	departmentID := strings.TrimSpace(c.Query("department_id"))
+	classID := strings.TrimSpace(c.Query("class_id"))
+	if classID != "" && departmentID == "" {
+		response.Error(c, http.StatusBadRequest, "department_id required when class_id provided", nil)
+		return
+	}
+
+	deptScopeParam := strings.ToLower(strings.TrimSpace(c.Query("department_scope")))
+	var departmentScope service.AccountDepartmentScope
+	switch deptScopeParam {
+	case "", "all":
+		departmentScope = service.AccountDepartmentScopeAll
+	case string(service.AccountDepartmentScopeUnassigned):
+		if departmentID != "" {
+			response.Error(c, http.StatusBadRequest, "department_scope unassigned cannot be combined with department_id", nil)
+			return
+		}
+		departmentScope = service.AccountDepartmentScopeUnassigned
+	default:
+		response.Error(c, http.StatusBadRequest, "invalid department_scope", deptScopeParam)
+		return
+	}
+
+	classScopeParam := strings.ToLower(strings.TrimSpace(c.Query("class_scope")))
+	var classScope service.AccountClassScope
+	switch classScopeParam {
+	case "", "all":
+		classScope = service.AccountClassScopeAll
+	case string(service.AccountClassScopeUnassigned):
+		if classID != "" {
+			response.Error(c, http.StatusBadRequest, "class_scope unassigned cannot be combined with class_id", nil)
+			return
+		}
+		classScope = service.AccountClassScopeUnassigned
+	default:
+		response.Error(c, http.StatusBadRequest, "invalid class_scope", classScopeParam)
+		return
+	}
+
+	accounts, total, err := h.admin.ListAccounts(c.Request.Context(), service.ListAccountsOptions{
+		SchoolID:        schoolID,
+		Role:            role,
+		Status:          status,
+		DepartmentID:    departmentID,
+		DepartmentScope: departmentScope,
+		ClassID:         classID,
+		ClassScope:      classScope,
+		Page:            page,
+		Size:            size,
+		Query:           query,
+	})
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "unable to list accounts", err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, gin.H{
+		"accounts":  accounts,
+		"page":      page,
+		"page_size": size,
+		"total":     total,
+	})
+}
+
+type accountActionRequest struct {
+	SchoolID string `json:"school_id" validate:"required"`
+}
+
+func (h *Handler) ResetAccountPassword(c *gin.Context) {
+	accountID := strings.TrimSpace(c.Param("id"))
+	if accountID == "" {
+		response.Error(c, http.StatusBadRequest, "account id is required", nil)
+		return
+	}
+
+	var req accountActionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		return
+	}
+	if err := h.validate.Struct(req); err != nil {
+		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		return
+	}
+
+	if err := h.admin.ResetAccountPassword(c.Request.Context(), req.SchoolID, accountID); err != nil {
+		h.handleAdminAccountError(c, err, "unable to reset password")
+		return
+	}
+
+	response.Success(c, http.StatusOK, gin.H{
+		"account_id": accountID,
+		"status":     domain.AccountStatusPasswordResetRequired,
+	})
+}
+
+func (h *Handler) LockAccount(c *gin.Context) {
+	accountID := strings.TrimSpace(c.Param("id"))
+	if accountID == "" {
+		response.Error(c, http.StatusBadRequest, "account id is required", nil)
+		return
+	}
+
+	var req accountActionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		return
+	}
+	if err := h.validate.Struct(req); err != nil {
+		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		return
+	}
+
+	if err := h.admin.LockAccount(c.Request.Context(), req.SchoolID, accountID); err != nil {
+		h.handleAdminAccountError(c, err, "unable to lock account")
+		return
+	}
+
+	response.Success(c, http.StatusOK, gin.H{
+		"account_id": accountID,
+		"status":     domain.AccountStatusLocked,
+	})
+}
+
+func (h *Handler) UnlockAccount(c *gin.Context) {
+	accountID := strings.TrimSpace(c.Param("id"))
+	if accountID == "" {
+		response.Error(c, http.StatusBadRequest, "account id is required", nil)
+		return
+	}
+
+	var req accountActionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		return
+	}
+	if err := h.validate.Struct(req); err != nil {
+		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		return
+	}
+
+	if err := h.admin.UnlockAccount(c.Request.Context(), req.SchoolID, accountID); err != nil {
+		h.handleAdminAccountError(c, err, "unable to unlock account")
+		return
+	}
+
+	response.Success(c, http.StatusOK, gin.H{
+		"account_id": accountID,
+		"status":     domain.AccountStatusActive,
+	})
+}
+
+func (h *Handler) DeleteAccount(c *gin.Context) {
+	accountID := strings.TrimSpace(c.Param("id"))
+	if accountID == "" {
+		response.Error(c, http.StatusBadRequest, "account id is required", nil)
+		return
+	}
+
+	schoolID := strings.TrimSpace(c.Query("school_id"))
+	if schoolID == "" {
+		var req accountActionRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			response.Error(c, http.StatusBadRequest, "invalid request payload", err.Error())
+			return
+		}
+		if err := h.validate.Struct(req); err != nil {
+			response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+			return
+		}
+		schoolID = req.SchoolID
+	}
+	if schoolID == "" {
+		response.Error(c, http.StatusBadRequest, "school_id required", nil)
+		return
+	}
+
+	if err := h.admin.DeleteAccount(c.Request.Context(), schoolID, accountID); err != nil {
+		h.handleAdminAccountError(c, err, "unable to delete account")
+		return
+	}
+
+	response.Success(c, http.StatusOK, gin.H{
+		"account_id": accountID,
+	})
+}
+
+func (h *Handler) handleAdminAccountError(c *gin.Context, err error, message string) {
+	switch {
+	case errors.Is(err, service.ErrAdminAccountNotFound):
+		response.Error(c, http.StatusNotFound, message, err.Error())
+	case errors.Is(err, service.ErrAdminAccountRoleNotSupported):
+		response.Error(c, http.StatusBadRequest, message, err.Error())
+	case errors.Is(err, service.ErrAdminAccountAlreadyLocked):
+		response.Error(c, http.StatusConflict, message, err.Error())
+	case errors.Is(err, service.ErrAdminAccountNotLocked):
+		response.Error(c, http.StatusConflict, message, err.Error())
+	case errors.Is(err, service.ErrAdminPasswordResetPending):
+		response.Error(c, http.StatusConflict, message, err.Error())
+	default:
+		response.Error(c, http.StatusInternalServerError, message, err.Error())
+	}
 }
 
 type createDepartmentRequest struct {

@@ -12,7 +12,21 @@ type AccountRepository interface {
 	Create(ctx context.Context, account *domain.Account) error
 	FindByIdentifier(ctx context.Context, schoolID, identifier string) (*domain.Account, error)
 	FindByID(ctx context.Context, id string) (*domain.Account, error)
-	ListByRole(ctx context.Context, schoolID string, role domain.Role, page, size int) ([]domain.Account, int64, error)
+	ListByRole(
+		ctx context.Context,
+		schoolID string,
+		role domain.Role,
+		status domain.AccountStatus,
+		departmentID string,
+		classID string,
+		onlyClassless bool,
+		onlyDepartmentless bool,
+		page int,
+		size int,
+		query string,
+	) ([]domain.Account, int64, error)
+	UpdateStatus(ctx context.Context, accountID, schoolID string, status domain.AccountStatus) error
+	Delete(ctx context.Context, accountID, schoolID string) error
 }
 
 // TeacherRepository handles teacher profile persistence.
@@ -20,6 +34,7 @@ type TeacherRepository interface {
 	Create(ctx context.Context, teacher *domain.Teacher) error
 	GetByNumber(ctx context.Context, schoolID, number string) (*domain.Teacher, error)
 	GetByID(ctx context.Context, id string) (*domain.Teacher, error)
+	GetByAccountID(ctx context.Context, accountID string) (*domain.Teacher, error)
 }
 
 // StudentRepository handles student profile persistence.
@@ -27,6 +42,7 @@ type StudentRepository interface {
 	Create(ctx context.Context, student *domain.Student) error
 	GetByNumber(ctx context.Context, schoolID, number string) (*domain.Student, error)
 	GetByID(ctx context.Context, id string) (*domain.Student, error)
+	GetByAccountID(ctx context.Context, accountID string) (*domain.Student, error)
 }
 
 // TeacherStudentRepository manages relationships between teachers and students.

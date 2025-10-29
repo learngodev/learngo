@@ -2,6 +2,7 @@ package gormrepo
 
 import (
 	"context"
+	"strings"
 
 	"learn-go/internal/domain"
 	"learn-go/internal/repository"
@@ -43,22 +44,126 @@ func (s *Store) FindByID(ctx context.Context, id string) (*domain.Account, error
 	return &account, nil
 }
 
-func (s *Store) ListByRole(ctx context.Context, schoolID string, role domain.Role, page, size int) ([]domain.Account, int64, error) {
+func (s *Store) ListByRole(
+	ctx context.Context,
+	schoolID string,
+	role domain.Role,
+	status domain.AccountStatus,
+	departmentID string,
+	classID string,
+	onlyClassless bool,
+	onlyDepartmentless bool,
+	page int,
+	size int,
+	search string,
+) ([]domain.Account, int64, error) {
 	var (
 		accounts []domain.Account
 		total    int64
 	)
 
-	query := s.db.WithContext(ctx).Where("school_id = ? AND role = ?", schoolID, role)
-	if err := query.Model(&domain.Account{}).Count(&total).Error; err != nil {
+	base := s.db.WithContext(ctx).
+		Table("accounts").
+		Where("accounts.school_id = ?", schoolID)
+
+	if role != "" {
+		base = base.Where("accounts.role = ?", role)
+	} else {
+		base = base.Where("accounts.role IN ?", []domain.Role{domain.RoleTeacher, domain.RoleStudent})
+	}
+
+	if status != "" {
+		base = base.Where("accounts.status = ?", status)
+	}
+
+	if trimmed := strings.TrimSpace(search); trimmed != "" {
+		like := "%" + trimmed + "%"
+		base = base.Where(
+			"accounts.identifier LIKE ? OR accounts.display_name LIKE ?",
+			like,
+			like,
+		)
+	}
+
+	joinedStudents := false
+	joinedClasses := false
+	joinStudents := func() {
+		if !joinedStudents {
+			base = base.Joins("LEFT JOIN students ON students.account_id = accounts.id")
+			joinedStudents = true
+		}
+	}
+	joinClasses := func() {
+		joinStudents()
+		if !joinedClasses {
+			base = base.Joins("LEFT JOIN classes ON classes.id = students.class_id")
+			joinedClasses = true
+		}
+	}
+
+	if classID != "" {
+		joinStudents()
+		base = base.Where("students.class_id = ?", classID)
+	}
+	if departmentID != "" {
+		joinClasses()
+		base = base.Where("classes.department_id = ?", departmentID)
+	}
+
+	if onlyClassless {
+		joinStudents()
+		base = base.Where("(students.class_id IS NULL OR students.class_id = '')")
+	}
+
+	if onlyDepartmentless {
+		joinClasses()
+		base = base.Where("(classes.department_id IS NULL OR classes.department_id = '')")
+	}
+
+	countQuery := base.Session(&gorm.Session{}).Distinct("accounts.id")
+	if err := countQuery.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 
 	offset := (page - 1) * size
-	if err := query.Order("created_at DESC").Offset(offset).Limit(size).Find(&accounts).Error; err != nil {
+	dataQuery := base.Session(&gorm.Session{}).
+		Select("accounts.*").
+		Distinct("accounts.id").
+		Order("accounts.created_at DESC").
+		Offset(offset).
+		Limit(size)
+
+	if err := dataQuery.Find(&accounts).Error; err != nil {
 		return nil, 0, err
 	}
 	return accounts, total, nil
+}
+
+func (s *Store) UpdateStatus(ctx context.Context, accountID, schoolID string, status domain.AccountStatus) error {
+	result := s.db.WithContext(ctx).
+		Model(&domain.Account{}).
+		Where("id = ? AND school_id = ?", accountID, schoolID).
+		Updates(map[string]any{"status": status})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
+func (s *Store) Delete(ctx context.Context, accountID, schoolID string) error {
+	result := s.db.WithContext(ctx).
+		Where("id = ? AND school_id = ?", accountID, schoolID).
+		Delete(&domain.Account{})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }
 
 // Ensure Store satisfies interfaces at compile time.

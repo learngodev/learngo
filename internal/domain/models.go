@@ -15,14 +15,24 @@ const (
 	RoleStudent Role = "student"
 )
 
+// AccountStatus indicates account availability state.
+type AccountStatus string
+
+const (
+	AccountStatusActive                AccountStatus = "active"
+	AccountStatusLocked                AccountStatus = "locked"
+	AccountStatusPasswordResetRequired AccountStatus = "password_reset_required"
+)
+
 // Account represents login credentials tied to a user type.
 type Account struct {
-	ID           string `gorm:"primaryKey;size:36"`
-	SchoolID     string `gorm:"size:36;index"`
-	Role         Role   `gorm:"size:16;index"`
-	Identifier   string `gorm:"size:64;uniqueIndex"` // teacher number or student number
-	PasswordHash string `gorm:"size:128"`
-	DisplayName  string `gorm:"size:128"`
+	ID           string        `gorm:"primaryKey;size:36"`
+	SchoolID     string        `gorm:"size:36;index"`
+	Role         Role          `gorm:"size:16;index"`
+	Status       AccountStatus `gorm:"size:32;index;default:'active'"`
+	Identifier   string        `gorm:"size:64;uniqueIndex"` // teacher number or student number
+	PasswordHash string        `gorm:"size:128"`
+	DisplayName  string        `gorm:"size:128"`
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 	DeletedAt    gorm.DeletedAt `gorm:"index"`

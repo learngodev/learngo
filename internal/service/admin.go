@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 
 	"learn-go/internal/domain"
 	"learn-go/internal/repository"
@@ -21,6 +23,19 @@ type AdminService struct {
 	classes      repository.ClassRepository
 	teacherLinks repository.TeacherStudentRepository
 }
+
+var (
+	// ErrAdminAccountNotFound indicates the managed account does not exist in the given school.
+	ErrAdminAccountNotFound = errors.New("account not found")
+	// ErrAdminAccountRoleNotSupported indicates the account is not a teacher or student.
+	ErrAdminAccountRoleNotSupported = errors.New("account role not supported")
+	// ErrAdminAccountAlreadyLocked indicates the account is already locked.
+	ErrAdminAccountAlreadyLocked = errors.New("account already locked")
+	// ErrAdminAccountNotLocked indicates the account is not in locked state when unlock is requested.
+	ErrAdminAccountNotLocked = errors.New("account is not locked")
+	// ErrAdminPasswordResetPending indicates a reset request is already pending.
+	ErrAdminPasswordResetPending = errors.New("password reset already pending")
+)
 
 // NewAdminService constructs an AdminService.
 func NewAdminService(acc repository.AccountRepository, teachers repository.TeacherRepository, students repository.StudentRepository, departments repository.DepartmentRepository, classes repository.ClassRepository, links repository.TeacherStudentRepository) *AdminService {
@@ -58,6 +73,7 @@ func (s *AdminService) CreateTeacher(ctx context.Context, input CreateTeacherInp
 		ID:           uuid.NewString(),
 		SchoolID:     input.SchoolID,
 		Role:         domain.RoleTeacher,
+		Status:       domain.AccountStatusActive,
 		Identifier:   input.Number,
 		PasswordHash: hash,
 		DisplayName:  input.Name,
@@ -112,6 +128,7 @@ func (s *AdminService) CreateStudent(ctx context.Context, input CreateStudentInp
 		ID:           uuid.NewString(),
 		SchoolID:     input.SchoolID,
 		Role:         domain.RoleStudent,
+		Status:       domain.AccountStatusActive,
 		Identifier:   input.Number,
 		PasswordHash: hash,
 		DisplayName:  input.Name,
@@ -140,6 +157,261 @@ func (s *AdminService) CreateStudent(ctx context.Context, input CreateStudentInp
 	}
 
 	return student, nil
+}
+
+// AccountDepartmentScope controls department-based filtering.
+type AccountDepartmentScope string
+
+const (
+	// AccountDepartmentScopeAll keeps all accounts regardless of department state.
+	AccountDepartmentScopeAll AccountDepartmentScope = "all"
+	// AccountDepartmentScopeUnassigned keeps accounts without department association.
+	AccountDepartmentScopeUnassigned AccountDepartmentScope = "unassigned"
+)
+
+// AccountClassScope controls class-based filtering.
+type AccountClassScope string
+
+const (
+	// AccountClassScopeAll keeps all accounts regardless of class state.
+	AccountClassScopeAll AccountClassScope = "all"
+	// AccountClassScopeUnassigned keeps accounts without class association.
+	AccountClassScopeUnassigned AccountClassScope = "unassigned"
+)
+
+// ListAccountsOptions configures account listing behaviour.
+type ListAccountsOptions struct {
+	SchoolID        string
+	Role            domain.Role
+	Status          domain.AccountStatus
+	DepartmentID    string
+	DepartmentScope AccountDepartmentScope
+	ClassID         string
+	ClassScope      AccountClassScope
+	Page            int
+	Size            int
+	Query           string
+}
+
+// AdminAccountSummary represents account information for admin UI.
+type AdminAccountSummary struct {
+	ID           string      `json:"id"`
+	Role         domain.Role `json:"role"`
+	Identifier   string      `json:"identifier"`
+	Name         string      `json:"name"`
+	Email        string      `json:"email,omitempty"`
+	Phone        string      `json:"phone,omitempty"`
+	DepartmentID string      `json:"department_id,omitempty"`
+	Department   string      `json:"department,omitempty"`
+	ClassID      string      `json:"class_id,omitempty"`
+	ClassName    string      `json:"class_name,omitempty"`
+	Status       string      `json:"status"`
+	LastActiveAt *time.Time  `json:"last_active_at,omitempty"`
+	CreatedAt    time.Time   `json:"created_at"`
+}
+
+// ListAccounts returns accounts filtered by role for an administrator.
+func (s *AdminService) ListAccounts(ctx context.Context, opts ListAccountsOptions) ([]AdminAccountSummary, int64, error) {
+	if opts.SchoolID == "" {
+		return nil, 0, errors.New("school_id required")
+	}
+	if opts.Role != "" && opts.Role != domain.RoleTeacher && opts.Role != domain.RoleStudent {
+		return nil, 0, errors.New("unsupported role")
+	}
+
+	if opts.Page <= 0 {
+		opts.Page = 1
+	}
+	if opts.Size <= 0 {
+		opts.Size = 50
+	}
+	if opts.Size > 200 {
+		opts.Size = 200
+	}
+
+	onlyClassless := opts.ClassScope == AccountClassScopeUnassigned
+	onlyDepartmentless := opts.DepartmentScope == AccountDepartmentScopeUnassigned
+	accounts, total, err := s.accounts.ListByRole(
+		ctx,
+		opts.SchoolID,
+		opts.Role,
+		opts.Status,
+		opts.DepartmentID,
+		opts.ClassID,
+		onlyClassless,
+		onlyDepartmentless,
+		opts.Page,
+		opts.Size,
+		opts.Query,
+	)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	summaries := make([]AdminAccountSummary, 0, len(accounts))
+	for _, account := range accounts {
+		summary := AdminAccountSummary{
+			ID:         account.ID,
+			Role:       account.Role,
+			Identifier: account.Identifier,
+			Name:       account.DisplayName,
+			Status:     string(account.Status),
+			CreatedAt:  account.CreatedAt,
+		}
+
+		if lastActive := account.UpdatedAt; !lastActive.IsZero() {
+			v := lastActive
+			summary.LastActiveAt = &v
+		}
+
+		switch account.Role {
+		case domain.RoleTeacher:
+			profile, perr := s.teachers.GetByAccountID(ctx, account.ID)
+			if perr != nil {
+				return nil, 0, perr
+			}
+			if profile != nil {
+				summary.Email = profile.Email
+				summary.Phone = profile.Phone
+			}
+		case domain.RoleStudent:
+			profile, perr := s.students.GetByAccountID(ctx, account.ID)
+			if perr != nil {
+				return nil, 0, perr
+			}
+			if profile != nil {
+				summary.Email = profile.Email
+				summary.Phone = profile.Phone
+				summary.ClassID = profile.ClassID
+
+				class, cerr := s.classes.GetByID(ctx, profile.ClassID)
+				if cerr == nil && class != nil {
+					summary.ClassName = class.Name
+					summary.DepartmentID = class.DepartmentID
+					department, derr := s.departments.GetByID(ctx, class.DepartmentID)
+					if derr == nil && department != nil {
+						summary.Department = department.Name
+					}
+				}
+			}
+		default:
+			// Skip roles that are not managed in account center.
+			continue
+		}
+
+		if opts.ClassScope == AccountClassScopeUnassigned && summary.ClassID != "" {
+			continue
+		}
+		if opts.ClassID != "" && summary.ClassID != opts.ClassID {
+			continue
+		}
+		if opts.DepartmentScope == AccountDepartmentScopeUnassigned && summary.DepartmentID != "" {
+			continue
+		}
+		if opts.DepartmentID != "" && summary.DepartmentID != opts.DepartmentID {
+			continue
+		}
+
+		summaries = append(summaries, summary)
+	}
+
+	var filteredTotal int64 = total
+	if opts.ClassID != "" || opts.DepartmentID != "" || opts.DepartmentScope == AccountDepartmentScopeUnassigned || opts.ClassScope == AccountClassScopeUnassigned {
+		filteredTotal = int64(len(summaries))
+	}
+
+	return summaries, filteredTotal, nil
+}
+
+func (s *AdminService) ResetAccountPassword(ctx context.Context, schoolID, accountID string) error {
+	account, err := s.ensureManageableAccount(ctx, schoolID, accountID)
+	if err != nil {
+		return err
+	}
+
+	if account.Status == domain.AccountStatusPasswordResetRequired {
+		return ErrAdminPasswordResetPending
+	}
+
+	if err := s.accounts.UpdateStatus(ctx, accountID, schoolID, domain.AccountStatusPasswordResetRequired); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrAdminAccountNotFound
+		}
+		return err
+	}
+	return nil
+}
+
+func (s *AdminService) LockAccount(ctx context.Context, schoolID, accountID string) error {
+	account, err := s.ensureManageableAccount(ctx, schoolID, accountID)
+	if err != nil {
+		return err
+	}
+
+	if account.Status == domain.AccountStatusLocked {
+		return ErrAdminAccountAlreadyLocked
+	}
+
+	if err := s.accounts.UpdateStatus(ctx, accountID, schoolID, domain.AccountStatusLocked); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrAdminAccountNotFound
+		}
+		return err
+	}
+	return nil
+}
+
+func (s *AdminService) UnlockAccount(ctx context.Context, schoolID, accountID string) error {
+	account, err := s.ensureManageableAccount(ctx, schoolID, accountID)
+	if err != nil {
+		return err
+	}
+
+	if account.Status != domain.AccountStatusLocked {
+		return ErrAdminAccountNotLocked
+	}
+
+	if err := s.accounts.UpdateStatus(ctx, accountID, schoolID, domain.AccountStatusActive); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrAdminAccountNotFound
+		}
+		return err
+	}
+	return nil
+}
+
+func (s *AdminService) DeleteAccount(ctx context.Context, schoolID, accountID string) error {
+	if _, err := s.ensureManageableAccount(ctx, schoolID, accountID); err != nil {
+		return err
+	}
+
+	if err := s.accounts.Delete(ctx, accountID, schoolID); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrAdminAccountNotFound
+		}
+		return err
+	}
+	return nil
+}
+
+func (s *AdminService) ensureManageableAccount(ctx context.Context, schoolID, accountID string) (*domain.Account, error) {
+	if accountID == "" {
+		return nil, ErrAdminAccountNotFound
+	}
+	account, err := s.accounts.FindByID(ctx, accountID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrAdminAccountNotFound
+		}
+		return nil, err
+	}
+	if account == nil || account.SchoolID != schoolID {
+		return nil, ErrAdminAccountNotFound
+	}
+	if account.Role != domain.RoleTeacher && account.Role != domain.RoleStudent {
+		return nil, ErrAdminAccountRoleNotSupported
+	}
+	return account, nil
 }
 
 // CreateDepartment registers a new department.
