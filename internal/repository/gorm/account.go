@@ -124,7 +124,7 @@ func (s *AccountStore) ListByRole(
 	offset := (page - 1) * size
 	dataQuery := base.Session(&gorm.Session{}).
 		Select("accounts.*").
-		Distinct("accounts.id").
+		Distinct().
 		Order("accounts.created_at DESC").
 		Offset(offset).
 		Limit(size)
