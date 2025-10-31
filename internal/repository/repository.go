@@ -132,3 +132,24 @@ type MessageReceiptRepository interface {
 	CountUnread(ctx context.Context, accountID, conversationID string) (int64, error)
 	MarkReadUpTo(ctx context.Context, accountID, conversationID string, ts time.Time) error
 }
+
+// OssCredentialRepository manages OSS credential persistence.
+type OssCredentialRepository interface {
+	List(ctx context.Context, schoolID string) ([]domain.OssCredential, error)
+	GetByID(ctx context.Context, credentialID, schoolID string) (*domain.OssCredential, error)
+	Update(ctx context.Context, credentialID, schoolID string, updates map[string]any) (*domain.OssCredential, error)
+	SetPrimary(ctx context.Context, credentialID, schoolID string) (*domain.OssCredential, error)
+}
+
+// OssPolicyRepository manages OSS policy persistence.
+type OssPolicyRepository interface {
+	List(ctx context.Context, schoolID string) ([]domain.OssPolicy, error)
+	GetByID(ctx context.Context, policyID, schoolID string) (*domain.OssPolicy, error)
+	UpdateStatus(ctx context.Context, policyID, schoolID string, status domain.OssPolicyStatus) (*domain.OssPolicy, error)
+}
+
+// OssAuditRepository records OSS configuration changes.
+type OssAuditRepository interface {
+	Create(ctx context.Context, log *domain.OssAuditLog) error
+	ListRecent(ctx context.Context, schoolID string, limit int) ([]domain.OssAuditLog, error)
+}

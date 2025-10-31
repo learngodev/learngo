@@ -27,12 +27,13 @@ type Handler struct {
 	notes         *service.NoteService
 	noteComments  *service.NoteCommentService
 	conversations *service.ConversationService
+	oss           *service.AdminOssService
 	streamHub     *realtime.Hub
 	validate      *validator.Validate
 }
 
 // NewHandler constructs a Handler instance.
-func NewHandler(auth *service.AuthService, admin *service.AdminService, assignments *service.AssignmentService, conversations *service.ConversationService, notes *service.NoteService, noteComments *service.NoteCommentService, streamHub *realtime.Hub) *Handler {
+func NewHandler(auth *service.AuthService, admin *service.AdminService, assignments *service.AssignmentService, conversations *service.ConversationService, notes *service.NoteService, noteComments *service.NoteCommentService, oss *service.AdminOssService, streamHub *realtime.Hub) *Handler {
 	return &Handler{
 		auth:          auth,
 		admin:         admin,
@@ -40,6 +41,7 @@ func NewHandler(auth *service.AuthService, admin *service.AdminService, assignme
 		notes:         notes,
 		noteComments:  noteComments,
 		conversations: conversations,
+		oss:           oss,
 		streamHub:     streamHub,
 		validate:      validator.New(),
 	}
@@ -67,6 +69,11 @@ func (h *Handler) RegisterRoutes(r *gin.Engine, adminGuard gin.HandlerFunc, teac
 		admin.POST("/accounts/:id/lock", h.LockAccount)
 		admin.POST("/accounts/:id/unlock", h.UnlockAccount)
 		admin.DELETE("/accounts/:id", h.DeleteAccount)
+		admin.GET("/oss/credentials", h.ListOssCredentials)
+		admin.PATCH("/oss/credentials/:id", h.UpdateOssCredential)
+		admin.GET("/oss/policies", h.ListOssPolicies)
+		admin.PATCH("/oss/policies/:id", h.UpdateOssPolicy)
+		admin.GET("/oss/audit_logs", h.ListOssAuditLogs)
 
 		assignments := api.Group("/assignments", teacherGuard)
 		assignments.POST("", h.CreateAssignment)
@@ -335,6 +342,25 @@ type accountActionRequest struct {
 	SchoolID string `json:"school_id" validate:"required"`
 }
 
+type updateOssCredentialRequest struct {
+	SchoolID             string  `json:"school_id" validate:"required"`
+	Name                 *string `json:"name"`
+	Endpoint             *string `json:"endpoint"`
+	Region               *string `json:"region"`
+	Bucket               *string `json:"bucket"`
+	DirectoryPrefix      *string `json:"directory_prefix"`
+	AccessKeyDisplay     *string `json:"access_key_display"`
+	AllowPublicRead      *bool   `json:"allow_public_read"`
+	AllowMultipartUpload *bool   `json:"allow_multipart_upload"`
+	Active               *bool   `json:"active"`
+	IsPrimary            *bool   `json:"is_primary"`
+}
+
+type updateOssPolicyRequest struct {
+	SchoolID string `json:"school_id" validate:"required"`
+	Status   string `json:"status" validate:"required"`
+}
+
 func (h *Handler) ResetAccountPassword(c *gin.Context) {
 	accountID := strings.TrimSpace(c.Param("id"))
 	if accountID == "" {
@@ -557,6 +583,147 @@ type createClassRequest struct {
 	SchoolID     string `json:"school_id" validate:"required"`
 	DepartmentID string `json:"department_id" validate:"required"`
 	Name         string `json:"name" validate:"required"`
+
+func (h *Handler) ListOssCredentials(c *gin.Context) {
+	schoolID := strings.TrimSpace(c.Query("school_id"))
+	if schoolID == "" {
+		response.Error(c, http.StatusBadRequest, "school_id required", nil)
+		return
+	}
+
+	credentials, err := h.oss.ListCredentials(c.Request.Context(), schoolID)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "unable to list oss credentials", err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, gin.H{"credentials": credentials})
+}
+
+func (h *Handler) UpdateOssCredential(c *gin.Context) {
+	credentialID := strings.TrimSpace(c.Param("id"))
+	if credentialID == "" {
+		response.Error(c, http.StatusBadRequest, "credential id is required", nil)
+		return
+	}
+
+	var req updateOssCredentialRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		return
+	}
+	if err := h.validate.Struct(req); err != nil {
+		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		return
+	}
+
+	operatorID := c.GetString(middleware.ContextAccountID)
+	updated, err := h.oss.UpdateCredential(c.Request.Context(), service.UpdateOssCredentialInput{
+		SchoolID:             req.SchoolID,
+		CredentialID:         credentialID,
+		Name:                 req.Name,
+		Endpoint:             req.Endpoint,
+		Region:               req.Region,
+		Bucket:               req.Bucket,
+		DirectoryPrefix:      req.DirectoryPrefix,
+		AccessKeyDisplay:     req.AccessKeyDisplay,
+		AllowPublicRead:      req.AllowPublicRead,
+		AllowMultipartUpload: req.AllowMultipartUpload,
+		Active:               req.Active,
+		IsPrimary:            req.IsPrimary,
+		OperatorID:           operatorID,
+	})
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "unable to update credential", err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, gin.H{"credential": updated})
+}
+
+func (h *Handler) ListOssPolicies(c *gin.Context) {
+	schoolID := strings.TrimSpace(c.Query("school_id"))
+	if schoolID == "" {
+		response.Error(c, http.StatusBadRequest, "school_id required", nil)
+		return
+	}
+
+	policies, err := h.oss.ListPolicies(c.Request.Context(), schoolID)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "unable to list policies", err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, gin.H{"policies": policies})
+}
+
+func (h *Handler) UpdateOssPolicy(c *gin.Context) {
+	policyID := strings.TrimSpace(c.Param("id"))
+	if policyID == "" {
+		response.Error(c, http.StatusBadRequest, "policy id is required", nil)
+		return
+	}
+
+	var req updateOssPolicyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		return
+	}
+	if err := h.validate.Struct(req); err != nil {
+		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		return
+	}
+
+	statusValue := strings.ToLower(strings.TrimSpace(req.Status))
+	var status domain.OssPolicyStatus
+	switch statusValue {
+	case string(domain.OssPolicyStatusEnabled), "enabled":
+		status = domain.OssPolicyStatusEnabled
+	case string(domain.OssPolicyStatusReadOnly), "read_only", "readonly":
+		status = domain.OssPolicyStatusReadOnly
+	case string(domain.OssPolicyStatusDisabled), "disabled":
+		status = domain.OssPolicyStatusDisabled
+	default:
+		response.Error(c, http.StatusBadRequest, "invalid status", statusValue)
+		return
+	}
+
+	operatorID := c.GetString(middleware.ContextAccountID)
+	policy, err := h.oss.UpdatePolicyStatus(c.Request.Context(), service.UpdateOssPolicyStatusInput{
+		SchoolID:   req.SchoolID,
+		PolicyID:   policyID,
+		Status:     status,
+		OperatorID: operatorID,
+	})
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "unable to update policy", err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, gin.H{"policy": policy})
+}
+
+func (h *Handler) ListOssAuditLogs(c *gin.Context) {
+	schoolID := strings.TrimSpace(c.Query("school_id"))
+	if schoolID == "" {
+		response.Error(c, http.StatusBadRequest, "school_id required", nil)
+		return
+	}
+
+	limitParam := strings.TrimSpace(c.DefaultQuery("limit", "20"))
+	limit, err := strconv.Atoi(limitParam)
+	if err != nil || limit <= 0 {
+		limit = 20
+	}
+
+	logs, err := h.oss.ListAuditLogs(c.Request.Context(), schoolID, limit)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "unable to list audit logs", err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, gin.H{"logs": logs})
+}
 }
 
 func (h *Handler) CreateClass(c *gin.Context) {

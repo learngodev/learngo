@@ -76,6 +76,9 @@ func New() (*Application, error) {
 	conversationRepo := gormrepo.NewConversationStore(db)
 	messageRepo := gormrepo.NewMessageStore(db)
 	receiptRepo := gormrepo.NewMessageReceiptStore(db)
+	ossCredentialRepo := gormrepo.NewOssCredentialStore(db)
+	ossPolicyRepo := gormrepo.NewOssPolicyStore(db)
+	ossAuditRepo := gormrepo.NewOssAuditStore(db)
 
 	authService := service.NewAuthService(accountRepo, cfg)
 	adminService := service.NewAdminService(accountRepo, teacherRepo, studentRepo, departmentRepo, classRepo, teacherStudentRepo)
@@ -83,6 +86,7 @@ func New() (*Application, error) {
 	conversationService := service.NewConversationService(conversationRepo, messageRepo, receiptRepo, accountRepo)
 	noteService := service.NewNoteService(noteRepo, accountRepo)
 	noteCommentService := service.NewNoteCommentService(noteRepo, noteCommentRepo, accountRepo)
+	ossService := service.NewAdminOssService(ossCredentialRepo, ossPolicyRepo, ossAuditRepo, accountRepo)
 	streamHub := realtime.NewHub()
 
 	engine := gin.New()
@@ -94,7 +98,7 @@ func New() (*Application, error) {
 	)
 	apigrpc.RegisterConversationServiceServer(grpcServer, grpcserver.NewConversationServer(conversationService, streamHub))
 
-	handler := apihandlers.NewHandler(authService, adminService, assignmentService, conversationService, noteService, noteCommentService, streamHub)
+	handler := apihandlers.NewHandler(authService, adminService, assignmentService, conversationService, noteService, noteCommentService, tossService, streamHub)
 
 	adminGuard := middleware.JWTAuth(middleware.AuthConfig{Secret: cfg.JWTSecret, AllowedRoles: []string{string(domain.RoleAdmin)}})
 	teacherGuard := middleware.JWTAuth(middleware.AuthConfig{Secret: cfg.JWTSecret, AllowedRoles: []string{string(domain.RoleTeacher), string(domain.RoleAdmin)}})
@@ -152,6 +156,9 @@ func migrate(db *gorm.DB) error {
 		&domain.MessageReceipt{},
 		&domain.Note{},
 		&domain.NoteComment{},
+		&domain.OssCredential{},
+		&domain.OssPolicy{},
+		&domain.OssAuditLog{},
 	)
 }
 
