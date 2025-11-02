@@ -135,17 +135,21 @@ type MessageReceiptRepository interface {
 
 // OssCredentialRepository manages OSS credential persistence.
 type OssCredentialRepository interface {
+	Create(ctx context.Context, credential *domain.OssCredential) error
 	List(ctx context.Context, schoolID string) ([]domain.OssCredential, error)
 	GetByID(ctx context.Context, credentialID, schoolID string) (*domain.OssCredential, error)
 	Update(ctx context.Context, credentialID, schoolID string, updates map[string]any) (*domain.OssCredential, error)
 	SetPrimary(ctx context.Context, credentialID, schoolID string) (*domain.OssCredential, error)
+	Delete(ctx context.Context, credentialID, schoolID string) error
 }
 
 // OssPolicyRepository manages OSS policy persistence.
 type OssPolicyRepository interface {
+	Create(ctx context.Context, policy *domain.OssPolicy) error
 	List(ctx context.Context, schoolID string) ([]domain.OssPolicy, error)
 	GetByID(ctx context.Context, policyID, schoolID string) (*domain.OssPolicy, error)
 	UpdateStatus(ctx context.Context, policyID, schoolID string, status domain.OssPolicyStatus) (*domain.OssPolicy, error)
+	Delete(ctx context.Context, policyID, schoolID string) error
 }
 
 // OssAuditRepository records OSS configuration changes.

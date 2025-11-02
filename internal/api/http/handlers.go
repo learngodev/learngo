@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
+	"gorm.io/gorm"
 
 	"learn-go/internal/api/grpcmapper"
 	"learn-go/internal/api/grpcpb"
@@ -69,10 +70,14 @@ func (h *Handler) RegisterRoutes(r *gin.Engine, adminGuard gin.HandlerFunc, teac
 		admin.POST("/accounts/:id/lock", h.LockAccount)
 		admin.POST("/accounts/:id/unlock", h.UnlockAccount)
 		admin.DELETE("/accounts/:id", h.DeleteAccount)
+		admin.POST("/oss/credentials", h.CreateOssCredential)
 		admin.GET("/oss/credentials", h.ListOssCredentials)
 		admin.PATCH("/oss/credentials/:id", h.UpdateOssCredential)
+		admin.DELETE("/oss/credentials/:id", h.DeleteOssCredential)
+		admin.POST("/oss/policies", h.CreateOssPolicy)
 		admin.GET("/oss/policies", h.ListOssPolicies)
 		admin.PATCH("/oss/policies/:id", h.UpdateOssPolicy)
+		admin.DELETE("/oss/policies/:id", h.DeleteOssPolicy)
 		admin.GET("/oss/audit_logs", h.ListOssAuditLogs)
 
 		assignments := api.Group("/assignments", teacherGuard)
@@ -361,6 +366,28 @@ type updateOssPolicyRequest struct {
 	Status   string `json:"status" validate:"required"`
 }
 
+type createOssCredentialRequest struct {
+	SchoolID             string `json:"school_id" validate:"required"`
+	Name                 string `json:"name" validate:"required"`
+	Endpoint             string `json:"endpoint" validate:"required"`
+	Region               string `json:"region" validate:"required"`
+	Bucket               string `json:"bucket" validate:"required"`
+	DirectoryPrefix      string `json:"directory_prefix"`
+	AccessKeyDisplay     string `json:"access_key_display"`
+	AllowPublicRead      bool   `json:"allow_public_read"`
+	AllowMultipartUpload bool   `json:"allow_multipart_upload"`
+	Active               *bool  `json:"active"`
+	IsPrimary            bool   `json:"is_primary"`
+}
+
+type createOssPolicyRequest struct {
+	SchoolID    string `json:"school_id" validate:"required"`
+	Name        string `json:"name" validate:"required"`
+	Description string `json:"description"`
+	AppliesTo   string `json:"applies_to" validate:"required"`
+	Status      string `json:"status"`
+}
+
 func (h *Handler) ResetAccountPassword(c *gin.Context) {
 	accountID := strings.TrimSpace(c.Param("id"))
 	if accountID == "" {
@@ -583,6 +610,168 @@ type createClassRequest struct {
 	SchoolID     string `json:"school_id" validate:"required"`
 	DepartmentID string `json:"department_id" validate:"required"`
 	Name         string `json:"name" validate:"required"`
+}
+
+func (h *Handler) CreateOssCredential(c *gin.Context) {
+	var req createOssCredentialRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		return
+	}
+	if err := h.validate.Struct(req); err != nil {
+		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		return
+	}
+
+	active := true
+	if req.Active != nil {
+		active = *req.Active
+	}
+
+	operatorID := c.GetString(middleware.ContextAccountID)
+	credential, err := h.oss.CreateCredential(c.Request.Context(), service.CreateOssCredentialInput{
+		SchoolID:             req.SchoolID,
+		Name:                 req.Name,
+		Endpoint:             req.Endpoint,
+		Region:               req.Region,
+		Bucket:               req.Bucket,
+		DirectoryPrefix:      req.DirectoryPrefix,
+		AccessKeyDisplay:     req.AccessKeyDisplay,
+		AllowPublicRead:      req.AllowPublicRead,
+		AllowMultipartUpload: req.AllowMultipartUpload,
+		Active:               active,
+		IsPrimary:            req.IsPrimary,
+		OperatorID:           operatorID,
+	})
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "unable to create credential", err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusCreated, gin.H{"credential": credential})
+}
+
+func (h *Handler) DeleteOssCredential(c *gin.Context) {
+	credentialID := strings.TrimSpace(c.Param("id"))
+	if credentialID == "" {
+		response.Error(c, http.StatusBadRequest, "credential id is required", nil)
+		return
+	}
+
+	schoolID := strings.TrimSpace(c.Query("school_id"))
+	if schoolID == "" {
+		var req accountActionRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			response.Error(c, http.StatusBadRequest, "invalid request payload", err.Error())
+			return
+		}
+		if err := h.validate.Struct(req); err != nil {
+			response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+			return
+		}
+		schoolID = req.SchoolID
+	}
+	if schoolID == "" {
+		response.Error(c, http.StatusBadRequest, "school_id required", nil)
+		return
+	}
+
+	operatorID := c.GetString(middleware.ContextAccountID)
+	err := h.oss.DeleteCredential(c.Request.Context(), schoolID, credentialID, operatorID)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrOssPrimaryCredentialDeletion):
+			response.Error(c, http.StatusBadRequest, "unable to delete credential", err.Error())
+		case errors.Is(err, gorm.ErrRecordNotFound):
+			response.Error(c, http.StatusNotFound, "credential not found", err.Error())
+		default:
+			response.Error(c, http.StatusInternalServerError, "unable to delete credential", err.Error())
+		}
+		return
+	}
+
+	response.Success(c, http.StatusOK, gin.H{"deleted": true})
+}
+
+func (h *Handler) CreateOssPolicy(c *gin.Context) {
+	var req createOssPolicyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		return
+	}
+	if err := h.validate.Struct(req); err != nil {
+		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		return
+	}
+
+	statusValue := strings.ToLower(strings.TrimSpace(req.Status))
+	var status domain.OssPolicyStatus
+	switch statusValue {
+	case "", string(domain.OssPolicyStatusEnabled):
+		status = domain.OssPolicyStatusEnabled
+	case string(domain.OssPolicyStatusReadOnly), "readonly":
+		status = domain.OssPolicyStatusReadOnly
+	case string(domain.OssPolicyStatusDisabled):
+		status = domain.OssPolicyStatusDisabled
+	default:
+		response.Error(c, http.StatusBadRequest, "invalid status", statusValue)
+		return
+	}
+
+	operatorID := c.GetString(middleware.ContextAccountID)
+	policy, err := h.oss.CreatePolicy(c.Request.Context(), service.CreateOssPolicyInput{
+		SchoolID:    req.SchoolID,
+		Name:        req.Name,
+		Description: req.Description,
+		AppliesTo:   req.AppliesTo,
+		Status:      status,
+		OperatorID:  operatorID,
+	})
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "unable to create policy", err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusCreated, gin.H{"policy": policy})
+}
+
+func (h *Handler) DeleteOssPolicy(c *gin.Context) {
+	policyID := strings.TrimSpace(c.Param("id"))
+	if policyID == "" {
+		response.Error(c, http.StatusBadRequest, "policy id is required", nil)
+		return
+	}
+
+	schoolID := strings.TrimSpace(c.Query("school_id"))
+	if schoolID == "" {
+		var req accountActionRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			response.Error(c, http.StatusBadRequest, "invalid request payload", err.Error())
+			return
+		}
+		if err := h.validate.Struct(req); err != nil {
+			response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+			return
+		}
+		schoolID = req.SchoolID
+	}
+	if schoolID == "" {
+		response.Error(c, http.StatusBadRequest, "school_id required", nil)
+		return
+	}
+
+	operatorID := c.GetString(middleware.ContextAccountID)
+	if err := h.oss.DeletePolicy(c.Request.Context(), schoolID, policyID, operatorID); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			response.Error(c, http.StatusNotFound, "policy not found", err.Error())
+		} else {
+			response.Error(c, http.StatusInternalServerError, "unable to delete policy", err.Error())
+		}
+		return
+	}
+
+	response.Success(c, http.StatusOK, gin.H{"deleted": true})
+}
 
 func (h *Handler) ListOssCredentials(c *gin.Context) {
 	schoolID := strings.TrimSpace(c.Query("school_id"))
@@ -677,11 +866,11 @@ func (h *Handler) UpdateOssPolicy(c *gin.Context) {
 	statusValue := strings.ToLower(strings.TrimSpace(req.Status))
 	var status domain.OssPolicyStatus
 	switch statusValue {
-	case string(domain.OssPolicyStatusEnabled), "enabled":
+	case string(domain.OssPolicyStatusEnabled):
 		status = domain.OssPolicyStatusEnabled
-	case string(domain.OssPolicyStatusReadOnly), "read_only", "readonly":
+	case string(domain.OssPolicyStatusReadOnly), "readonly":
 		status = domain.OssPolicyStatusReadOnly
-	case string(domain.OssPolicyStatusDisabled), "disabled":
+	case string(domain.OssPolicyStatusDisabled):
 		status = domain.OssPolicyStatusDisabled
 	default:
 		response.Error(c, http.StatusBadRequest, "invalid status", statusValue)
@@ -723,7 +912,6 @@ func (h *Handler) ListOssAuditLogs(c *gin.Context) {
 	}
 
 	response.Success(c, http.StatusOK, gin.H{"logs": logs})
-}
 }
 
 func (h *Handler) CreateClass(c *gin.Context) {

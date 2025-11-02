@@ -98,7 +98,7 @@ func New() (*Application, error) {
 	)
 	apigrpc.RegisterConversationServiceServer(grpcServer, grpcserver.NewConversationServer(conversationService, streamHub))
 
-	handler := apihandlers.NewHandler(authService, adminService, assignmentService, conversationService, noteService, noteCommentService, tossService, streamHub)
+	handler := apihandlers.NewHandler(authService, adminService, assignmentService, conversationService, noteService, noteCommentService, ossService, streamHub)
 
 	adminGuard := middleware.JWTAuth(middleware.AuthConfig{Secret: cfg.JWTSecret, AllowedRoles: []string{string(domain.RoleAdmin)}})
 	teacherGuard := middleware.JWTAuth(middleware.AuthConfig{Secret: cfg.JWTSecret, AllowedRoles: []string{string(domain.RoleTeacher), string(domain.RoleAdmin)}})
