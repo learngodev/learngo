@@ -29,12 +29,13 @@ type Handler struct {
 	noteComments  *service.NoteCommentService
 	conversations *service.ConversationService
 	oss           *service.AdminOssService
+	system        *service.AdminSystemService
 	streamHub     *realtime.Hub
 	validate      *validator.Validate
 }
 
 // NewHandler constructs a Handler instance.
-func NewHandler(auth *service.AuthService, admin *service.AdminService, assignments *service.AssignmentService, conversations *service.ConversationService, notes *service.NoteService, noteComments *service.NoteCommentService, oss *service.AdminOssService, streamHub *realtime.Hub) *Handler {
+func NewHandler(auth *service.AuthService, admin *service.AdminService, assignments *service.AssignmentService, conversations *service.ConversationService, notes *service.NoteService, noteComments *service.NoteCommentService, oss *service.AdminOssService, system *service.AdminSystemService, streamHub *realtime.Hub) *Handler {
 	return &Handler{
 		auth:          auth,
 		admin:         admin,
@@ -43,6 +44,7 @@ func NewHandler(auth *service.AuthService, admin *service.AdminService, assignme
 		noteComments:  noteComments,
 		conversations: conversations,
 		oss:           oss,
+		system:        system,
 		streamHub:     streamHub,
 		validate:      validator.New(),
 	}
@@ -79,6 +81,13 @@ func (h *Handler) RegisterRoutes(r *gin.Engine, adminGuard gin.HandlerFunc, teac
 		admin.PATCH("/oss/policies/:id", h.UpdateOssPolicy)
 		admin.DELETE("/oss/policies/:id", h.DeleteOssPolicy)
 		admin.GET("/oss/audit_logs", h.ListOssAuditLogs)
+		admin.GET("/system/switches", h.ListSystemSwitches)
+		admin.PATCH("/system/switches/:id", h.UpdateSystemSwitch)
+		admin.GET("/system/parameters", h.ListSystemParameters)
+		admin.PATCH("/system/parameters/:id", h.UpdateSystemParameter)
+		admin.GET("/system/broadcasts", h.ListSystemBroadcasts)
+		admin.PATCH("/system/broadcasts/:id", h.UpdateSystemBroadcast)
+		admin.GET("/system/audit_logs", h.ListSystemAuditLogs)
 
 		assignments := api.Group("/assignments", teacherGuard)
 		assignments.POST("", h.CreateAssignment)
@@ -386,6 +395,22 @@ type createOssPolicyRequest struct {
 	Description string `json:"description"`
 	AppliesTo   string `json:"applies_to" validate:"required"`
 	Status      string `json:"status"`
+}
+
+type updateSystemSwitchRequest struct {
+	SchoolID string `json:"school_id" validate:"required"`
+	Enabled  *bool  `json:"enabled" validate:"required"`
+}
+
+type updateSystemParameterRequest struct {
+	SchoolID string `json:"school_id" validate:"required"`
+	Value    string `json:"value" validate:"required"`
+}
+
+type updateSystemBroadcastRequest struct {
+	SchoolID string `json:"school_id" validate:"required"`
+	Status   string `json:"status"`
+	Pinned   *bool  `json:"pinned"`
 }
 
 func (h *Handler) ResetAccountPassword(c *gin.Context) {
@@ -892,6 +917,167 @@ func (h *Handler) UpdateOssPolicy(c *gin.Context) {
 	response.Success(c, http.StatusOK, gin.H{"policy": policy})
 }
 
+func (h *Handler) ListSystemSwitches(c *gin.Context) {
+	schoolID := strings.TrimSpace(c.Query("school_id"))
+	if schoolID == "" {
+		response.Error(c, http.StatusBadRequest, "school_id required", nil)
+		return
+	}
+	switches := h.system.ListSwitches(schoolID)
+	response.Success(c, http.StatusOK, gin.H{"switches": switches})
+}
+
+func (h *Handler) UpdateSystemSwitch(c *gin.Context) {
+	switchID := strings.TrimSpace(c.Param("id"))
+	if switchID == "" {
+		response.Error(c, http.StatusBadRequest, "switch id required", nil)
+		return
+	}
+
+	var req updateSystemSwitchRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		return
+	}
+	if err := h.validate.Struct(req); err != nil {
+		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		return
+	}
+
+	updated, err := h.system.UpdateSwitchState(req.SchoolID, switchID, *req.Enabled, "")
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrSystemSwitchNotFound):
+			response.Error(c, http.StatusNotFound, "switch not found", nil)
+		default:
+			response.Error(c, http.StatusBadRequest, "failed to update switch", err.Error())
+		}
+		return
+	}
+
+	response.Success(c, http.StatusOK, gin.H{"switch": updated})
+}
+
+func (h *Handler) ListSystemParameters(c *gin.Context) {
+	schoolID := strings.TrimSpace(c.Query("school_id"))
+	if schoolID == "" {
+		response.Error(c, http.StatusBadRequest, "school_id required", nil)
+		return
+	}
+	params := h.system.ListParameters(schoolID)
+	response.Success(c, http.StatusOK, gin.H{"parameters": params})
+}
+
+func (h *Handler) UpdateSystemParameter(c *gin.Context) {
+	parameterID := strings.TrimSpace(c.Param("id"))
+	if parameterID == "" {
+		response.Error(c, http.StatusBadRequest, "parameter id required", nil)
+		return
+	}
+
+	var req updateSystemParameterRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		return
+	}
+	if err := h.validate.Struct(req); err != nil {
+		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		return
+	}
+
+	updated, err := h.system.UpdateParameter(req.SchoolID, parameterID, req.Value, "")
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrSystemParameterNotFound):
+			response.Error(c, http.StatusNotFound, "parameter not found", nil)
+		default:
+			response.Error(c, http.StatusBadRequest, "failed to update parameter", err.Error())
+		}
+		return
+	}
+
+	response.Success(c, http.StatusOK, gin.H{"parameter": updated})
+}
+
+func (h *Handler) ListSystemBroadcasts(c *gin.Context) {
+	schoolID := strings.TrimSpace(c.Query("school_id"))
+	if schoolID == "" {
+		response.Error(c, http.StatusBadRequest, "school_id required", nil)
+		return
+	}
+	items := h.system.ListBroadcasts(schoolID)
+	response.Success(c, http.StatusOK, gin.H{"broadcasts": items})
+}
+
+func (h *Handler) UpdateSystemBroadcast(c *gin.Context) {
+	broadcastID := strings.TrimSpace(c.Param("id"))
+	if broadcastID == "" {
+		response.Error(c, http.StatusBadRequest, "broadcast id required", nil)
+		return
+	}
+
+	var req updateSystemBroadcastRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		return
+	}
+	if err := h.validate.Struct(req); err != nil {
+		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		return
+	}
+
+	var statusPtr *service.AdminSystemBroadcastStatus
+	statusValue := strings.ToLower(strings.TrimSpace(req.Status))
+	if statusValue != "" {
+		switch statusValue {
+		case string(service.AdminSystemBroadcastScheduled):
+			v := service.AdminSystemBroadcastScheduled
+			statusPtr = &v
+		case string(service.AdminSystemBroadcastSent):
+			v := service.AdminSystemBroadcastSent
+			statusPtr = &v
+		case string(service.AdminSystemBroadcastDraft):
+			v := service.AdminSystemBroadcastDraft
+			statusPtr = &v
+		default:
+			response.Error(c, http.StatusBadRequest, "invalid status", statusValue)
+			return
+		}
+	}
+
+	if statusPtr == nil && req.Pinned == nil {
+		response.Error(c, http.StatusBadRequest, "status or pinned must be provided", nil)
+		return
+	}
+
+	updated, err := h.system.UpdateBroadcast(req.SchoolID, broadcastID, statusPtr, req.Pinned, "")
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrSystemBroadcastNotFound):
+			response.Error(c, http.StatusNotFound, "broadcast not found", nil)
+		default:
+			response.Error(c, http.StatusBadRequest, "failed to update broadcast", err.Error())
+		}
+		return
+	}
+
+	response.Success(c, http.StatusOK, gin.H{"broadcast": updated})
+}
+
+func (h *Handler) ListSystemAuditLogs(c *gin.Context) {
+	schoolID := strings.TrimSpace(c.Query("school_id"))
+	if schoolID == "" {
+		response.Error(c, http.StatusBadRequest, "school_id required", nil)
+		return
+	}
+	limitParam := strings.TrimSpace(c.DefaultQuery("limit", "0"))
+	limit, err := strconv.Atoi(limitParam)
+	if err != nil {
+		limit = 0
+	}
+	logs := h.system.ListAuditLogs(schoolID, limit)
+	response.Success(c, http.StatusOK, gin.H{"logs": logs})
+}
 func (h *Handler) ListOssAuditLogs(c *gin.Context) {
 	schoolID := strings.TrimSpace(c.Query("school_id"))
 	if schoolID == "" {
