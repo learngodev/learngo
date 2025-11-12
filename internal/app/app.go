@@ -79,6 +79,10 @@ func New() (*Application, error) {
 	ossCredentialRepo := gormrepo.NewOssCredentialStore(db)
 	ossPolicyRepo := gormrepo.NewOssPolicyStore(db)
 	ossAuditRepo := gormrepo.NewOssAuditStore(db)
+	aiSettingRepo := gormrepo.NewAIAgentSettingStore(db)
+	aiAuditRepo := gormrepo.NewAIAgentSettingAuditStore(db)
+	aiSessionRepo := gormrepo.NewAIChatSessionStore(db)
+	aiMessageRepo := gormrepo.NewAIChatMessageStore(db)
 
 	authService := service.NewAuthService(accountRepo, cfg)
 	adminService := service.NewAdminService(accountRepo, teacherRepo, studentRepo, departmentRepo, classRepo, teacherStudentRepo)
@@ -88,6 +92,8 @@ func New() (*Application, error) {
 	noteCommentService := service.NewNoteCommentService(noteRepo, noteCommentRepo, accountRepo)
 	ossService := service.NewAdminOssService(ossCredentialRepo, ossPolicyRepo, ossAuditRepo, accountRepo)
 	systemService := service.NewAdminSystemService()
+	aiModel := service.NewEchoAIChatModel()
+	aiService := service.NewAIAssistantService(aiSettingRepo, aiAuditRepo, aiSessionRepo, aiMessageRepo, accountRepo, aiModel)
 	streamHub := realtime.NewHub()
 
 	engine := gin.New()
@@ -99,7 +105,7 @@ func New() (*Application, error) {
 	)
 	apigrpc.RegisterConversationServiceServer(grpcServer, grpcserver.NewConversationServer(conversationService, streamHub))
 
-	handler := apihandlers.NewHandler(authService, adminService, assignmentService, conversationService, noteService, noteCommentService, ossService, systemService, streamHub)
+	handler := apihandlers.NewHandler(authService, adminService, assignmentService, conversationService, noteService, noteCommentService, ossService, systemService, aiService, streamHub)
 
 	adminGuard := middleware.JWTAuth(middleware.AuthConfig{Secret: cfg.JWTSecret, AllowedRoles: []string{string(domain.RoleAdmin)}})
 	teacherGuard := middleware.JWTAuth(middleware.AuthConfig{Secret: cfg.JWTSecret, AllowedRoles: []string{string(domain.RoleTeacher), string(domain.RoleAdmin)}})
@@ -160,6 +166,10 @@ func migrate(db *gorm.DB) error {
 		&domain.OssCredential{},
 		&domain.OssPolicy{},
 		&domain.OssAuditLog{},
+		&domain.AIAgentSetting{},
+		&domain.AIAgentSettingAudit{},
+		&domain.AIChatSession{},
+		&domain.AIChatMessage{},
 	)
 }
 

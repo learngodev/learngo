@@ -157,3 +157,54 @@ type OssAuditRepository interface {
 	Create(ctx context.Context, log *domain.OssAuditLog) error
 	ListRecent(ctx context.Context, schoolID string, limit int) ([]domain.OssAuditLog, error)
 }
+
+// AIAgentSettingRepository manages AI assistant configuration records.
+type AIAgentSettingRepository interface {
+	GetBySchoolID(ctx context.Context, schoolID string) (*domain.AIAgentSetting, error)
+	Upsert(ctx context.Context, setting *domain.AIAgentSetting) error
+}
+
+// AIAgentSettingAuditRepository stores administrative audits for AI settings.
+type AIAgentSettingAuditRepository interface {
+	Create(ctx context.Context, entry *domain.AIAgentSettingAudit) error
+	ListRecent(ctx context.Context, schoolID string, limit int) ([]domain.AIAgentSettingAudit, error)
+}
+
+// AIChatSessionRepository persists AI assistant session metadata.
+type AIChatSessionRepository interface {
+	Create(ctx context.Context, session *domain.AIChatSession) error
+	GetByID(ctx context.Context, sessionID string) (*domain.AIChatSession, error)
+	ListByAccount(ctx context.Context, accountID string, limit int) ([]domain.AIChatSession, error)
+	UpdateFields(ctx context.Context, sessionID string, updates map[string]any) error
+}
+
+// AIChatMessageRepository persists AI assistant message transcripts.
+type AIChatMessageRepository interface {
+	Create(ctx context.Context, message *domain.AIChatMessage) error
+	ListBySession(ctx context.Context, sessionID string, limit int, before time.Time) ([]domain.AIChatMessage, error)
+	CountUserMessagesSince(ctx context.Context, accountID string, since time.Time) (int64, error)
+	UsageStatsByAccountSince(ctx context.Context, accountID string, since time.Time) (AIChatUsageStats, error)
+	UsageStatsBySchoolSince(ctx context.Context, schoolID string, since time.Time, role domain.Role, limit int) ([]AIChatAccountUsage, error)
+	UsageTotalsBySchoolSince(ctx context.Context, schoolID string, since time.Time, role domain.Role) (AIChatUsageTotals, error)
+	UsageByRoleSince(ctx context.Context, schoolID string, since time.Time) (map[domain.Role]AIChatUsageTotals, error)
+}
+
+// AIChatUsageStats aggregates AI usage activity.
+type AIChatUsageStats struct {
+	UserMessages      int64
+	AssistantMessages int64
+	PromptTokens      int64
+	ResultTokens      int64
+}
+
+// AIChatAccountUsage aggregates usage information for a single account.
+type AIChatAccountUsage struct {
+	AccountID string
+	AIChatUsageStats
+}
+
+// AIChatUsageTotals aggregates usage across a school.
+type AIChatUsageTotals struct {
+	AccountCount int64
+	AIChatUsageStats
+}

@@ -2,7 +2,9 @@ package http
 
 import (
 	"errors"
+	"io"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -30,12 +32,13 @@ type Handler struct {
 	conversations *service.ConversationService
 	oss           *service.AdminOssService
 	system        *service.AdminSystemService
+	ai            *service.AIAssistantService
 	streamHub     *realtime.Hub
 	validate      *validator.Validate
 }
 
 // NewHandler constructs a Handler instance.
-func NewHandler(auth *service.AuthService, admin *service.AdminService, assignments *service.AssignmentService, conversations *service.ConversationService, notes *service.NoteService, noteComments *service.NoteCommentService, oss *service.AdminOssService, system *service.AdminSystemService, streamHub *realtime.Hub) *Handler {
+func NewHandler(auth *service.AuthService, admin *service.AdminService, assignments *service.AssignmentService, conversations *service.ConversationService, notes *service.NoteService, noteComments *service.NoteCommentService, oss *service.AdminOssService, system *service.AdminSystemService, ai *service.AIAssistantService, streamHub *realtime.Hub) *Handler {
 	return &Handler{
 		auth:          auth,
 		admin:         admin,
@@ -45,6 +48,7 @@ func NewHandler(auth *service.AuthService, admin *service.AdminService, assignme
 		conversations: conversations,
 		oss:           oss,
 		system:        system,
+		ai:            ai,
 		streamHub:     streamHub,
 		validate:      validator.New(),
 	}
@@ -88,6 +92,10 @@ func (h *Handler) RegisterRoutes(r *gin.Engine, adminGuard gin.HandlerFunc, teac
 		admin.GET("/system/broadcasts", h.ListSystemBroadcasts)
 		admin.PATCH("/system/broadcasts/:id", h.UpdateSystemBroadcast)
 		admin.GET("/system/audit_logs", h.ListSystemAuditLogs)
+		admin.GET("/ai/settings", h.GetAIAgentSetting)
+		admin.PUT("/ai/settings", h.UpdateAIAgentSetting)
+		admin.GET("/ai/settings/audit_logs", h.ListAIAgentSettingAudits)
+		admin.GET("/ai/usage", h.ListAIUsageSummaries)
 
 		assignments := api.Group("/assignments", teacherGuard)
 		assignments.POST("", h.CreateAssignment)
@@ -109,6 +117,15 @@ func (h *Handler) RegisterRoutes(r *gin.Engine, adminGuard gin.HandlerFunc, teac
 		notes.POST(":id/restore", h.RestoreNote)
 		notes.POST(":id/comments", h.CreateNoteComment)
 		notes.GET(":id/comments", h.ListNoteComments)
+
+		aiStudent := api.Group("/ai", studentGuard)
+		aiStudent.GET("/usage", h.GetAIUsageSummary)
+		aiStudent.GET("/sessions", h.ListAIChatSessions)
+		aiStudent.POST("/sessions", h.CreateAIChatSession)
+		aiStudent.PATCH("/sessions/:id", h.UpdateAIChatSession)
+		aiStudent.POST("/sessions/:id/close", h.CloseAIChatSession)
+		aiStudent.GET("/sessions/:id/messages", h.ListAIChatMessages)
+		aiStudent.POST("/sessions/:id/messages", h.SendAIChatMessage)
 
 		conversations := api.Group("/conversations", studentGuard)
 		conversations.POST("", h.CreateConversation)
@@ -413,6 +430,34 @@ type updateSystemBroadcastRequest struct {
 	Pinned   *bool  `json:"pinned"`
 }
 
+type updateAIAgentSettingRequest struct {
+	SchoolID                string  `json:"school_id" validate:"required"`
+	Provider                string  `json:"provider" validate:"required"`
+	Model                   string  `json:"model" validate:"required"`
+	APIKey                  string  `json:"api_key"`
+	BaseURL                 string  `json:"base_url"`
+	Temperature             float32 `json:"temperature" validate:"required"`
+	TopP                    float32 `json:"top_p" validate:"required"`
+	MaxOutputTokens         int     `json:"max_output_tokens" validate:"required"`
+	MaxDailyRequests        int     `json:"max_daily_requests" validate:"required"`
+	MaxConcurrentRequests   int     `json:"max_concurrent_requests" validate:"required"`
+	MaxConversationMessages int     `json:"max_conversation_messages" validate:"required"`
+	SystemPrompt            string  `json:"system_prompt"`
+	VisionEnabled           bool    `json:"vision_enabled"`
+}
+
+type createAIChatSessionRequest struct {
+	Title string `json:"title"`
+}
+
+type updateAIChatSessionRequest struct {
+	Title string `json:"title" validate:"required"`
+}
+
+type sendAIChatMessageRequest struct {
+	Content string `json:"content" validate:"required"`
+}
+
 func (h *Handler) ResetAccountPassword(c *gin.Context) {
 	accountID := strings.TrimSpace(c.Param("id"))
 	if accountID == "" {
@@ -547,6 +592,551 @@ func (h *Handler) handleAdminAccountError(c *gin.Context, err error, message str
 	default:
 		response.Error(c, http.StatusInternalServerError, message, err.Error())
 	}
+}
+
+func (h *Handler) GetAIAgentSetting(c *gin.Context) {
+	schoolID := strings.TrimSpace(c.Query("school_id"))
+	if schoolID == "" {
+		response.Error(c, http.StatusBadRequest, "school_id required", nil)
+		return
+	}
+
+	setting, err := h.ai.GetSetting(c.Request.Context(), schoolID)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "unable to load ai setting", err.Error())
+		return
+	}
+
+	if setting == nil {
+		response.Success(c, http.StatusOK, gin.H{"setting": nil})
+		return
+	}
+
+	response.Success(c, http.StatusOK, gin.H{
+		"setting": gin.H{
+			"id":                        setting.ID,
+			"school_id":                 setting.SchoolID,
+			"provider":                  setting.Provider,
+			"model":                     setting.Model,
+			"base_url":                  setting.BaseURL,
+			"temperature":               setting.Temperature,
+			"top_p":                     setting.TopP,
+			"max_output_tokens":         setting.MaxOutputTokens,
+			"max_daily_requests":        setting.MaxDailyRequests,
+			"max_concurrent_requests":   setting.MaxConcurrentRequests,
+			"max_conversation_messages": setting.MaxConversationMessages,
+			"system_prompt":             setting.SystemPrompt,
+			"vision_enabled":            setting.VisionEnabled,
+			"updated_by":                setting.UpdatedBy,
+			"updated_by_name":           setting.UpdatedByName,
+			"updated_at":                setting.UpdatedAt,
+			"created_at":                setting.CreatedAt,
+			"api_key_present":           setting.APIKey != "",
+		},
+	})
+}
+
+func (h *Handler) UpdateAIAgentSetting(c *gin.Context) {
+	accountIDValue, exists := c.Get(middleware.ContextAccountID)
+	if !exists {
+		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		return
+	}
+	accountID, _ := accountIDValue.(string)
+	if accountID == "" {
+		response.Error(c, http.StatusUnauthorized, "invalid account context", nil)
+		return
+	}
+
+	var req updateAIAgentSettingRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		return
+	}
+	if err := h.validate.Struct(req); err != nil {
+		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		return
+	}
+
+	setting, err := h.ai.UpdateSetting(c.Request.Context(), service.UpdateAIAgentSettingInput{
+		SchoolID:                strings.TrimSpace(req.SchoolID),
+		Provider:                domain.AIProvider(strings.TrimSpace(strings.ToLower(req.Provider))),
+		Model:                   strings.TrimSpace(req.Model),
+		APIKey:                  strings.TrimSpace(req.APIKey),
+		BaseURL:                 strings.TrimSpace(req.BaseURL),
+		Temperature:             req.Temperature,
+		TopP:                    req.TopP,
+		MaxOutputTokens:         req.MaxOutputTokens,
+		MaxDailyRequests:        req.MaxDailyRequests,
+		MaxConcurrentRequests:   req.MaxConcurrentRequests,
+		MaxConversationMessages: req.MaxConversationMessages,
+		SystemPrompt:            req.SystemPrompt,
+		VisionEnabled:           req.VisionEnabled,
+		OperatorID:              accountID,
+	})
+	if err != nil {
+		switch {
+		case strings.Contains(err.Error(), "unsupported provider"):
+			response.Error(c, http.StatusBadRequest, "unsupported provider", err.Error())
+		case strings.Contains(err.Error(), "required"):
+			response.Error(c, http.StatusBadRequest, "invalid configuration", err.Error())
+		default:
+			response.Error(c, http.StatusInternalServerError, "unable to update ai setting", err.Error())
+		}
+		return
+	}
+
+	response.Success(c, http.StatusOK, gin.H{
+		"setting": gin.H{
+			"id":                        setting.ID,
+			"school_id":                 setting.SchoolID,
+			"provider":                  setting.Provider,
+			"model":                     setting.Model,
+			"base_url":                  setting.BaseURL,
+			"temperature":               setting.Temperature,
+			"top_p":                     setting.TopP,
+			"max_output_tokens":         setting.MaxOutputTokens,
+			"max_daily_requests":        setting.MaxDailyRequests,
+			"max_concurrent_requests":   setting.MaxConcurrentRequests,
+			"max_conversation_messages": setting.MaxConversationMessages,
+			"system_prompt":             setting.SystemPrompt,
+			"vision_enabled":            setting.VisionEnabled,
+			"updated_by":                setting.UpdatedBy,
+			"updated_by_name":           setting.UpdatedByName,
+			"updated_at":                setting.UpdatedAt,
+			"api_key_present":           setting.APIKey != "",
+		},
+	})
+}
+
+func (h *Handler) ListAIAgentSettingAudits(c *gin.Context) {
+	schoolID := strings.TrimSpace(c.Query("school_id"))
+	if schoolID == "" {
+		response.Error(c, http.StatusBadRequest, "school_id required", nil)
+		return
+	}
+
+	limitParam := strings.TrimSpace(c.DefaultQuery("limit", "20"))
+	limit, err := strconv.Atoi(limitParam)
+	if err != nil || limit <= 0 {
+		limit = 20
+	}
+
+	entries, err := h.ai.ListSettingAudits(c.Request.Context(), schoolID, limit)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "unable to list ai audit logs", err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, gin.H{"entries": entries})
+}
+
+func (h *Handler) ListAIUsageSummaries(c *gin.Context) {
+	schoolID := strings.TrimSpace(c.Query("school_id"))
+	if schoolID == "" {
+		response.Error(c, http.StatusBadRequest, "school_id required", nil)
+		return
+	}
+
+	sinceParam := strings.TrimSpace(c.Query("since"))
+	var since time.Time
+	if sinceParam != "" {
+		parsed, err := time.Parse(time.RFC3339, sinceParam)
+		if err != nil {
+			response.Error(c, http.StatusBadRequest, "invalid since timestamp", err.Error())
+			return
+		}
+		since = parsed
+	}
+
+	roleParam := strings.TrimSpace(c.Query("role"))
+	var role domain.Role
+	if roleParam != "" {
+		role = domain.Role(roleParam)
+	}
+
+	minUserMessagesParam := strings.TrimSpace(c.Query("min_user_messages"))
+	var minUserMessages int64
+	if minUserMessagesParam != "" {
+		value, err := strconv.ParseInt(minUserMessagesParam, 10, 64)
+		if err != nil || value < 0 {
+			response.Error(c, http.StatusBadRequest, "invalid min_user_messages", nil)
+			return
+		}
+		minUserMessages = value
+	}
+
+	minTotalMessagesParam := strings.TrimSpace(c.Query("min_total_messages"))
+	var minTotalMessages int64
+	if minTotalMessagesParam != "" {
+		value, err := strconv.ParseInt(minTotalMessagesParam, 10, 64)
+		if err != nil || value < 0 {
+			response.Error(c, http.StatusBadRequest, "invalid min_total_messages", nil)
+			return
+		}
+		minTotalMessages = value
+	}
+
+	limitParam := strings.TrimSpace(c.Query("limit"))
+	var limit int
+	if limitParam != "" {
+		value, err := strconv.Atoi(limitParam)
+		if err != nil || value < 0 {
+			response.Error(c, http.StatusBadRequest, "invalid limit", nil)
+			return
+		}
+		limit = value
+	}
+
+	usageInput := service.ListUsageSummariesInput{
+		SchoolID:         schoolID,
+		Since:            since,
+		Role:             role,
+		MinUserMessages:  minUserMessages,
+		MinTotalMessages: minTotalMessages,
+		Limit:            limit,
+	}
+
+	summaries, err := h.ai.ListUsageSummaries(c.Request.Context(), usageInput)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrAISettingNotConfigured):
+			response.Error(c, http.StatusConflict, "ai assistant not configured", nil)
+		default:
+			response.Error(c, http.StatusInternalServerError, "unable to fetch ai usage", err.Error())
+		}
+		return
+	}
+
+	aggregate, err := h.ai.GetUsageAggregate(c.Request.Context(), usageInput)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrAISettingNotConfigured):
+			response.Error(c, http.StatusConflict, "ai assistant not configured", nil)
+		default:
+			response.Error(c, http.StatusInternalServerError, "unable to fetch ai usage", err.Error())
+		}
+		return
+	}
+
+	roleBreakdown, err := h.ai.GetUsageRoleBreakdown(c.Request.Context(), usageInput)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrAISettingNotConfigured):
+			response.Error(c, http.StatusConflict, "ai assistant not configured", nil)
+		default:
+			response.Error(c, http.StatusInternalServerError, "unable to fetch ai usage", err.Error())
+		}
+		return
+	}
+
+	items := make([]gin.H, 0, len(summaries))
+	for _, summary := range summaries {
+		items = append(items, aiUsageSummaryPayload(summary))
+	}
+
+	payload := gin.H{"usage": items}
+	if aggregate != nil {
+		payload["overview"] = aiUsageAggregatePayload(*aggregate, roleBreakdown)
+	}
+
+	response.Success(c, http.StatusOK, payload)
+}
+
+func (h *Handler) CreateAIChatSession(c *gin.Context) {
+	accountID := getAccountID(c)
+	if accountID == "" {
+		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		return
+	}
+
+	var req createAIChatSessionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		if !errors.Is(err, io.EOF) {
+			response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+			return
+		}
+	}
+
+	session, err := h.ai.CreateSession(c.Request.Context(), service.CreateAIChatSessionInput{
+		AccountID: accountID,
+		Title:     strings.TrimSpace(req.Title),
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrAIAccountNotFound):
+			response.Error(c, http.StatusUnauthorized, "account not found", nil)
+		case errors.Is(err, service.ErrAISettingNotConfigured):
+			response.Error(c, http.StatusConflict, "ai assistant not configured", nil)
+		default:
+			response.Error(c, http.StatusInternalServerError, "unable to create ai session", err.Error())
+		}
+		return
+	}
+
+	response.Success(c, http.StatusCreated, gin.H{"session": aiChatSessionPayload(*session)})
+}
+
+func (h *Handler) GetAIUsageSummary(c *gin.Context) {
+	accountID := getAccountID(c)
+	if accountID == "" {
+		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		return
+	}
+
+	sinceParam := strings.TrimSpace(c.Query("since"))
+	var since time.Time
+	if sinceParam != "" {
+		parsed, err := time.Parse(time.RFC3339, sinceParam)
+		if err != nil {
+			response.Error(c, http.StatusBadRequest, "invalid since timestamp", err.Error())
+			return
+		}
+		since = parsed
+	}
+
+	summary, err := h.ai.GetUsageSummary(c.Request.Context(), accountID, since)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrAIAccountNotFound):
+			response.Error(c, http.StatusUnauthorized, "account not found", nil)
+		case errors.Is(err, service.ErrAISettingNotConfigured):
+			response.Error(c, http.StatusConflict, "ai assistant not configured", nil)
+		default:
+			response.Error(c, http.StatusInternalServerError, "unable to fetch ai usage", err.Error())
+		}
+		return
+	}
+
+	response.Success(c, http.StatusOK, gin.H{"usage": aiUsageSummaryPayload(*summary)})
+}
+
+func (h *Handler) CloseAIChatSession(c *gin.Context) {
+	accountID := getAccountID(c)
+	if accountID == "" {
+		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		return
+	}
+
+	sessionID := strings.TrimSpace(c.Param("id"))
+	if sessionID == "" {
+		response.Error(c, http.StatusBadRequest, "session_id required", nil)
+		return
+	}
+
+	session, err := h.ai.CloseSession(c.Request.Context(), accountID, sessionID)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrAIAccountNotFound):
+			response.Error(c, http.StatusUnauthorized, "account not found", nil)
+		case errors.Is(err, service.ErrAIChatSessionNotFound):
+			response.Error(c, http.StatusNotFound, "session not found", nil)
+		case errors.Is(err, service.ErrAIChatSessionForbidden):
+			response.Error(c, http.StatusForbidden, "not allowed to access session", nil)
+		default:
+			response.Error(c, http.StatusInternalServerError, "unable to close ai session", err.Error())
+		}
+		return
+	}
+
+	response.Success(c, http.StatusOK, gin.H{"session": aiChatSessionPayload(*session)})
+}
+
+func (h *Handler) UpdateAIChatSession(c *gin.Context) {
+	accountID := getAccountID(c)
+	if accountID == "" {
+		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		return
+	}
+
+	sessionID := strings.TrimSpace(c.Param("id"))
+	if sessionID == "" {
+		response.Error(c, http.StatusBadRequest, "session_id required", nil)
+		return
+	}
+
+	var req updateAIChatSessionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		return
+	}
+	if err := h.validate.Struct(req); err != nil {
+		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		return
+	}
+
+	session, err := h.ai.UpdateSessionTitle(c.Request.Context(), accountID, sessionID, req.Title)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrAIAccountNotFound):
+			response.Error(c, http.StatusUnauthorized, "account not found", nil)
+		case errors.Is(err, service.ErrAIChatSessionNotFound):
+			response.Error(c, http.StatusNotFound, "session not found", nil)
+		case errors.Is(err, service.ErrAIChatSessionForbidden):
+			response.Error(c, http.StatusForbidden, "not allowed to access session", nil)
+		case errors.Is(err, service.ErrAIChatSessionTitleEmpty):
+			response.Error(c, http.StatusBadRequest, "title required", nil)
+		default:
+			response.Error(c, http.StatusInternalServerError, "unable to update ai session", err.Error())
+		}
+		return
+	}
+
+	response.Success(c, http.StatusOK, gin.H{"session": aiChatSessionPayload(*session)})
+}
+
+func (h *Handler) ListAIChatSessions(c *gin.Context) {
+	accountID := getAccountID(c)
+	if accountID == "" {
+		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		return
+	}
+
+	limitParam := strings.TrimSpace(c.DefaultQuery("limit", "10"))
+	limit, err := strconv.Atoi(limitParam)
+	if err != nil || limit <= 0 {
+		limit = 10
+	}
+
+	sessions, err := h.ai.ListSessions(c.Request.Context(), accountID, limit)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "unable to list ai sessions", err.Error())
+		return
+	}
+
+	items := make([]gin.H, 0, len(sessions))
+	for _, session := range sessions {
+		items = append(items, aiChatSessionPayload(session))
+	}
+
+	response.Success(c, http.StatusOK, gin.H{"sessions": items})
+}
+
+func (h *Handler) ListAIChatMessages(c *gin.Context) {
+	accountID := getAccountID(c)
+	if accountID == "" {
+		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		return
+	}
+
+	sessionID := strings.TrimSpace(c.Param("id"))
+	if sessionID == "" {
+		response.Error(c, http.StatusBadRequest, "session_id required", nil)
+		return
+	}
+
+	limitParam := strings.TrimSpace(c.DefaultQuery("limit", "20"))
+	limit, err := strconv.Atoi(limitParam)
+	if err != nil || limit <= 0 {
+		limit = 20
+	}
+
+	var before time.Time
+	if beforeRaw := strings.TrimSpace(c.Query("before")); beforeRaw != "" {
+		parsed, parseErr := time.Parse(time.RFC3339, beforeRaw)
+		if parseErr != nil {
+			response.Error(c, http.StatusBadRequest, "invalid before timestamp", parseErr.Error())
+			return
+		}
+		before = parsed
+	}
+
+	messages, err := h.ai.ListSessionMessages(c.Request.Context(), accountID, sessionID, limit, before)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrAIChatSessionNotFound):
+			response.Error(c, http.StatusNotFound, "session not found", nil)
+		case errors.Is(err, service.ErrAIChatSessionForbidden):
+			response.Error(c, http.StatusForbidden, "not allowed to view session", nil)
+		default:
+			response.Error(c, http.StatusInternalServerError, "unable to list ai messages", err.Error())
+		}
+		return
+	}
+
+	items := make([]gin.H, 0, len(messages))
+	for _, message := range messages {
+		items = append(items, aiChatMessagePayload(message))
+	}
+
+	response.Success(c, http.StatusOK, gin.H{
+		"session_id": sessionID,
+		"messages":   items,
+	})
+}
+
+func (h *Handler) SendAIChatMessage(c *gin.Context) {
+	accountID := getAccountID(c)
+	if accountID == "" {
+		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		return
+	}
+
+	sessionID := strings.TrimSpace(c.Param("id"))
+	if sessionID == "" {
+		response.Error(c, http.StatusBadRequest, "session_id required", nil)
+		return
+	}
+
+	var req sendAIChatMessageRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		return
+	}
+	if err := h.validate.Struct(req); err != nil {
+		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		return
+	}
+
+	result, err := h.ai.SendMessage(c.Request.Context(), service.SendAIChatMessageInput{
+		AccountID: accountID,
+		SessionID: sessionID,
+		Content:   req.Content,
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrAIAccountNotFound):
+			response.Error(c, http.StatusUnauthorized, "account not found", nil)
+		case errors.Is(err, service.ErrAIChatSessionNotFound):
+			response.Error(c, http.StatusNotFound, "session not found", nil)
+		case errors.Is(err, service.ErrAIChatSessionForbidden):
+			response.Error(c, http.StatusForbidden, "not allowed to access session", nil)
+		case errors.Is(err, service.ErrAISettingNotConfigured):
+			response.Error(c, http.StatusConflict, "ai assistant not configured", nil)
+		case errors.Is(err, service.ErrAIChatSessionLimitReached):
+			response.Error(c, http.StatusConflict, "session turn limit reached", nil)
+		case errors.Is(err, service.ErrAIChatSessionClosed):
+			response.Error(c, http.StatusConflict, "session closed", nil)
+		case errors.Is(err, service.ErrAIChatDailyLimitExceeded):
+			response.Error(c, http.StatusTooManyRequests, "daily limit reached", nil)
+		case errors.Is(err, service.ErrAIChatConcurrentLimitReached):
+			response.Error(c, http.StatusTooManyRequests, "too many concurrent requests", nil)
+		case errors.Is(err, service.ErrAIChatMessageEmpty):
+			response.Error(c, http.StatusBadRequest, "content required", nil)
+		default:
+			response.Error(c, http.StatusInternalServerError, "unable to send ai message", err.Error())
+		}
+		return
+	}
+
+	status := "pending"
+	respPayload := gin.H{
+		"session":      aiChatSessionPayload(*result.Session),
+		"user_message": aiChatMessagePayload(*result.UserMessage),
+	}
+	if result.AssistantMessage != nil {
+		status = "completed"
+		respPayload["assistant_message"] = aiChatMessagePayload(*result.AssistantMessage)
+	}
+	if result.ProviderError != nil {
+		respPayload["provider_error"] = result.ProviderError.Error()
+	}
+	if result.ProviderReason != "" {
+		respPayload["provider_reason"] = result.ProviderReason
+	}
+	respPayload["status"] = status
+
+	response.Success(c, http.StatusCreated, respPayload)
 }
 
 type createDepartmentRequest struct {
@@ -2184,6 +2774,102 @@ func messagePayload(msg domain.Message) gin.H {
 		"media_uri":       msg.MediaURI,
 		"metadata":        msg.Metadata,
 		"created_at":      msg.CreatedAt,
+	}
+}
+
+func aiChatSessionPayload(session domain.AIChatSession) gin.H {
+	return gin.H{
+		"id":              session.ID,
+		"school_id":       session.SchoolID,
+		"account_id":      session.AccountID,
+		"role":            string(session.Role),
+		"title":           session.Title,
+		"last_message_at": session.LastMessageAt,
+		"message_count":   session.MessageCount,
+		"token_count":     session.TokenCount,
+		"created_at":      session.CreatedAt,
+		"updated_at":      session.UpdatedAt,
+		"closed_at":       session.ClosedAt,
+	}
+}
+
+func aiChatMessagePayload(msg domain.AIChatMessage) gin.H {
+	return gin.H{
+		"id":            msg.ID,
+		"session_id":    msg.SessionID,
+		"sender":        msg.Sender,
+		"content":       msg.Content,
+		"prompt_tokens": msg.PromptTokens,
+		"result_tokens": msg.ResultTokens,
+		"latency_ms":    msg.LatencyMS,
+		"created_at":    msg.CreatedAt,
+	}
+}
+
+func aiUsageSummaryPayload(summary service.AIChatUsageSummary) gin.H {
+	return gin.H{
+		"account_id":               summary.AccountID,
+		"account_name":             summary.AccountName,
+		"role":                     string(summary.Role),
+		"school_id":                summary.SchoolID,
+		"since":                    summary.Since,
+		"user_messages":            summary.UserMessages,
+		"assistant_messages":       summary.AssistantMessages,
+		"total_messages":           summary.TotalMessages,
+		"prompt_tokens":            summary.PromptTokens,
+		"result_tokens":            summary.ResultTokens,
+		"total_tokens":             summary.TotalTokens,
+		"max_daily_requests":       summary.MaxDailyRequests,
+		"remaining_daily_requests": summary.RemainingDailyRequests,
+	}
+}
+
+func aiUsageAggregatePayload(aggregate service.AIChatUsageAggregate, breakdown []service.AIChatUsageRoleSummary) gin.H {
+	payload := gin.H{
+		"school_id":          aggregate.SchoolID,
+		"role_filter":        string(aggregate.RoleFilter),
+		"since":              aggregate.Since,
+		"active_accounts":    aggregate.ActiveAccounts,
+		"user_messages":      aggregate.UserMessages,
+		"assistant_messages": aggregate.AssistantMessages,
+		"total_messages":     aggregate.TotalMessages,
+		"prompt_tokens":      aggregate.PromptTokens,
+		"result_tokens":      aggregate.ResultTokens,
+		"total_tokens":       aggregate.TotalTokens,
+		"max_daily_requests": aggregate.MaxDailyRequests,
+	}
+
+	if len(breakdown) > 0 {
+		summaries := make([]service.AIChatUsageRoleSummary, len(breakdown))
+		copy(summaries, breakdown)
+		sort.SliceStable(summaries, func(i, j int) bool {
+			return string(summaries[i].Role) < string(summaries[j].Role)
+		})
+
+		items := make([]gin.H, len(summaries))
+		for i, summary := range summaries {
+			items[i] = aiUsageRoleSummaryPayload(summary)
+		}
+		payload["by_role"] = items
+	}
+
+	return payload
+}
+
+func aiUsageRoleSummaryPayload(summary service.AIChatUsageRoleSummary) gin.H {
+	return gin.H{
+		"role":               string(summary.Role),
+		"account_count":      summary.AccountCount,
+		"user_messages":      summary.UserMessages,
+		"assistant_messages": summary.AssistantMessages,
+		"total_messages":     summary.TotalMessages,
+		"prompt_tokens":      summary.PromptTokens,
+		"result_tokens":      summary.ResultTokens,
+		"total_tokens":       summary.TotalTokens,
+		"message_share":      summary.MessageShare,
+		"token_share":        summary.TokenShare,
+		"avg_messages":       summary.AverageMessages,
+		"avg_tokens":         summary.AverageTokens,
 	}
 }
 
