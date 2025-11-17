@@ -1,7 +1,10 @@
 package http
 
 import (
+	"bytes"
+	"encoding/csv"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"sort"
@@ -59,6 +62,9 @@ func (h *Handler) RegisterRoutes(r *gin.Engine, adminGuard gin.HandlerFunc, teac
 	api := r.Group("/api/v1")
 	{
 		api.POST("/auth/login", h.Login)
+		api.POST("/auth/refresh", h.RefreshToken)
+		api.POST("/auth/password/reset/request", h.RequestPasswordReset)
+		api.POST("/auth/password/reset/confirm", h.ConfirmPasswordReset)
 
 		admin := api.Group("/admin", adminGuard)
 		admin.POST("/teachers", h.CreateTeacher)
@@ -96,6 +102,9 @@ func (h *Handler) RegisterRoutes(r *gin.Engine, adminGuard gin.HandlerFunc, teac
 		admin.PUT("/ai/settings", h.UpdateAIAgentSetting)
 		admin.GET("/ai/settings/audit_logs", h.ListAIAgentSettingAudits)
 		admin.GET("/ai/usage", h.ListAIUsageSummaries)
+		admin.GET("/ai/usage/export", h.ExportAIUsageSummaries)
+		admin.GET("/ai/usage/report", h.GetAIUsageReport)
+		admin.GET("/ai/usage/timeline", h.GetAIUsageTimeline)
 
 		assignments := api.Group("/assignments", teacherGuard)
 		assignments.POST("", h.CreateAssignment)
@@ -142,6 +151,22 @@ type loginRequest struct {
 	Password   string `json:"password" validate:"required"`
 }
 
+type refreshTokenRequest struct {
+	RefreshToken string `json:"refresh_token" validate:"required"`
+}
+
+type passwordResetRequest struct {
+	SchoolID   string `json:"school_id" validate:"required"`
+	Identifier string `json:"identifier" validate:"required"`
+}
+
+type passwordResetConfirmRequest struct {
+	SchoolID   string `json:"school_id" validate:"required"`
+	Identifier string `json:"identifier" validate:"required"`
+	Token      string `json:"token" validate:"required"`
+	NewPassword string `json:"new_password" validate:"required,min=6"`
+}
+
 func (h *Handler) Login(c *gin.Context) {
 	var req loginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -179,6 +204,105 @@ func (h *Handler) Login(c *gin.Context) {
 			"display_name": account.DisplayName,
 		},
 	})
+}
+
+func (h *Handler) RefreshToken(c *gin.Context) {
+	var req refreshTokenRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		return
+	}
+	if err := h.validate.Struct(req); err != nil {
+		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		return
+	}
+
+	access, refresh, account, err := h.auth.RefreshTokens(c.Request.Context(), req.RefreshToken)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrInvalidRefreshToken):
+			response.Error(c, http.StatusUnauthorized, "invalid refresh token", nil)
+		case errors.Is(err, service.ErrAccountLocked):
+			response.Error(c, http.StatusForbidden, "account locked", nil)
+		case errors.Is(err, service.ErrPasswordResetRequired):
+			response.Error(c, http.StatusForbidden, "password reset required", nil)
+		default:
+			response.Error(c, http.StatusInternalServerError, "refresh failed", err.Error())
+		}
+		return
+	}
+
+	response.Success(c, http.StatusOK, gin.H{
+		"access_token":  access,
+		"refresh_token": refresh,
+		"account": gin.H{
+			"id":           account.ID,
+			"school_id":    account.SchoolID,
+			"role":         account.Role,
+			"identifier":   account.Identifier,
+			"display_name": account.DisplayName,
+		},
+	})
+}
+
+func (h *Handler) RequestPasswordReset(c *gin.Context) {
+	var req passwordResetRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		return
+	}
+	if err := h.validate.Struct(req); err != nil {
+		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		return
+	}
+
+	token, expiresAt, err := h.auth.RequestPasswordReset(c.Request.Context(), req.SchoolID, req.Identifier)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrInvalidCredentials):
+			response.Error(c, http.StatusUnauthorized, "invalid credentials", nil)
+		case errors.Is(err, service.ErrPasswordResetUnavailable):
+			response.Error(c, http.StatusBadRequest, "password reset unavailable", nil)
+		default:
+			response.Error(c, http.StatusInternalServerError, "unable to issue reset token", err.Error())
+		}
+		return
+	}
+
+	response.Success(c, http.StatusOK, gin.H{
+		"reset_token": token,
+		"expires_at":  expiresAt,
+	})
+}
+
+func (h *Handler) ConfirmPasswordReset(c *gin.Context) {
+	var req passwordResetConfirmRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		return
+	}
+	if err := h.validate.Struct(req); err != nil {
+		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		return
+	}
+
+	if err := h.auth.ResetPassword(c.Request.Context(), req.SchoolID, req.Identifier, req.Token, req.NewPassword); err != nil {
+		switch {
+		case errors.Is(err, service.ErrInvalidCredentials):
+			response.Error(c, http.StatusUnauthorized, "invalid credentials", nil)
+		case errors.Is(err, service.ErrPasswordResetUnavailable):
+			response.Error(c, http.StatusBadRequest, "password reset unavailable", nil)
+		case errors.Is(err, service.ErrPasswordResetTokenInvalid):
+			response.Error(c, http.StatusBadRequest, "invalid reset token", nil)
+		case errors.Is(err, service.ErrPasswordResetTokenExpired):
+			response.Error(c, http.StatusBadRequest, "reset token expired", nil)
+		default:
+			response.Error(c, http.StatusInternalServerError, "unable to reset password", err.Error())
+		}
+		return
+	}
+
+	response.Success(c, http.StatusOK, gin.H{"status": "password_updated"})
 }
 
 type createTeacherRequest struct {
@@ -732,70 +856,13 @@ func (h *Handler) ListAIAgentSettingAudits(c *gin.Context) {
 }
 
 func (h *Handler) ListAIUsageSummaries(c *gin.Context) {
-	schoolID := strings.TrimSpace(c.Query("school_id"))
-	if schoolID == "" {
-		response.Error(c, http.StatusBadRequest, "school_id required", nil)
+	usageInput, ok := h.buildUsageListInput(c)
+	if !ok {
 		return
 	}
 
-	sinceParam := strings.TrimSpace(c.Query("since"))
-	var since time.Time
-	if sinceParam != "" {
-		parsed, err := time.Parse(time.RFC3339, sinceParam)
-		if err != nil {
-			response.Error(c, http.StatusBadRequest, "invalid since timestamp", err.Error())
-			return
-		}
-		since = parsed
-	}
-
-	roleParam := strings.TrimSpace(c.Query("role"))
-	var role domain.Role
-	if roleParam != "" {
-		role = domain.Role(roleParam)
-	}
-
-	minUserMessagesParam := strings.TrimSpace(c.Query("min_user_messages"))
-	var minUserMessages int64
-	if minUserMessagesParam != "" {
-		value, err := strconv.ParseInt(minUserMessagesParam, 10, 64)
-		if err != nil || value < 0 {
-			response.Error(c, http.StatusBadRequest, "invalid min_user_messages", nil)
-			return
-		}
-		minUserMessages = value
-	}
-
-	minTotalMessagesParam := strings.TrimSpace(c.Query("min_total_messages"))
-	var minTotalMessages int64
-	if minTotalMessagesParam != "" {
-		value, err := strconv.ParseInt(minTotalMessagesParam, 10, 64)
-		if err != nil || value < 0 {
-			response.Error(c, http.StatusBadRequest, "invalid min_total_messages", nil)
-			return
-		}
-		minTotalMessages = value
-	}
-
-	limitParam := strings.TrimSpace(c.Query("limit"))
-	var limit int
-	if limitParam != "" {
-		value, err := strconv.Atoi(limitParam)
-		if err != nil || value < 0 {
-			response.Error(c, http.StatusBadRequest, "invalid limit", nil)
-			return
-		}
-		limit = value
-	}
-
-	usageInput := service.ListUsageSummariesInput{
-		SchoolID:         schoolID,
-		Since:            since,
-		Role:             role,
-		MinUserMessages:  minUserMessages,
-		MinTotalMessages: minTotalMessages,
-		Limit:            limit,
-	}
+	page := usageInput.Page
+	pageSize := usageInput.PageSize
 
 	summaries, err := h.ai.ListUsageSummaries(c.Request.Context(), usageInput)
 	if err != nil {
@@ -838,6 +905,378 @@ func (h *Handler) ListAIUsageSummaries(c *gin.Context) {
 	payload := gin.H{"usage": items}
 	if aggregate != nil {
 		payload["overview"] = aiUsageAggregatePayload(*aggregate, roleBreakdown)
+	}
+	totalAccounts := 0
+	if aggregate != nil {
+		totalAccounts = aggregate.ActiveAccounts
+	}
+	payload["pagination"] = gin.H{
+		"page":           page,
+		"page_size":      pageSize,
+		"returned":       len(items),
+		"has_more":       len(items) == pageSize,
+		"total_accounts": totalAccounts,
+	}
+
+	response.Success(c, http.StatusOK, payload)
+}
+
+func (h *Handler) buildUsageListInput(c *gin.Context) (service.ListUsageSummariesInput, bool) {
+	var input service.ListUsageSummariesInput
+
+	schoolID := strings.TrimSpace(c.Query("school_id"))
+	if schoolID == "" {
+		response.Error(c, http.StatusBadRequest, "school_id required", nil)
+		return input, false
+	}
+	input.SchoolID = schoolID
+
+	if sinceParam := strings.TrimSpace(c.Query("since")); sinceParam != "" {
+		parsed, err := time.Parse(time.RFC3339, sinceParam)
+		if err != nil {
+			response.Error(c, http.StatusBadRequest, "invalid since timestamp", err.Error())
+			return input, false
+		}
+		input.Since = parsed
+	}
+
+	if roleParam := strings.TrimSpace(c.Query("role")); roleParam != "" {
+		input.Role = domain.Role(roleParam)
+	}
+
+	if minUserMessagesParam := strings.TrimSpace(c.Query("min_user_messages")); minUserMessagesParam != "" {
+		value, err := strconv.ParseInt(minUserMessagesParam, 10, 64)
+		if err != nil || value < 0 {
+			response.Error(c, http.StatusBadRequest, "invalid min_user_messages", nil)
+			return input, false
+		}
+		input.MinUserMessages = value
+	}
+
+	if minTotalMessagesParam := strings.TrimSpace(c.Query("min_total_messages")); minTotalMessagesParam != "" {
+		value, err := strconv.ParseInt(minTotalMessagesParam, 10, 64)
+		if err != nil || value < 0 {
+			response.Error(c, http.StatusBadRequest, "invalid min_total_messages", nil)
+			return input, false
+		}
+		input.MinTotalMessages = value
+	}
+
+	pageSize := service.DefaultUsageSummaryPageSize
+	if limitParam := strings.TrimSpace(c.Query("limit")); limitParam != "" {
+		value, err := strconv.Atoi(limitParam)
+		if err != nil || value <= 0 {
+			response.Error(c, http.StatusBadRequest, "invalid limit", nil)
+			return input, false
+		}
+		pageSize = value
+	}
+
+	if pageSizeParam := strings.TrimSpace(c.Query("page_size")); pageSizeParam != "" {
+		value, err := strconv.Atoi(pageSizeParam)
+		if err != nil || value <= 0 {
+			response.Error(c, http.StatusBadRequest, "invalid page_size", nil)
+			return input, false
+		}
+		pageSize = value
+	}
+	input.PageSize = pageSize
+
+	page := 1
+	if pageParam := strings.TrimSpace(c.Query("page")); pageParam != "" {
+		value, err := strconv.Atoi(pageParam)
+		if err != nil || value <= 0 {
+			response.Error(c, http.StatusBadRequest, "invalid page", nil)
+			return input, false
+		}
+		page = value
+	}
+	input.Page = page
+
+	sortField := service.UsageSortFieldUserMessages
+	if sortByParam := strings.ToLower(strings.TrimSpace(c.Query("sort_by"))); sortByParam != "" {
+		switch sortByParam {
+		case "user_messages":
+			sortField = service.UsageSortFieldUserMessages
+		case "total_messages":
+			sortField = service.UsageSortFieldTotalMessages
+		case "total_tokens":
+			sortField = service.UsageSortFieldTotalTokens
+		default:
+			response.Error(c, http.StatusBadRequest, "invalid sort_by", nil)
+			return input, false
+		}
+	}
+	input.SortField = sortField
+
+	sortDirection := service.UsageSortDirectionDesc
+	if sortDirParam := strings.ToLower(strings.TrimSpace(c.Query("sort_dir"))); sortDirParam != "" {
+		switch sortDirParam {
+		case "asc":
+			sortDirection = service.UsageSortDirectionAsc
+		case "desc":
+			sortDirection = service.UsageSortDirectionDesc
+		default:
+			response.Error(c, http.StatusBadRequest, "invalid sort_dir", nil)
+			return input, false
+		}
+	}
+	input.SortDirection = sortDirection
+
+	return input, true
+}
+
+func (h *Handler) ExportAIUsageSummaries(c *gin.Context) {
+	usageInput, ok := h.buildUsageListInput(c)
+	if !ok {
+		return
+	}
+	usageInput.Page = 1
+
+	summaries, err := h.ai.ListAllUsageSummaries(c.Request.Context(), usageInput)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrAISettingNotConfigured):
+			response.Error(c, http.StatusConflict, "ai assistant not configured", nil)
+		default:
+			response.Error(c, http.StatusInternalServerError, "unable to export ai usage", err.Error())
+		}
+		return
+	}
+
+	buffer := &bytes.Buffer{}
+	writer := csv.NewWriter(buffer)
+	headers := []string{
+		"account_id",
+		"account_name",
+		"role",
+		"user_messages",
+		"assistant_messages",
+		"total_messages",
+		"prompt_tokens",
+		"result_tokens",
+		"total_tokens",
+		"max_daily_requests",
+		"remaining_daily_requests",
+	}
+	if err := writer.Write(headers); err != nil {
+		response.Error(c, http.StatusInternalServerError, "unable to export ai usage", err.Error())
+		return
+	}
+
+	for _, summary := range summaries {
+		record := []string{
+			summary.AccountID,
+			summary.AccountName,
+			string(summary.Role),
+			strconv.FormatInt(summary.UserMessages, 10),
+			strconv.FormatInt(summary.AssistantMessages, 10),
+			strconv.FormatInt(summary.TotalMessages, 10),
+			strconv.FormatInt(summary.PromptTokens, 10),
+			strconv.FormatInt(summary.ResultTokens, 10),
+			strconv.FormatInt(summary.TotalTokens, 10),
+			strconv.Itoa(summary.MaxDailyRequests),
+			strconv.Itoa(summary.RemainingDailyRequests),
+		}
+		if err := writer.Write(record); err != nil {
+			response.Error(c, http.StatusInternalServerError, "unable to export ai usage", err.Error())
+			return
+		}
+	}
+
+	writer.Flush()
+	if err := writer.Error(); err != nil {
+		response.Error(c, http.StatusInternalServerError, "unable to export ai usage", err.Error())
+		return
+	}
+
+	filename := fmt.Sprintf("ai-usage-%s-%s.csv", usageInput.SchoolID, time.Now().UTC().Format("20060102T150405Z"))
+	c.Header("Content-Type", "text/csv; charset=utf-8")
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filename))
+	c.Header("Cache-Control", "no-store")
+	c.Data(http.StatusOK, "text/csv; charset=utf-8", buffer.Bytes())
+}
+
+func (h *Handler) GetAIUsageReport(c *gin.Context) {
+	usageInput, ok := h.buildUsageListInput(c)
+	if !ok {
+		return
+	}
+
+	summaries, err := h.ai.ListUsageSummaries(c.Request.Context(), usageInput)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrAISettingNotConfigured):
+			response.Error(c, http.StatusConflict, "ai assistant not configured", nil)
+		default:
+			response.Error(c, http.StatusInternalServerError, "unable to build ai usage report", err.Error())
+		}
+		return
+	}
+
+	aggregate, err := h.ai.GetUsageAggregate(c.Request.Context(), usageInput)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrAISettingNotConfigured):
+			response.Error(c, http.StatusConflict, "ai assistant not configured", nil)
+		default:
+			response.Error(c, http.StatusInternalServerError, "unable to build ai usage report", err.Error())
+		}
+		return
+	}
+
+	roleBreakdown, err := h.ai.GetUsageRoleBreakdown(c.Request.Context(), usageInput)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrAISettingNotConfigured):
+			response.Error(c, http.StatusConflict, "ai assistant not configured", nil)
+		default:
+			response.Error(c, http.StatusInternalServerError, "unable to build ai usage report", err.Error())
+		}
+		return
+	}
+
+	items := make([]gin.H, 0, len(summaries))
+	for _, summary := range summaries {
+		items = append(items, aiUsageSummaryPayload(summary))
+	}
+
+	report := gin.H{
+		"generated_at": time.Now(),
+		"filters": gin.H{
+			"school_id":          usageInput.SchoolID,
+			"role":               usageInput.Role,
+			"since":              usageInput.Since,
+			"min_user_messages":  usageInput.MinUserMessages,
+			"min_total_messages": usageInput.MinTotalMessages,
+			"sort_by":            usageInput.SortField,
+			"sort_dir":           usageInput.SortDirection,
+		},
+		"accounts": items,
+	}
+
+	if aggregate != nil {
+		report["overview"] = aiUsageAggregatePayload(*aggregate, roleBreakdown)
+		metrics := gin.H{
+			"active_accounts": aggregate.ActiveAccounts,
+			"total_messages":  aggregate.TotalMessages,
+			"total_tokens":    aggregate.TotalTokens,
+		}
+		if aggregate.ActiveAccounts > 0 {
+			metrics["avg_messages_per_account"] = float64(aggregate.TotalMessages) / float64(aggregate.ActiveAccounts)
+			metrics["avg_tokens_per_account"] = float64(aggregate.TotalTokens) / float64(aggregate.ActiveAccounts)
+		}
+		report["metrics"] = metrics
+	} else {
+		report["metrics"] = gin.H{}
+	}
+
+	highlights := gin.H{}
+	if len(summaries) > 0 {
+		top := summaries[0]
+		highlights["top_account"] = gin.H{
+			"account_id":     top.AccountID,
+			"account_name":   top.AccountName,
+			"role":           top.Role,
+			"total_messages": top.TotalMessages,
+			"total_tokens":   top.TotalTokens,
+		}
+		if aggregate != nil && aggregate.TotalMessages > 0 {
+			highlights["top_account_share"] = float64(top.TotalMessages) / float64(aggregate.TotalMessages)
+		}
+	}
+	report["highlights"] = highlights
+
+	response.Success(c, http.StatusOK, gin.H{"report": report})
+}
+
+func (h *Handler) GetAIUsageTimeline(c *gin.Context) {
+	schoolID := strings.TrimSpace(c.Query("school_id"))
+	if schoolID == "" {
+		response.Error(c, http.StatusBadRequest, "school_id required", nil)
+		return
+	}
+
+	roleParam := strings.TrimSpace(c.Query("role"))
+	var role domain.Role
+	if roleParam != "" {
+		role = domain.Role(roleParam)
+	}
+
+	parseTime := func(value string, field string) (time.Time, bool) {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			return time.Time{}, true
+		}
+		parsed, err := time.Parse(time.RFC3339, value)
+		if err != nil {
+			response.Error(c, http.StatusBadRequest, "invalid "+field, err.Error())
+			return time.Time{}, false
+		}
+		return parsed, true
+	}
+
+	start, ok := parseTime(c.Query("start"), "start timestamp")
+	if !ok {
+		return
+	}
+	end, ok := parseTime(c.Query("end"), "end timestamp")
+	if !ok {
+		return
+	}
+
+	windowParam := strings.TrimSpace(c.Query("window_days"))
+	var windowDays int
+	if windowParam != "" {
+		value, err := strconv.Atoi(windowParam)
+		if err != nil || value <= 0 {
+			response.Error(c, http.StatusBadRequest, "invalid window_days", nil)
+			return
+		}
+		windowDays = value
+	}
+
+	intervalParam := strings.TrimSpace(strings.ToLower(c.Query("interval")))
+	interval := service.UsageTimelineIntervalDay
+	if intervalParam != "" {
+		switch intervalParam {
+		case "day", "daily":
+			interval = service.UsageTimelineIntervalDay
+		default:
+			response.Error(c, http.StatusBadRequest, "invalid interval", intervalParam)
+			return
+		}
+	}
+
+	input := service.UsageTimelineInput{
+		SchoolID:   schoolID,
+		Role:       role,
+		Start:      start,
+		End:        end,
+		Interval:   interval,
+		WindowDays: windowDays,
+	}
+
+	points, err := h.ai.GetUsageTimeline(c.Request.Context(), input)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrAISettingNotConfigured):
+			response.Error(c, http.StatusConflict, "ai assistant not configured", nil)
+		case errors.Is(err, service.ErrUsageTimelineUnsupportedInterval), errors.Is(err, service.ErrUsageTimelineInvalidRange):
+			response.Error(c, http.StatusBadRequest, "invalid timeline request", err.Error())
+		default:
+			response.Error(c, http.StatusInternalServerError, "unable to fetch ai timeline", err.Error())
+		}
+		return
+	}
+
+	payload := gin.H{
+		"timeline": aiUsageTimelinePayload(points),
+		"interval": string(interval),
+	}
+	if len(points) > 0 {
+		payload["start"] = points[0].Date
+		payload["end"] = points[len(points)-1].Date
 	}
 
 	response.Success(c, http.StatusOK, payload)
@@ -2842,8 +3281,27 @@ func aiUsageAggregatePayload(aggregate service.AIChatUsageAggregate, breakdown [
 	if len(breakdown) > 0 {
 		summaries := make([]service.AIChatUsageRoleSummary, len(breakdown))
 		copy(summaries, breakdown)
+		rolePriority := map[domain.Role]int{
+			domain.RoleTeacher: 0,
+			domain.RoleStudent: 1,
+			domain.RoleAdmin:   2,
+		}
 		sort.SliceStable(summaries, func(i, j int) bool {
-			return string(summaries[i].Role) < string(summaries[j].Role)
+			pi, okI := rolePriority[summaries[i].Role]
+			pj, okJ := rolePriority[summaries[j].Role]
+			switch {
+			case okI && okJ:
+				if pi == pj {
+					return string(summaries[i].Role) < string(summaries[j].Role)
+				}
+				return pi < pj
+			case okI:
+				return true
+			case okJ:
+				return false
+			default:
+				return string(summaries[i].Role) < string(summaries[j].Role)
+			}
 		})
 
 		items := make([]gin.H, len(summaries))
@@ -2871,6 +3329,25 @@ func aiUsageRoleSummaryPayload(summary service.AIChatUsageRoleSummary) gin.H {
 		"avg_messages":       summary.AverageMessages,
 		"avg_tokens":         summary.AverageTokens,
 	}
+}
+
+func aiUsageTimelinePayload(points []service.AIChatUsageTimelinePoint) []gin.H {
+	items := make([]gin.H, 0, len(points))
+	for _, point := range points {
+		items = append(items, gin.H{
+			"date":               point.Date,
+			"account_count":      point.AccountCount,
+			"user_messages":      point.UserMessages,
+			"assistant_messages": point.AssistantMessages,
+			"total_messages":     point.TotalMessages,
+			"prompt_tokens":      point.PromptTokens,
+			"result_tokens":      point.ResultTokens,
+			"total_tokens":       point.TotalTokens,
+			"avg_messages":       point.AverageMessages,
+			"avg_tokens":         point.AverageTokens,
+		})
+	}
+	return items
 }
 
 func noteCommentPayload(comment domain.NoteComment) gin.H {

@@ -22,6 +22,7 @@ type AppConfig struct {
 	RefreshSecret   string
 	TokenTTL        int64
 	RefreshTokenTTL int64
+	PasswordResetTokenTTL int64
 	OssEndpoint     string
 	OssAccessKey    string
 	OssSecretKey    string
@@ -49,6 +50,7 @@ func Load() AppConfig {
 			RefreshSecret:   mustEnv("REFRESH_SECRET"),
 			TokenTTL:        getEnvAsInt64("TOKEN_TTL", 3600),
 			RefreshTokenTTL: getEnvAsInt64("REFRESH_TOKEN_TTL", 2592000),
+			PasswordResetTokenTTL: getEnvAsInt64("PASSWORD_RESET_TOKEN_TTL", 900),
 			OssEndpoint:     getEnv("OSS_ENDPOINT", ""),
 			OssAccessKey:    getEnv("OSS_ACCESS_KEY", ""),
 			OssSecretKey:    getEnv("OSS_SECRET_KEY", ""),

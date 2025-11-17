@@ -28,8 +28,6 @@
 - **Teacher**：可访问作业教师端接口、对话、笔记等。
 - **Student**：可访问作业学生端、笔记模块、对话等。
 
-刷新令牌逻辑未在 API 中暴露，可自行扩展。
-
 ## API 列表
 
 ### 认证
@@ -37,6 +35,9 @@
 | 方法 | 路径 | 描述 |
 | --- | --- | --- |
 | `POST` | `/api/v1/auth/login` | 账号登录，返回 `access_token`、`refresh_token` 以及账号信息。|
+| `POST` | `/api/v1/auth/refresh` | 使用 `refresh_token` 获取新的访问令牌对。|
+| `POST` | `/api/v1/auth/password/reset/request` | 当账号被管理员要求重置密码时，发起重置请求并获取一次性令牌。|
+| `POST` | `/api/v1/auth/password/reset/confirm` | 携带一次性令牌与新密码，完成密码重置并重新激活账号。|
 
 #### 请求示例
 

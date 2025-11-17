@@ -62,10 +62,16 @@ func (f *fakeAccountRepo) FindByIdentifier(ctx context.Context, schoolID, identi
 func (f *fakeAccountRepo) FindByID(ctx context.Context, id string) (*domain.Account, error) {
 	return nil, errors.New("not implemented")
 }
+func (f *fakeAccountRepo) ListByIDs(ctx context.Context, ids []string) ([]domain.Account, error) {
+	return nil, errors.New("not implemented")
+}
 func (f *fakeAccountRepo) ListByRole(ctx context.Context, schoolID string, role domain.Role, status domain.AccountStatus, departmentID string, classID string, onlyClassless bool, onlyDepartmentless bool, page int, size int, query string) ([]domain.Account, int64, error) {
 	return nil, 0, errors.New("not implemented")
 }
 func (f *fakeAccountRepo) UpdateStatus(ctx context.Context, accountID, schoolID string, status domain.AccountStatus) error {
+	return errors.New("not implemented")
+}
+func (f *fakeAccountRepo) UpdatePasswordHash(ctx context.Context, accountID string, passwordHash string) error {
 	return errors.New("not implemented")
 }
 func (f *fakeAccountRepo) Delete(ctx context.Context, accountID, schoolID string) error {
@@ -93,7 +99,7 @@ func (f *fakeMessageRepo) CountUserMessagesSince(ctx context.Context, accountID 
 func (f *fakeMessageRepo) UsageStatsByAccountSince(ctx context.Context, accountID string, since time.Time) (repository.AIChatUsageStats, error) {
 	return repository.AIChatUsageStats{}, errors.New("not implemented")
 }
-func (f *fakeMessageRepo) UsageStatsBySchoolSince(ctx context.Context, schoolID string, since time.Time, role domain.Role, limit int) ([]repository.AIChatAccountUsage, error) {
+func (f *fakeMessageRepo) UsageStatsBySchoolSince(ctx context.Context, schoolID string, since time.Time, role domain.Role, limit int, offset int, sort repository.AIChatUsageSort) ([]repository.AIChatAccountUsage, error) {
 	return nil, errors.New("not implemented")
 }
 func (f *fakeMessageRepo) UsageTotalsBySchoolSince(ctx context.Context, schoolID string, since time.Time, role domain.Role) (repository.AIChatUsageTotals, error) {
@@ -103,6 +109,10 @@ func (f *fakeMessageRepo) UsageByRoleSince(ctx context.Context, schoolID string,
 	f.captured.schoolID = schoolID
 	f.captured.since = since
 	return f.totals, f.err
+}
+
+func (f *fakeMessageRepo) UsageTimelineBySchool(context.Context, string, time.Time, time.Time, domain.Role) ([]repository.AIChatUsageTimelinePoint, error) {
+	return nil, errors.New("not implemented")
 }
 
 func newTestService() *AIAssistantService {
@@ -157,8 +167,8 @@ func TestGetUsageRoleBreakdownReturnsAggregates(t *testing.T) {
 		t.Fatalf("expected since to be set to start of day")
 	}
 
-	if len(summaries) != len(totals) {
-		t.Fatalf("expected %d summaries, got %d", len(totals), len(summaries))
+	if len(summaries) != len(usageRoleOrder) {
+		t.Fatalf("expected %d summaries, got %d", len(usageRoleOrder), len(summaries))
 	}
 
 	expectedMessageShare := map[domain.Role]float64{
@@ -189,21 +199,30 @@ func TestGetUsageRoleBreakdownReturnsAggregates(t *testing.T) {
 			t.Fatalf("unexpected token share for %s: got %f want %f", role, summary.TokenShare, exp)
 		}
 
-		if summary.AccountCount == 0 {
-			t.Fatalf("account count should be >0 for %s", role)
-		}
-		avgMessages := float64(summary.TotalMessages) / float64(summary.AccountCount)
-		if math.Abs(summary.AverageMessages-avgMessages) > tolerance {
-			t.Fatalf("unexpected avg messages for %s: got %f want %f", role, summary.AverageMessages, avgMessages)
-		}
-		avgTokens := float64(summary.TotalTokens) / float64(summary.AccountCount)
-		if math.Abs(summary.AverageTokens-avgTokens) > tolerance {
-			t.Fatalf("unexpected avg tokens for %s: got %f want %f", role, summary.AverageTokens, avgTokens)
+		if summary.AccountCount > 0 {
+			avgMessages := float64(summary.TotalMessages) / float64(summary.AccountCount)
+			if math.Abs(summary.AverageMessages-avgMessages) > tolerance {
+				t.Fatalf("unexpected avg messages for %s: got %f want %f", role, summary.AverageMessages, avgMessages)
+			}
+			avgTokens := float64(summary.TotalTokens) / float64(summary.AccountCount)
+			if math.Abs(summary.AverageTokens-avgTokens) > tolerance {
+				t.Fatalf("unexpected avg tokens for %s: got %f want %f", role, summary.AverageTokens, avgTokens)
+			}
+		} else {
+			if summary.AverageMessages != 0 || summary.AverageTokens != 0 {
+				t.Fatalf("expected zero averages for %s", role)
+			}
 		}
 	}
 
 	for _, summary := range summaries {
 		check(summary.Role, summary)
+	}
+
+	for idx, role := range usageRoleOrder {
+		if summaries[idx].Role != role {
+			t.Fatalf("expected role %s at index %d, got %s", role, idx, summaries[idx].Role)
+		}
 	}
 }
 
@@ -221,6 +240,10 @@ func TestGetUsageRoleBreakdownEnsuresDefaultRoles(t *testing.T) {
 		t.Fatalf("expected default role summaries")
 	}
 
+	if len(summaries) != len(usageRoleOrder) {
+		t.Fatalf("expected %d summaries, got %d", len(usageRoleOrder), len(summaries))
+	}
+
 	roleSet := make(map[domain.Role]AIChatUsageRoleSummary)
 	for _, summary := range summaries {
 		roleSet[summary.Role] = summary
@@ -233,6 +256,12 @@ func TestGetUsageRoleBreakdownEnsuresDefaultRoles(t *testing.T) {
 		}
 		if summary.TotalMessages != 0 || summary.TotalTokens != 0 {
 			t.Fatalf("expected zero usage for role %s", role)
+		}
+	}
+
+	for idx, role := range usageRoleOrder {
+		if summaries[idx].Role != role {
+			t.Fatalf("expected role %s at index %d, got %s", role, idx, summaries[idx].Role)
 		}
 	}
 }

@@ -12,6 +12,7 @@ type AccountRepository interface {
 	Create(ctx context.Context, account *domain.Account) error
 	FindByIdentifier(ctx context.Context, schoolID, identifier string) (*domain.Account, error)
 	FindByID(ctx context.Context, id string) (*domain.Account, error)
+	ListByIDs(ctx context.Context, ids []string) ([]domain.Account, error)
 	ListByRole(
 		ctx context.Context,
 		schoolID string,
@@ -26,7 +27,16 @@ type AccountRepository interface {
 		query string,
 	) ([]domain.Account, int64, error)
 	UpdateStatus(ctx context.Context, accountID, schoolID string, status domain.AccountStatus) error
+	UpdatePasswordHash(ctx context.Context, accountID string, passwordHash string) error
 	Delete(ctx context.Context, accountID, schoolID string) error
+}
+
+// PasswordResetTokenRepository manages password reset tokens.
+type PasswordResetTokenRepository interface {
+	Create(ctx context.Context, token *domain.PasswordResetToken) error
+	FindByTokenHash(ctx context.Context, hash string) (*domain.PasswordResetToken, error)
+	Consume(ctx context.Context, id string, consumedAt time.Time) error
+	DeleteByAccount(ctx context.Context, accountID string) error
 }
 
 // TeacherRepository handles teacher profile persistence.
@@ -184,9 +194,33 @@ type AIChatMessageRepository interface {
 	ListBySession(ctx context.Context, sessionID string, limit int, before time.Time) ([]domain.AIChatMessage, error)
 	CountUserMessagesSince(ctx context.Context, accountID string, since time.Time) (int64, error)
 	UsageStatsByAccountSince(ctx context.Context, accountID string, since time.Time) (AIChatUsageStats, error)
-	UsageStatsBySchoolSince(ctx context.Context, schoolID string, since time.Time, role domain.Role, limit int) ([]AIChatAccountUsage, error)
+	UsageStatsBySchoolSince(ctx context.Context, schoolID string, since time.Time, role domain.Role, limit int, offset int, sort AIChatUsageSort) ([]AIChatAccountUsage, error)
 	UsageTotalsBySchoolSince(ctx context.Context, schoolID string, since time.Time, role domain.Role) (AIChatUsageTotals, error)
 	UsageByRoleSince(ctx context.Context, schoolID string, since time.Time) (map[domain.Role]AIChatUsageTotals, error)
+	UsageTimelineBySchool(ctx context.Context, schoolID string, start time.Time, end time.Time, role domain.Role) ([]AIChatUsageTimelinePoint, error)
+}
+
+// SortDirection enumerates basic ordering options.
+type SortDirection string
+
+const (
+	SortDirectionAsc  SortDirection = "asc"
+	SortDirectionDesc SortDirection = "desc"
+)
+
+// AIChatUsageSortField enumerates sortable usage columns.
+type AIChatUsageSortField string
+
+const (
+	AIChatUsageSortUserMessages  AIChatUsageSortField = "user_messages"
+	AIChatUsageSortTotalMessages AIChatUsageSortField = "total_messages"
+	AIChatUsageSortTotalTokens   AIChatUsageSortField = "total_tokens"
+)
+
+// AIChatUsageSort configures ordering for usage stats queries.
+type AIChatUsageSort struct {
+	Field     AIChatUsageSortField
+	Direction SortDirection
 }
 
 // AIChatUsageStats aggregates AI usage activity.
@@ -205,6 +239,13 @@ type AIChatAccountUsage struct {
 
 // AIChatUsageTotals aggregates usage across a school.
 type AIChatUsageTotals struct {
+	AccountCount int64
+	AIChatUsageStats
+}
+
+// AIChatUsageTimelinePoint aggregates usage within a fixed time bucket.
+type AIChatUsageTimelinePoint struct {
+	Bucket       time.Time
 	AccountCount int64
 	AIChatUsageStats
 }

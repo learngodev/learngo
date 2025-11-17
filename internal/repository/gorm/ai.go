@@ -313,7 +313,7 @@ func (s *AIChatMessageStore) UsageStatsByAccountSince(ctx context.Context, accou
 	}, nil
 }
 
-func (s *AIChatMessageStore) UsageStatsBySchoolSince(ctx context.Context, schoolID string, since time.Time, role domain.Role, limit int) ([]repository.AIChatAccountUsage, error) {
+func (s *AIChatMessageStore) UsageStatsBySchoolSince(ctx context.Context, schoolID string, since time.Time, role domain.Role, limit int, offset int, sort repository.AIChatUsageSort) ([]repository.AIChatAccountUsage, error) {
 	if schoolID == "" {
 		return nil, errors.New("school_id required")
 	}
@@ -338,10 +338,26 @@ func (s *AIChatMessageStore) UsageStatsBySchoolSince(ctx context.Context, school
 		query = query.Where("ai_chat_sessions.role = ?", role)
 	}
 
+	orderExpr := "user_messages"
+	switch sort.Field {
+	case repository.AIChatUsageSortTotalMessages:
+		orderExpr = "(user_messages + assistant_messages)"
+	case repository.AIChatUsageSortTotalTokens:
+		orderExpr = "(prompt_tokens + result_tokens)"
+	default:
+		orderExpr = "user_messages"
+	}
+	orderDir := "DESC"
+	if sort.Direction == repository.SortDirectionAsc {
+		orderDir = "ASC"
+	}
+	query = query.Order(orderExpr + " " + orderDir)
+
+	if offset > 0 {
+		query = query.Offset(offset)
+	}
 	if limit > 0 {
-		query = query.Order("user_messages DESC").Limit(limit)
-	} else {
-		query = query.Order("user_messages DESC")
+		query = query.Limit(limit)
 	}
 
 	type row struct {
@@ -490,6 +506,73 @@ func (s *AIChatMessageStore) UsageByRoleSince(ctx context.Context, schoolID stri
 				ResultTokens:      convert(r.ResultTokens),
 			},
 		}
+	}
+
+	return result, nil
+}
+
+func (s *AIChatMessageStore) UsageTimelineBySchool(ctx context.Context, schoolID string, start time.Time, end time.Time, role domain.Role) ([]repository.AIChatUsageTimelinePoint, error) {
+	if schoolID == "" {
+		return nil, errors.New("school_id required")
+	}
+
+	query := s.db.WithContext(ctx).
+		Model(&domain.AIChatMessage{}).
+		Select(`
+		DATE_TRUNC('day', ai_chat_messages.created_at) AS bucket,
+		COUNT(DISTINCT ai_chat_sessions.account_id) AS account_count,
+		SUM(CASE WHEN ai_chat_messages.sender = 'user' THEN 1 ELSE 0 END) AS user_messages,
+		SUM(CASE WHEN ai_chat_messages.sender = 'assistant' THEN 1 ELSE 0 END) AS assistant_messages,
+		SUM(ai_chat_messages.prompt_tokens) AS prompt_tokens,
+		SUM(ai_chat_messages.result_tokens) AS result_tokens`).
+		Joins("JOIN ai_chat_sessions ON ai_chat_sessions.id = ai_chat_messages.session_id").
+		Where("ai_chat_sessions.school_id = ?", schoolID).
+		Group("bucket").
+		Order("bucket ASC")
+
+	if !start.IsZero() {
+		query = query.Where("ai_chat_messages.created_at >= ?", start)
+	}
+	if !end.IsZero() {
+		query = query.Where("ai_chat_messages.created_at < ?", end)
+	}
+	if role != "" {
+		query = query.Where("ai_chat_sessions.role = ?", role)
+	}
+
+	type row struct {
+		Bucket            time.Time
+		AccountCount      sql.NullInt64
+		UserMessages      sql.NullInt64
+		AssistantMessages sql.NullInt64
+		PromptTokens      sql.NullInt64
+		ResultTokens      sql.NullInt64
+	}
+
+	var rows []row
+	if err := query.Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+
+	convert := func(n sql.NullInt64) int64 {
+		if !n.Valid {
+			return 0
+		}
+		return n.Int64
+	}
+
+	result := make([]repository.AIChatUsageTimelinePoint, 0, len(rows))
+	for _, r := range rows {
+		result = append(result, repository.AIChatUsageTimelinePoint{
+			Bucket:       r.Bucket,
+			AccountCount: convert(r.AccountCount),
+			AIChatUsageStats: repository.AIChatUsageStats{
+				UserMessages:      convert(r.UserMessages),
+				AssistantMessages: convert(r.AssistantMessages),
+				PromptTokens:      convert(r.PromptTokens),
+				ResultTokens:      convert(r.ResultTokens),
+			},
+		})
 	}
 
 	return result, nil

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"sort"
 	"strings"
 	"time"
 
@@ -12,7 +13,7 @@ import (
 	"learn-go/internal/repository"
 )
 
-var usageRoleOrder = []domain.Role{domain.RoleTeacher, domain.RoleStudent}
+var usageRoleOrder = []domain.Role{domain.RoleTeacher, domain.RoleStudent, domain.RoleAdmin}
 
 // AIChatUsageRoleSummary exposes usage totals for a specific role.
 type AIChatUsageRoleSummary struct {
@@ -72,8 +73,30 @@ func (s *AIAssistantService) GetUsageRoleBreakdown(ctx context.Context, input Li
 		totalTokensAll += totals.PromptTokens + totals.ResultTokens
 	}
 
-	summaries := make([]AIChatUsageRoleSummary, 0, len(breakdown))
-	for role, totals := range breakdown {
+	orderedRoles := make([]domain.Role, 0, len(breakdown))
+	seen := make(map[domain.Role]bool, len(breakdown))
+	for _, role := range usageRoleOrder {
+		if _, exists := breakdown[role]; exists {
+			orderedRoles = append(orderedRoles, role)
+			seen[role] = true
+		}
+	}
+
+	extra := make([]domain.Role, 0)
+	for role := range breakdown {
+		if !seen[role] {
+			extra = append(extra, role)
+		}
+	}
+
+	sort.Slice(extra, func(i, j int) bool {
+		return string(extra[i]) < string(extra[j])
+	})
+	orderedRoles = append(orderedRoles, extra...)
+
+	summaries := make([]AIChatUsageRoleSummary, 0, len(orderedRoles))
+	for _, role := range orderedRoles {
+		totals := breakdown[role]
 		totalMessages := totals.UserMessages + totals.AssistantMessages
 		totalTokens := totals.PromptTokens + totals.ResultTokens
 		messageShare := 0.0

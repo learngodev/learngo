@@ -44,6 +44,36 @@ func (s *Store) FindByID(ctx context.Context, id string) (*domain.Account, error
 	return &account, nil
 }
 
+func (s *Store) ListByIDs(ctx context.Context, ids []string) ([]domain.Account, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
+	uniq := make([]string, 0, len(ids))
+	seen := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		trimmed := strings.TrimSpace(id)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		uniq = append(uniq, trimmed)
+	}
+
+	if len(uniq) == 0 {
+		return nil, nil
+	}
+
+	var accounts []domain.Account
+	if err := s.db.WithContext(ctx).Where("id IN ?", uniq).Find(&accounts).Error; err != nil {
+		return nil, err
+	}
+	return accounts, nil
+}
+
 func (s *Store) ListByRole(
 	ctx context.Context,
 	schoolID string,
@@ -144,6 +174,20 @@ func (s *Store) UpdateStatus(ctx context.Context, accountID, schoolID string, st
 		Model(&domain.Account{}).
 		Where("id = ? AND school_id = ?", accountID, schoolID).
 		Updates(map[string]any{"status": status})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
+func (s *Store) UpdatePasswordHash(ctx context.Context, accountID string, passwordHash string) error {
+	result := s.db.WithContext(ctx).
+		Model(&domain.Account{}).
+		Where("id = ?", accountID).
+		Updates(map[string]any{"password_hash": passwordHash})
 	if result.Error != nil {
 		return result.Error
 	}

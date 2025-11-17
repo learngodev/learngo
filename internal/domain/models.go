@@ -38,6 +38,17 @@ type Account struct {
 	DeletedAt    gorm.DeletedAt `gorm:"index"`
 }
 
+// PasswordResetToken stores a single-use token for resetting account passwords.
+type PasswordResetToken struct {
+	ID        string     `gorm:"primaryKey;size:36"`
+	AccountID string     `gorm:"size:36;index"`
+	SchoolID  string     `gorm:"size:36;index"`
+	TokenHash string     `gorm:"size:128;uniqueIndex"`
+	ExpiresAt time.Time  `gorm:"index"`
+	ConsumedAt *time.Time
+	CreatedAt time.Time
+}
+
 // School represents a tenant scope.
 type School struct {
 	ID        string `gorm:"primaryKey;size:36"`

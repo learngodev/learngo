@@ -163,8 +163,30 @@ type ListUsageSummariesInput struct {
 	Role             domain.Role
 	MinUserMessages  int64
 	MinTotalMessages int64
-	Limit            int
+	SortField        UsageSortField
+	SortDirection    UsageSortDirection
+	Page             int
+	PageSize         int
 }
+
+// UsageSortField re-exports available usage sort columns.
+type UsageSortField = repository.AIChatUsageSortField
+
+const (
+	UsageSortFieldUserMessages  UsageSortField = repository.AIChatUsageSortUserMessages
+	UsageSortFieldTotalMessages UsageSortField = repository.AIChatUsageSortTotalMessages
+	UsageSortFieldTotalTokens   UsageSortField = repository.AIChatUsageSortTotalTokens
+)
+
+// UsageSortDirection re-exports supported sort directions.
+type UsageSortDirection = repository.SortDirection
+
+const (
+	UsageSortDirectionAsc  UsageSortDirection = repository.SortDirectionAsc
+	UsageSortDirectionDesc UsageSortDirection = repository.SortDirectionDesc
+)
+
+const DefaultUsageSummaryPageSize = 20
 
 // UpdateAIAgentSettingInput collects configuration updates from administrators.
 type UpdateAIAgentSettingInput struct {
@@ -334,24 +356,66 @@ func (s *AIAssistantService) ListUsageSummaries(ctx context.Context, input ListU
 		since = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	}
 
-	limit := input.Limit
-	if limit < 0 {
-		limit = 0
+	limit := input.PageSize
+	if limit <= 0 {
+		limit = DefaultUsageSummaryPageSize
 	}
 
-	rows, err := s.messages.UsageStatsBySchoolSince(ctx, schoolID, since, input.Role, limit)
+	page := input.Page
+	if page <= 0 {
+		page = 1
+	}
+
+	offset := (page - 1) * limit
+
+	sortField := input.SortField
+	switch sortField {
+	case UsageSortFieldUserMessages, UsageSortFieldTotalMessages, UsageSortFieldTotalTokens:
+	default:
+		sortField = UsageSortFieldUserMessages
+	}
+
+	sortDirection := input.SortDirection
+	switch sortDirection {
+	case UsageSortDirectionAsc, UsageSortDirectionDesc:
+	default:
+		sortDirection = UsageSortDirectionDesc
+	}
+
+	sortConfig := repository.AIChatUsageSort{Field: sortField, Direction: sortDirection}
+
+	rows, err := s.messages.UsageStatsBySchoolSince(ctx, schoolID, since, input.Role, limit, offset, sortConfig)
 	if err != nil {
 		return nil, err
 	}
 
-	summaries := make([]AIChatUsageSummary, 0, len(rows))
+	accountIDs := make([]string, 0, len(rows))
 	for _, row := range rows {
-		account, err := s.accounts.FindByID(ctx, row.AccountID)
+		if strings.TrimSpace(row.AccountID) != "" {
+			accountIDs = append(accountIDs, row.AccountID)
+		}
+	}
+
+	accountsByID := make(map[string]domain.Account, len(accountIDs))
+	if len(accountIDs) > 0 {
+		accounts, err := s.accounts.ListByIDs(ctx, accountIDs)
 		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, err
+		}
+		for i := range accounts {
+			acct := accounts[i]
+			if acct.ID == "" {
 				continue
 			}
-			return nil, err
+			accountsByID[acct.ID] = acct
+		}
+	}
+
+	summaries := make([]AIChatUsageSummary, 0, len(rows))
+	for _, row := range rows {
+		account, ok := accountsByID[row.AccountID]
+		if !ok {
+			continue
 		}
 
 		name := strings.TrimSpace(account.DisplayName)
@@ -397,6 +461,39 @@ func (s *AIAssistantService) ListUsageSummaries(ctx context.Context, input ListU
 	}
 
 	return summaries, nil
+}
+
+// ListAllUsageSummaries retrieves all usage summaries for the given filter regardless of page size.
+func (s *AIAssistantService) ListAllUsageSummaries(ctx context.Context, input ListUsageSummariesInput) ([]AIChatUsageSummary, error) {
+	batchSize := input.PageSize
+	if batchSize <= 0 {
+		batchSize = DefaultUsageSummaryPageSize
+	}
+	page := input.Page
+	if page <= 0 {
+		page = 1
+	}
+
+	all := make([]AIChatUsageSummary, 0)
+	for {
+		paged := input
+		paged.Page = page
+		paged.PageSize = batchSize
+		chunk, err := s.ListUsageSummaries(ctx, paged)
+		if err != nil {
+			return nil, err
+		}
+		if len(chunk) == 0 {
+			break
+		}
+		all = append(all, chunk...)
+		if len(chunk) < batchSize {
+			break
+		}
+		page++
+	}
+
+	return all, nil
 }
 
 // UpdateSetting creates or updates the AI assistant configuration.

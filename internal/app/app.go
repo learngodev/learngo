@@ -83,8 +83,9 @@ func New() (*Application, error) {
 	aiAuditRepo := gormrepo.NewAIAgentSettingAuditStore(db)
 	aiSessionRepo := gormrepo.NewAIChatSessionStore(db)
 	aiMessageRepo := gormrepo.NewAIChatMessageStore(db)
+	passwordResetRepo := gormrepo.NewPasswordResetTokenStore(db)
 
-	authService := service.NewAuthService(accountRepo, cfg)
+	authService := service.NewAuthService(accountRepo, passwordResetRepo, cfg)
 	adminService := service.NewAdminService(accountRepo, teacherRepo, studentRepo, departmentRepo, classRepo, teacherStudentRepo)
 	assignmentService := service.NewAssignmentService(assignmentRepo, submissionRepo, submissionCommentRepo)
 	conversationService := service.NewConversationService(conversationRepo, messageRepo, receiptRepo, accountRepo)
@@ -170,6 +171,7 @@ func migrate(db *gorm.DB) error {
 		&domain.AIAgentSettingAudit{},
 		&domain.AIChatSession{},
 		&domain.AIChatMessage{},
+		&domain.PasswordResetToken{},
 	)
 }
 
