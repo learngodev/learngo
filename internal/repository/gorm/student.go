@@ -51,4 +51,40 @@ func (s *StudentStore) GetByAccountID(ctx context.Context, accountID string) (*d
 	return &student, nil
 }
 
+func (s *StudentStore) ListByIDs(ctx context.Context, ids []string) ([]domain.Student, error) {
+	if len(ids) == 0 {
+		return []domain.Student{}, nil
+	}
+	var students []domain.Student
+	if err := s.db.WithContext(ctx).Where("id IN ?", ids).Find(&students).Error; err != nil {
+		return nil, err
+	}
+	return students, nil
+}
+
+func (s *StudentStore) CountByClassIDs(ctx context.Context, classIDs []string) (map[string]int64, error) {
+	result := make(map[string]int64)
+	if len(classIDs) == 0 {
+		return result, nil
+	}
+
+	type row struct {
+		ClassID string
+		Count   int64
+	}
+	var rows []row
+	if err := s.db.WithContext(ctx).
+		Model(&domain.Student{}).
+		Select("class_id", "COUNT(*) AS count").
+		Where("class_id IN ?", classIDs).
+		Group("class_id").
+		Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		result[row.ClassID] = row.Count
+	}
+	return result, nil
+}
+
 var _ repository.StudentRepository = (*StudentStore)(nil)

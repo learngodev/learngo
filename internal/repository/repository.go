@@ -2,10 +2,14 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"learn-go/internal/domain"
 )
+
+// ErrNotFound indicates repository query returned no rows.
+var ErrNotFound = errors.New("repository: not found")
 
 // AccountRepository defines persistence for accounts.
 type AccountRepository interface {
@@ -53,6 +57,34 @@ type StudentRepository interface {
 	GetByNumber(ctx context.Context, schoolID, number string) (*domain.Student, error)
 	GetByID(ctx context.Context, id string) (*domain.Student, error)
 	GetByAccountID(ctx context.Context, accountID string) (*domain.Student, error)
+	ListByIDs(ctx context.Context, ids []string) ([]domain.Student, error)
+	CountByClassIDs(ctx context.Context, classIDs []string) (map[string]int64, error)
+}
+
+// StudentReminderRepository persists custom reminders created by students.
+type StudentReminderRepository interface {
+	ListByStudent(ctx context.Context, studentID string) ([]domain.StudentReminder, error)
+	GetByID(ctx context.Context, id string) (*domain.StudentReminder, error)
+	Create(ctx context.Context, reminder *domain.StudentReminder) error
+	UpdateFields(ctx context.Context, id string, studentID string, updates map[string]any) (*domain.StudentReminder, error)
+	Delete(ctx context.Context, id string, studentID string) error
+	MarkAllCompleted(ctx context.Context, studentID string, completed bool, timestamp *time.Time) error
+}
+
+// CourseRepository retrieves course metadata.
+type CourseRepository interface {
+	ListByIDs(ctx context.Context, ids []string) ([]domain.Course, error)
+}
+
+// CourseSlotRepository retrieves slot definitions.
+type CourseSlotRepository interface {
+	ListByIDs(ctx context.Context, ids []string) ([]domain.CourseSlot, error)
+}
+
+// CourseSessionRepository retrieves scheduled lessons.
+type CourseSessionRepository interface {
+	ListByClassBetween(ctx context.Context, classID string, start, end time.Time) ([]domain.CourseSession, error)
+	ListByTeacherBetween(ctx context.Context, teacherID string, start, end time.Time) ([]domain.CourseSession, error)
 }
 
 // TeacherStudentRepository manages relationships between teachers and students.
@@ -74,6 +106,7 @@ type ClassRepository interface {
 	Create(ctx context.Context, class *domain.Class) error
 	ListByDepartment(ctx context.Context, schoolID, departmentID string) ([]domain.Class, error)
 	GetByID(ctx context.Context, id string) (*domain.Class, error)
+	ListByIDs(ctx context.Context, ids []string) ([]domain.Class, error)
 	UpdateName(ctx context.Context, id, schoolID, name string) error
 	Delete(ctx context.Context, id, schoolID string) error
 }
@@ -82,6 +115,10 @@ type ClassRepository interface {
 type AssignmentRepository interface {
 	Create(ctx context.Context, assignment *domain.Assignment, questions []domain.AssignmentQuestion) error
 	Get(ctx context.Context, id string) (*domain.Assignment, []domain.AssignmentQuestion, error)
+	ListByClass(ctx context.Context, classID string, limit int, types []domain.AssignmentType) ([]domain.Assignment, error)
+	ListDueBetween(ctx context.Context, classID string, start, end time.Time, types []domain.AssignmentType) ([]domain.Assignment, error)
+	ListByTeacher(ctx context.Context, teacherID string, limit int, classID string, types []domain.AssignmentType) ([]domain.Assignment, error)
+	ListDueBetweenByTeacher(ctx context.Context, teacherID string, start, end time.Time, types []domain.AssignmentType) ([]domain.Assignment, error)
 }
 
 // SubmissionRepository handles student submissions.
@@ -92,6 +129,30 @@ type SubmissionRepository interface {
 	GetByAssignmentAndStudent(ctx context.Context, assignmentID, studentID string) (*domain.AssignmentSubmission, []domain.SubmissionItem, error)
 	GetByID(ctx context.Context, submissionID string) (*domain.AssignmentSubmission, []domain.SubmissionItem, error)
 	UpdateGrades(ctx context.Context, submission *domain.AssignmentSubmission, items []domain.SubmissionItem) error
+	ListByStudentAndAssignments(ctx context.Context, studentID string, assignmentIDs []string) ([]domain.AssignmentSubmission, error)
+	StatsByAssignments(ctx context.Context, assignmentIDs []string) ([]AssignmentSubmissionStats, error)
+}
+
+// AssignmentSubmissionStats holds aggregated submission data per assignment.
+type AssignmentSubmissionStats struct {
+	AssignmentID      string
+	Total             int64
+	Submitted         int64
+	Graded            int64
+	LatestSubmittedAt *time.Time
+	AverageScore      *float64
+	MaxScore          *float64
+	MinScore          *float64
+	ScoreDistribution AssignmentScoreDistribution
+}
+
+// AssignmentScoreDistribution holds counts for score buckets.
+type AssignmentScoreDistribution struct {
+	Below60        int64
+	Between60And70 int64
+	Between70And80 int64
+	Between80And90 int64
+	Above90        int64
 }
 
 // SubmissionCommentRepository handles submission review comments.
@@ -248,4 +309,35 @@ type AIChatUsageTimelinePoint struct {
 	Bucket       time.Time
 	AccountCount int64
 	AIChatUsageStats
+}
+
+// SystemSwitchRepository persists admin feature toggles.
+type SystemSwitchRepository interface {
+	EnsureDefaults(ctx context.Context, schoolID string, defaults []domain.SystemSwitch) error
+	List(ctx context.Context, schoolID string) ([]domain.SystemSwitch, error)
+	Get(ctx context.Context, schoolID, id string) (*domain.SystemSwitch, error)
+	UpdateFields(ctx context.Context, schoolID, id string, updates map[string]any) (*domain.SystemSwitch, error)
+}
+
+// SystemParameterRepository persists configurable parameters.
+type SystemParameterRepository interface {
+	EnsureDefaults(ctx context.Context, schoolID string, defaults []domain.SystemParameter) error
+	List(ctx context.Context, schoolID string) ([]domain.SystemParameter, error)
+	Get(ctx context.Context, schoolID, id string) (*domain.SystemParameter, error)
+	UpdateFields(ctx context.Context, schoolID, id string, updates map[string]any) (*domain.SystemParameter, error)
+}
+
+// SystemBroadcastRepository persists announcement records.
+type SystemBroadcastRepository interface {
+	EnsureDefaults(ctx context.Context, schoolID string, defaults []domain.SystemBroadcast) error
+	List(ctx context.Context, schoolID string) ([]domain.SystemBroadcast, error)
+	Get(ctx context.Context, schoolID, id string) (*domain.SystemBroadcast, error)
+	UpdateFields(ctx context.Context, schoolID, id string, updates map[string]any) (*domain.SystemBroadcast, error)
+}
+
+// SystemAuditRepository stores audit trail for system settings.
+type SystemAuditRepository interface {
+	EnsureDefaults(ctx context.Context, schoolID string, defaults []domain.SystemAuditLog) error
+	Create(ctx context.Context, entry *domain.SystemAuditLog) error
+	List(ctx context.Context, schoolID string, limit int) ([]domain.SystemAuditLog, error)
 }

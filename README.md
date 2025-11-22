@@ -10,15 +10,36 @@
 - **鉴权**：JWT（`Authorization: Bearer <token>`）
 - **WebSocket**：gorilla/websocket 实现会话消息推送
 
-## 运行准备
+## 快速开始
 
-1. 在项目根目录创建 `.env`，配置数据库、JWT 等参数。
-2. 执行迁移（应用启动时自动执行 `AutoMigrate`）。
-3. 启动服务：
+1. **准备依赖**：安装 Go 1.22+，并准备 SQLite（默认内置）或 PostgreSQL 数据库；若需聊天推送请开放 WebSocket 端口。
+2. **复制环境变量**：在项目根目录创建 `.env`，并按需调整下方示例：
 
-   ```bash
-   go run ./cmd/server
-   ```
+  ```dotenv
+  APP_ENV=local
+  HTTP_ADDR=:8080
+  DATABASE_DSN=postgres://user:pass@localhost:5432/learn_go?sslmode=disable
+  JWT_SECRET=change-me
+  JWT_EXPIRES_IN=24h
+  REFRESH_TOKEN_EXPIRES_IN=720h
+  OSS_PROVIDER=local
+  ```
+
+3. **初始化数据库**：首次启动会自动执行 `AutoMigrate`。在生产环境建议手动备份，并根据需要预置院系 / 班级 / 账号数据。
+4. **运行服务**：
+
+  ```bash
+  go run ./cmd/server
+  ```
+
+5. **运行测试/格式化**：
+
+  ```bash
+  gofmt -w ./internal ./pkg
+  go test ./...
+  ```
+
+> Windows PowerShell 可使用 `;` 连接命令，例如 `cd f:/Projects/Go/learn-go; go test ./...`。
 
 ## 认证说明
 
@@ -78,6 +99,7 @@
 | `POST` | `/api/v1/admin/students` | 创建学生账号并绑定班级、任课教师。|
 | `POST` | `/api/v1/admin/departments` | 新建院系。|
 | `POST` | `/api/v1/admin/classes` | 新建班级。|
+| `POST` | `/api/v1/admin/accounts/batch` | 批量锁定/解锁/要求重置密码/删除账号。|
 | `GET` | `/api/v1/admin/departments` | 列出院系列表。|
 | `GET` | `/api/v1/admin/departments/:id/classes` | 查看指定院系下的班级。|
 
@@ -87,6 +109,42 @@
 - 创建学生：`school_id`, `number`, `name`, `email`, `phone`, `class_id`, `teacher_ids[]`, `default_password`
 - 创建院系：`school_id`, `name`
 - 创建班级：`school_id`, `department_id`, `name`
+
+#### 批量账号操作
+
+支持的 `action`：
+
+- `lock`：将账号状态改为锁定；
+- `unlock`：将账号状态改回 `active`；
+- `reset_password`：要求账号下次登录前重置密码；
+- `delete`：删除账号（仅影响老师/学生账号）。
+
+请求体：
+
+```json
+{
+  "school_id": "school-1",
+  "action": "lock",
+  "account_ids": [
+    "acc-teacher-1",
+    "acc-student-9"
+  ]
+}
+```
+
+响应示例：
+
+```json
+{
+  "success": true,
+  "data": {
+    "succeeded": ["acc-teacher-1", "acc-student-9"],
+    "failed": {}
+  }
+}
+```
+
+若部分账号失败，`failed` 字段会以 `{"account_id": "原因"}` 的形式列出原因（例如账号不属于当前学校、已处于目标状态等）。
 
 ---
 
@@ -101,6 +159,29 @@
 | `GET` | `/api/v1/assignments/:id/submissions` | 列出该作业所有提交概况。|
 | `GET` | `/api/v1/assignments/:id/submissions/:submissionID` | 查看指定提交详情与批注。|
 | `PATCH` | `/api/v1/assignments/:id/submissions/:submissionID/grade` | 批改：更新总分、子题得分、评语、教师批注。|
+| `GET` | `/api/v1/teacher/assignments` | 教师门户作业列表，可通过 `types=homework,exam`、`class_id`、`limit` 等参数筛选。|
+| `GET` | `/api/v1/teacher/assignments/:id` | 教师端专用详情；默认隐藏题目答案，可通过 `include_answers=true` 展示完整题目、班级人数、未提交统计及评分分布。|
+| `GET` | `/api/v1/teacher/exams` | 仅返回考试类作业（`type=exam`），方便教师快速查看考试进度与统计。|
+| `GET` | `/api/v1/teacher/assignments/:id/export` | 导出指定作业/考试的学生成绩 CSV，包含学号、姓名、状态、得分与提交时间。|
+
+##### 作业看板指标
+
+教师门户作业列表现已返回更丰富的统计字段，便于快速评估班级完成度：
+
+| 字段 | 说明 |
+| --- | --- |
+| `submission_count` | 已存在的提交总数（含草稿/已提交/已批改）。|
+| `submitted_count` | 状态为 `submitted/graded` 的人数。|
+| `graded_count` | 完成批改的人数。|
+| `pending_grade_count` | `submitted_count - graded_count`，表示待批改量。|
+| `missing_count` | 班级学生总数 - `submitted_count`，直观反映“未提交”人数。|
+| `score_average` / `score_max` / `score_min` | 评分分布，自动统计已批改作业的平均/最高/最低分。|
+| `latest_submission_at` | 最近一次提交时间，便于追踪截止前后活跃度。|
+| `score_distribution` | 更细粒度的成绩区间统计，包含 `below_60`、`between_60_70`、`between_70_80`、`between_80_90`、`above_90` 五个桶，可直接绘制柱状图或饼图。|
+
+所有字段可通过教师侧的 assignments 列表接口一次性获取，前端可直接渲染进度条、分数段统计或提醒“未交”学生。
+
+**成绩导出**：教师可访问 `/api/v1/teacher/assignments/:id/export` 直接下载 CSV，文件包含 `student_id、student_number、student_name、status、score、submitted_at` 列，可用于成绩上报或进一步分析。
 
 #### 创建作业请求
 

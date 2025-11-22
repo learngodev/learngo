@@ -1,12 +1,16 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sort"
 	"strings"
 	"sync"
 	"time"
+
+	"learn-go/internal/domain"
+	"learn-go/internal/repository"
 )
 
 // AdminSystemSwitch represents a feature toggle in the admin console.
@@ -74,195 +78,244 @@ var (
 	ErrSystemBroadcastNotFound = errors.New("system broadcast not found")
 )
 
-// AdminSystemService manages in-memory system configuration for demo purposes.
+// AdminSystemService manages system configuration with persistence.
 type AdminSystemService struct {
-	mu         sync.RWMutex
-	switches   map[string][]AdminSystemSwitch
-	parameters map[string][]AdminSystemParameter
-	broadcasts map[string][]AdminSystemBroadcast
-	auditLogs  map[string][]AdminSystemAuditLog
+	switchRepo    repository.SystemSwitchRepository
+	parameterRepo repository.SystemParameterRepository
+	broadcastRepo repository.SystemBroadcastRepository
+	auditRepo     repository.SystemAuditRepository
+
+	seedMu sync.Mutex
+	seeded map[string]bool
 }
 
-// NewAdminSystemService constructs a service with seed data.
-func NewAdminSystemService() *AdminSystemService {
+// NewAdminSystemService constructs a service backed by repositories.
+func NewAdminSystemService(
+	switches repository.SystemSwitchRepository,
+	parameters repository.SystemParameterRepository,
+	broadcasts repository.SystemBroadcastRepository,
+	audits repository.SystemAuditRepository,
+) *AdminSystemService {
 	return &AdminSystemService{
-		switches:   make(map[string][]AdminSystemSwitch),
-		parameters: make(map[string][]AdminSystemParameter),
-		broadcasts: make(map[string][]AdminSystemBroadcast),
-		auditLogs:  make(map[string][]AdminSystemAuditLog),
+		switchRepo:    switches,
+		parameterRepo: parameters,
+		broadcastRepo: broadcasts,
+		auditRepo:     audits,
+		seeded:        make(map[string]bool),
 	}
 }
 
 // ListSwitches returns switches for a school.
-func (s *AdminSystemService) ListSwitches(schoolID string) []AdminSystemSwitch {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	s.ensureSchoolLocked(schoolID)
-	return cloneSwitches(s.switches[schoolID])
+func (s *AdminSystemService) ListSwitches(ctx context.Context, schoolID string) ([]AdminSystemSwitch, error) {
+	schoolID = normalizeSchoolID(schoolID)
+	if err := s.ensureDefaults(ctx, schoolID); err != nil {
+		return nil, err
+	}
+	switches, err := s.switchRepo.List(ctx, schoolID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]AdminSystemSwitch, len(switches))
+	for i := range switches {
+		out[i] = mapSwitchModel(switches[i])
+	}
+	return out, nil
 }
 
 // UpdateSwitchState toggles a switch and records audit log.
-func (s *AdminSystemService) UpdateSwitchState(schoolID, switchID string, enabled bool, operator string) (*AdminSystemSwitch, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.ensureSchoolLocked(schoolID)
-	items := s.switches[schoolID]
-	for idx := range items {
-		if items[idx].ID == switchID {
-			items[idx].Enabled = enabled
-			if operator == "" {
-				operator = "系统管理员"
-			}
-			items[idx].LastUpdatedLabel = fmt.Sprintf("最近更新：%s · 由 %s", time.Now().Format("2006-01-02 15:04"), operator)
-			s.switches[schoolID][idx] = items[idx]
-			s.appendAuditLocked(schoolID, "系统开关", fmt.Sprintf("更新 %s", items[idx].Title), operator, fmt.Sprintf("已%s「%s」", statusVerb(enabled), items[idx].Title))
-			updated := items[idx]
-			return &updated, nil
-		}
+func (s *AdminSystemService) UpdateSwitchState(ctx context.Context, schoolID, switchID string, enabled bool, operator string) (*AdminSystemSwitch, error) {
+	schoolID = normalizeSchoolID(schoolID)
+	if err := s.ensureDefaults(ctx, schoolID); err != nil {
+		return nil, err
 	}
-	return nil, ErrSystemSwitchNotFound
+	if operator == "" {
+		operator = "系统管理员"
+	}
+	label := fmt.Sprintf("最近更新：%s · 由 %s", time.Now().Format("2006-01-02 15:04"), operator)
+	updated, err := s.switchRepo.UpdateFields(ctx, schoolID, switchID, map[string]any{
+		"enabled":            enabled,
+		"last_updated_label": label,
+	})
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, ErrSystemSwitchNotFound
+		}
+		return nil, err
+	}
+	if err := s.appendAudit(ctx, schoolID, "系统开关", fmt.Sprintf("更新 %s", updated.Title), operator, fmt.Sprintf("已%s「%s」", statusVerb(enabled), updated.Title)); err != nil {
+		return nil, err
+	}
+	mapped := mapSwitchModel(*updated)
+	return &mapped, nil
 }
 
 // ListParameters returns runtime parameters for a school.
-func (s *AdminSystemService) ListParameters(schoolID string) []AdminSystemParameter {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	s.ensureSchoolLocked(schoolID)
-	return cloneParameters(s.parameters[schoolID])
+func (s *AdminSystemService) ListParameters(ctx context.Context, schoolID string) ([]AdminSystemParameter, error) {
+	schoolID = normalizeSchoolID(schoolID)
+	if err := s.ensureDefaults(ctx, schoolID); err != nil {
+		return nil, err
+	}
+	params, err := s.parameterRepo.List(ctx, schoolID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]AdminSystemParameter, len(params))
+	for i := range params {
+		out[i] = mapParameterModel(params[i])
+	}
+	return out, nil
 }
 
 // UpdateParameter changes parameter value.
-func (s *AdminSystemService) UpdateParameter(schoolID, parameterID, value, operator string) (*AdminSystemParameter, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.ensureSchoolLocked(schoolID)
-	items := s.parameters[schoolID]
-	trimmed := strings.TrimSpace(value)
+func (s *AdminSystemService) UpdateParameter(ctx context.Context, schoolID, parameterID, value, operator string) (*AdminSystemParameter, error) {
+	schoolID = normalizeSchoolID(schoolID)
+	if err := s.ensureDefaults(ctx, schoolID); err != nil {
+		return nil, err
+	}
 	if operator == "" {
 		operator = "系统管理员"
 	}
-	for idx := range items {
-		if items[idx].ID == parameterID {
-			if items[idx].Locked {
-				return nil, fmt.Errorf("parameter %s is locked", items[idx].Key)
-			}
-			items[idx].Value = trimmed
-			items[idx].LastUpdatedLabel = fmt.Sprintf("更新于 %s", time.Now().Format("2006-01-02 15:04"))
-			s.parameters[schoolID][idx] = items[idx]
-			s.appendAuditLocked(schoolID, "平台参数", fmt.Sprintf("修改 %s", items[idx].Key), operator, fmt.Sprintf("更新为 %s", trimmed))
-			updated := items[idx]
-			return &updated, nil
+	trimmed := strings.TrimSpace(value)
+	param, err := s.parameterRepo.Get(ctx, schoolID, parameterID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, ErrSystemParameterNotFound
 		}
+		return nil, err
 	}
-	return nil, ErrSystemParameterNotFound
+	if param.Locked {
+		return nil, fmt.Errorf("parameter %s is locked", param.Key)
+	}
+	label := fmt.Sprintf("更新于 %s", time.Now().Format("2006-01-02 15:04"))
+	updated, err := s.parameterRepo.UpdateFields(ctx, schoolID, parameterID, map[string]any{
+		"value":              trimmed,
+		"last_updated_label": label,
+	})
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, ErrSystemParameterNotFound
+		}
+		return nil, err
+	}
+	if err := s.appendAudit(ctx, schoolID, "平台参数", fmt.Sprintf("修改 %s", updated.Key), operator, fmt.Sprintf("更新为 %s", trimmed)); err != nil {
+		return nil, err
+	}
+	mapped := mapParameterModel(*updated)
+	return &mapped, nil
 }
 
 // ListBroadcasts returns announcements for a school.
-func (s *AdminSystemService) ListBroadcasts(schoolID string) []AdminSystemBroadcast {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	s.ensureSchoolLocked(schoolID)
-	return cloneBroadcasts(s.broadcasts[schoolID])
+func (s *AdminSystemService) ListBroadcasts(ctx context.Context, schoolID string) ([]AdminSystemBroadcast, error) {
+	schoolID = normalizeSchoolID(schoolID)
+	if err := s.ensureDefaults(ctx, schoolID); err != nil {
+		return nil, err
+	}
+	broadcasts, err := s.broadcastRepo.List(ctx, schoolID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]AdminSystemBroadcast, len(broadcasts))
+	for i := range broadcasts {
+		out[i] = mapBroadcastModel(broadcasts[i])
+	}
+	return out, nil
 }
 
 // UpdateBroadcast updates broadcast status or pin state.
-func (s *AdminSystemService) UpdateBroadcast(schoolID, broadcastID string, status *AdminSystemBroadcastStatus, pinned *bool, operator string) (*AdminSystemBroadcast, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.ensureSchoolLocked(schoolID)
+func (s *AdminSystemService) UpdateBroadcast(ctx context.Context, schoolID, broadcastID string, status *AdminSystemBroadcastStatus, pinned *bool, operator string) (*AdminSystemBroadcast, error) {
+	schoolID = normalizeSchoolID(schoolID)
+	if err := s.ensureDefaults(ctx, schoolID); err != nil {
+		return nil, err
+	}
 	if operator == "" {
 		operator = "系统管理员"
 	}
-	items := s.broadcasts[schoolID]
-	for idx := range items {
-		if items[idx].ID != broadcastID {
-			continue
+	existing, err := s.broadcastRepo.Get(ctx, schoolID, broadcastID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, ErrSystemBroadcastNotFound
 		}
-
-		if status != nil {
-			items[idx].Status = *status
-			switch *status {
-			case AdminSystemBroadcastSent:
-				items[idx].ScheduleLabel = fmt.Sprintf("发送时间：%s", time.Now().Format("01-02 15:04"))
-			case AdminSystemBroadcastScheduled:
-				items[idx].ScheduleLabel = fmt.Sprintf("计划发送：%s", time.Now().Format("01-02 15:04"))
-			case AdminSystemBroadcastDraft:
-				items[idx].ScheduleLabel = fmt.Sprintf("草稿保存：%s", time.Now().Format("01-02 15:04"))
-			}
-		}
-
-		if pinned != nil {
-			items[idx].Pinned = *pinned
-		}
-
-		s.broadcasts[schoolID][idx] = items[idx]
-		var changes []string
-		if status != nil {
-			changes = append(changes, fmt.Sprintf("更新状态为 %s", string(*status)))
-		}
-		if pinned != nil {
-			if *pinned {
-				changes = append(changes, "置顶")
-			} else {
-				changes = append(changes, "取消置顶")
-			}
-		}
-		s.appendAuditLocked(schoolID, "通知广播", fmt.Sprintf("更新公告 %s", items[idx].Title), operator, strings.Join(changes, "；"))
-		updated := items[idx]
-		return &updated, nil
+		return nil, err
 	}
-	return nil, ErrSystemBroadcastNotFound
+	updates := make(map[string]any)
+	var changes []string
+	if status != nil {
+		updates["status"] = string(*status)
+		updates["schedule_label"] = buildBroadcastScheduleLabel(*status)
+		changes = append(changes, fmt.Sprintf("更新状态为 %s", string(*status)))
+	}
+	if pinned != nil {
+		updates["pinned"] = *pinned
+		if *pinned {
+			changes = append(changes, "置顶")
+		} else {
+			changes = append(changes, "取消置顶")
+		}
+	}
+	if len(updates) == 0 {
+		mapped := mapBroadcastModel(*existing)
+		return &mapped, nil
+	}
+	updated, err := s.broadcastRepo.UpdateFields(ctx, schoolID, broadcastID, updates)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, ErrSystemBroadcastNotFound
+		}
+		return nil, err
+	}
+	if len(changes) > 0 {
+		if err := s.appendAudit(ctx, schoolID, "通知广播", fmt.Sprintf("更新公告 %s", updated.Title), operator, strings.Join(changes, "；")); err != nil {
+			return nil, err
+		}
+	}
+	mapped := mapBroadcastModel(*updated)
+	return &mapped, nil
 }
 
 // ListAuditLogs returns audit logs sorted by time desc. limit <=0 returns all.
-func (s *AdminSystemService) ListAuditLogs(schoolID string, limit int) []AdminSystemAuditLog {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	s.ensureSchoolLocked(schoolID)
-	logs := cloneAuditLogs(s.auditLogs[schoolID])
-	sort.Slice(logs, func(i, j int) bool {
-		return logs[i].createdAt.After(logs[j].createdAt)
+func (s *AdminSystemService) ListAuditLogs(ctx context.Context, schoolID string, limit int) ([]AdminSystemAuditLog, error) {
+	schoolID = normalizeSchoolID(schoolID)
+	if err := s.ensureDefaults(ctx, schoolID); err != nil {
+		return nil, err
+	}
+	logs, err := s.auditRepo.List(ctx, schoolID, limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]AdminSystemAuditLog, len(logs))
+	for i := range logs {
+		out[i] = AdminSystemAuditLog{
+			Category:  logs[i].Category,
+			Action:    logs[i].Action,
+			Operator:  logs[i].Operator,
+			Detail:    logs[i].Detail,
+			TimeLabel: logs[i].TimeLabel,
+			createdAt: logs[i].CreatedAt,
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].createdAt.After(out[j].createdAt)
 	})
-	if limit > 0 && len(logs) > limit {
-		return logs[:limit]
+	if limit > 0 && len(out) > limit {
+		return out[:limit], nil
 	}
-	return logs
+	return out, nil
 }
 
-func (s *AdminSystemService) ensureSchoolLocked(schoolID string) {
-	if schoolID == "" {
-		schoolID = "default"
+func (s *AdminSystemService) appendAudit(ctx context.Context, schoolID, category, action, operator, detail string) error {
+	if operator == "" {
+		operator = "系统管理员"
 	}
-	if _, ok := s.switches[schoolID]; !ok {
-		s.switches[schoolID] = cloneSwitches(defaultSystemSwitches)
-	}
-	if _, ok := s.parameters[schoolID]; !ok {
-		s.parameters[schoolID] = cloneParameters(defaultSystemParameters)
-	}
-	if _, ok := s.broadcasts[schoolID]; !ok {
-		s.broadcasts[schoolID] = cloneBroadcasts(defaultSystemBroadcasts)
-	}
-	if _, ok := s.auditLogs[schoolID]; !ok {
-		s.auditLogs[schoolID] = cloneAuditLogs(defaultSystemAuditLogs)
-	}
-}
-
-func (s *AdminSystemService) appendAuditLocked(schoolID, category, action, operator, detail string) {
-	logs := s.auditLogs[schoolID]
-	now := time.Now()
-	entry := AdminSystemAuditLog{
+	entry := &domain.SystemAuditLog{
+		SchoolID:  schoolID,
 		Category:  category,
 		Action:    action,
 		Operator:  operator,
 		Detail:    detail,
-		TimeLabel: now.Format("01-02 15:04"),
-		createdAt: now,
+		CreatedAt: time.Now(),
 	}
-	logs = append([]AdminSystemAuditLog{entry}, logs...)
-	if len(logs) > 200 {
-		logs = logs[:200]
-	}
-	s.auditLogs[schoolID] = logs
+	entry.TimeLabel = entry.CreatedAt.Format("01-02 15:04")
+	return s.auditRepo.Create(ctx, entry)
 }
 
 func statusVerb(enabled bool) string {
@@ -272,27 +325,188 @@ func statusVerb(enabled bool) string {
 	return "停用"
 }
 
-func cloneSwitches(values []AdminSystemSwitch) []AdminSystemSwitch {
-	out := make([]AdminSystemSwitch, len(values))
-	copy(out, values)
+func normalizeSchoolID(id string) string {
+	if strings.TrimSpace(id) == "" {
+		return "default"
+	}
+	return id
+}
+
+func mapSwitchModel(model domain.SystemSwitch) AdminSystemSwitch {
+	return AdminSystemSwitch{
+		ID:               model.ID,
+		Title:            model.Title,
+		Description:      model.Description,
+		Enabled:          model.Enabled,
+		LastUpdatedLabel: model.LastUpdatedLabel,
+		Responsible:      model.Responsible,
+		IconName:         model.IconName,
+		Tags:             parseTags(model.Tags),
+		Environment:      model.Environment,
+	}
+}
+
+func mapParameterModel(model domain.SystemParameter) AdminSystemParameter {
+	return AdminSystemParameter{
+		ID:               model.ID,
+		Key:              model.Key,
+		Value:            model.Value,
+		Scope:            model.Scope,
+		Description:      model.Description,
+		LastUpdatedLabel: model.LastUpdatedLabel,
+		Locked:           model.Locked,
+	}
+}
+
+func mapBroadcastModel(model domain.SystemBroadcast) AdminSystemBroadcast {
+	return AdminSystemBroadcast{
+		ID:             model.ID,
+		Title:          model.Title,
+		MessagePreview: model.MessagePreview,
+		Status:         AdminSystemBroadcastStatus(model.Status),
+		TargetLabel:    model.TargetLabel,
+		ScheduleLabel:  model.ScheduleLabel,
+		CreatedBy:      model.CreatedBy,
+		Pinned:         model.Pinned,
+	}
+}
+
+func parseTags(raw string) []string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return nil
+	}
+	parts := strings.Split(trimmed, ",")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if v := strings.TrimSpace(part); v != "" {
+			out = append(out, v)
+		}
+	}
 	return out
 }
 
-func cloneParameters(values []AdminSystemParameter) []AdminSystemParameter {
-	out := make([]AdminSystemParameter, len(values))
-	copy(out, values)
+func joinTags(tags []string) string {
+	if len(tags) == 0 {
+		return ""
+	}
+	return strings.Join(tags, ",")
+}
+
+func buildBroadcastScheduleLabel(status AdminSystemBroadcastStatus) string {
+	now := time.Now().Format("01-02 15:04")
+	switch status {
+	case AdminSystemBroadcastSent:
+		return fmt.Sprintf("发送时间：%s", now)
+	case AdminSystemBroadcastScheduled:
+		return fmt.Sprintf("计划发送：%s", now)
+	default:
+		return fmt.Sprintf("草稿保存：%s", now)
+	}
+}
+
+func (s *AdminSystemService) ensureDefaults(ctx context.Context, schoolID string) error {
+	s.seedMu.Lock()
+	if s.seeded[schoolID] {
+		s.seedMu.Unlock()
+		return nil
+	}
+	s.seedMu.Unlock()
+
+	if err := s.switchRepo.EnsureDefaults(ctx, schoolID, seedSwitchModels()); err != nil {
+		return err
+	}
+	if err := s.parameterRepo.EnsureDefaults(ctx, schoolID, seedParameterModels()); err != nil {
+		return err
+	}
+	if err := s.broadcastRepo.EnsureDefaults(ctx, schoolID, seedBroadcastModels()); err != nil {
+		return err
+	}
+	if err := s.auditRepo.EnsureDefaults(ctx, schoolID, seedAuditLogModels()); err != nil {
+		return err
+	}
+
+	s.seedMu.Lock()
+	s.seeded[schoolID] = true
+	s.seedMu.Unlock()
+	return nil
+}
+
+func seedSwitchModels() []domain.SystemSwitch {
+	now := time.Now()
+	out := make([]domain.SystemSwitch, len(defaultSystemSwitches))
+	for i, sw := range defaultSystemSwitches {
+		out[i] = domain.SystemSwitch{
+			ID:               sw.ID,
+			Title:            sw.Title,
+			Description:      sw.Description,
+			Enabled:          sw.Enabled,
+			LastUpdatedLabel: sw.LastUpdatedLabel,
+			Responsible:      sw.Responsible,
+			IconName:         sw.IconName,
+			Tags:             joinTags(sw.Tags),
+			Environment:      sw.Environment,
+			SortOrder:        i + 1,
+			CreatedAt:        now,
+			UpdatedAt:        now,
+		}
+	}
 	return out
 }
 
-func cloneBroadcasts(values []AdminSystemBroadcast) []AdminSystemBroadcast {
-	out := make([]AdminSystemBroadcast, len(values))
-	copy(out, values)
+func seedParameterModels() []domain.SystemParameter {
+	now := time.Now()
+	out := make([]domain.SystemParameter, len(defaultSystemParameters))
+	for i, param := range defaultSystemParameters {
+		out[i] = domain.SystemParameter{
+			ID:               param.ID,
+			Key:              param.Key,
+			Value:            param.Value,
+			Scope:            param.Scope,
+			Description:      param.Description,
+			LastUpdatedLabel: param.LastUpdatedLabel,
+			Locked:           param.Locked,
+			SortOrder:        i + 1,
+			CreatedAt:        now,
+			UpdatedAt:        now,
+		}
+	}
 	return out
 }
 
-func cloneAuditLogs(values []AdminSystemAuditLog) []AdminSystemAuditLog {
-	out := make([]AdminSystemAuditLog, len(values))
-	copy(out, values)
+func seedBroadcastModels() []domain.SystemBroadcast {
+	now := time.Now()
+	out := make([]domain.SystemBroadcast, len(defaultSystemBroadcasts))
+	for i, b := range defaultSystemBroadcasts {
+		out[i] = domain.SystemBroadcast{
+			ID:             b.ID,
+			Title:          b.Title,
+			MessagePreview: b.MessagePreview,
+			Status:         string(b.Status),
+			TargetLabel:    b.TargetLabel,
+			ScheduleLabel:  b.ScheduleLabel,
+			CreatedBy:      b.CreatedBy,
+			Pinned:         b.Pinned,
+			SortOrder:      i + 1,
+			CreatedAt:      now,
+			UpdatedAt:      now,
+		}
+	}
+	return out
+}
+
+func seedAuditLogModels() []domain.SystemAuditLog {
+	out := make([]domain.SystemAuditLog, len(defaultSystemAuditLogs))
+	for i, log := range defaultSystemAuditLogs {
+		out[i] = domain.SystemAuditLog{
+			Category:  log.Category,
+			Action:    log.Action,
+			Operator:  log.Operator,
+			Detail:    log.Detail,
+			TimeLabel: log.TimeLabel,
+			CreatedAt: log.createdAt,
+		}
+	}
 	return out
 }
 

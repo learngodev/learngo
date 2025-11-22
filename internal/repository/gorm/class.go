@@ -42,6 +42,17 @@ func (s *ClassStore) GetByID(ctx context.Context, id string) (*domain.Class, err
 	return &class, nil
 }
 
+func (s *ClassStore) ListByIDs(ctx context.Context, ids []string) ([]domain.Class, error) {
+	if len(ids) == 0 {
+		return []domain.Class{}, nil
+	}
+	var classes []domain.Class
+	if err := s.db.WithContext(ctx).Where("id IN ?", ids).Find(&classes).Error; err != nil {
+		return nil, err
+	}
+	return classes, nil
+}
+
 func (s *ClassStore) UpdateName(ctx context.Context, id, schoolID, name string) error {
 	return s.db.WithContext(ctx).
 		Model(&domain.Class{}).

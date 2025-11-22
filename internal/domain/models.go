@@ -40,13 +40,13 @@ type Account struct {
 
 // PasswordResetToken stores a single-use token for resetting account passwords.
 type PasswordResetToken struct {
-	ID        string     `gorm:"primaryKey;size:36"`
-	AccountID string     `gorm:"size:36;index"`
-	SchoolID  string     `gorm:"size:36;index"`
-	TokenHash string     `gorm:"size:128;uniqueIndex"`
-	ExpiresAt time.Time  `gorm:"index"`
+	ID         string    `gorm:"primaryKey;size:36"`
+	AccountID  string    `gorm:"size:36;index"`
+	SchoolID   string    `gorm:"size:36;index"`
+	TokenHash  string    `gorm:"size:128;uniqueIndex"`
+	ExpiresAt  time.Time `gorm:"index"`
 	ConsumedAt *time.Time
-	CreatedAt time.Time
+	CreatedAt  time.Time
 }
 
 // School represents a tenant scope.
@@ -102,6 +102,30 @@ type Student struct {
 	UpdatedAt time.Time
 }
 
+// StudentReminderPriority marks reminder urgency.
+type StudentReminderPriority string
+
+const (
+	StudentReminderPriorityNormal StudentReminderPriority = "normal"
+	StudentReminderPriorityHigh   StudentReminderPriority = "high"
+)
+
+// StudentReminder stores custom tasks created by students.
+type StudentReminder struct {
+	ID          string `gorm:"primaryKey;size:36"`
+	StudentID   string `gorm:"size:36;index"`
+	Title       string `gorm:"size:128"`
+	Description string `gorm:"size:256"`
+	TimeLabel   string `gorm:"size:64"`
+	DueAt       *time.Time
+	Route       string                  `gorm:"size:128"`
+	Priority    StudentReminderPriority `gorm:"size:16;default:'normal'"`
+	Icon        string                  `gorm:"size:64"`
+	CompletedAt *time.Time
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
 // TeacherStudentLink binds teacher(s) to student.
 type TeacherStudentLink struct {
 	ID        string `gorm:"primaryKey;size:36"`
@@ -140,6 +164,7 @@ type CourseSession struct {
 	SlotID    string `gorm:"size:36;index"`
 	StartsAt  time.Time
 	EndsAt    time.Time
+	Location  string `gorm:"size:128"`
 	Source    string `gorm:"size:32"` // system or teacher
 	CreatedAt time.Time
 	UpdatedAt time.Time
@@ -396,6 +421,66 @@ type AIChatSession struct {
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
 	ClosedAt      *time.Time
+}
+
+// SystemSwitch persists administrative feature toggles.
+type SystemSwitch struct {
+	ID               string `gorm:"primaryKey;size:64"`
+	SchoolID         string `gorm:"size:36;index"`
+	Title            string `gorm:"size:256"`
+	Description      string `gorm:"size:512"`
+	Enabled          bool
+	LastUpdatedLabel string `gorm:"size:128"`
+	Responsible      string `gorm:"size:128"`
+	IconName         string `gorm:"size:64"`
+	Tags             string `gorm:"size:256"`
+	Environment      string `gorm:"size:64"`
+	SortOrder        int    `gorm:"index"`
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+}
+
+// SystemParameter stores runtime platform parameters configurable by admins.
+type SystemParameter struct {
+	ID               string `gorm:"primaryKey;size:64"`
+	SchoolID         string `gorm:"size:36;index"`
+	Key              string `gorm:"size:128"`
+	Value            string `gorm:"size:512"`
+	Scope            string `gorm:"size:128"`
+	Description      string `gorm:"size:512"`
+	LastUpdatedLabel string `gorm:"size:128"`
+	Locked           bool
+	SortOrder        int `gorm:"index"`
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+}
+
+// SystemBroadcast represents announcement metadata pushed to administrators.
+type SystemBroadcast struct {
+	ID             string `gorm:"primaryKey;size:64"`
+	SchoolID       string `gorm:"size:36;index"`
+	Title          string `gorm:"size:256"`
+	MessagePreview string `gorm:"size:512"`
+	Status         string `gorm:"size:32"`
+	TargetLabel    string `gorm:"size:128"`
+	ScheduleLabel  string `gorm:"size:128"`
+	CreatedBy      string `gorm:"size:128"`
+	Pinned         bool
+	SortOrder      int `gorm:"index"`
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+}
+
+// SystemAuditLog captures administrative activity around system settings.
+type SystemAuditLog struct {
+	ID        string    `gorm:"primaryKey;size:36"`
+	SchoolID  string    `gorm:"size:36;index"`
+	Category  string    `gorm:"size:64"`
+	Action    string    `gorm:"size:128"`
+	Operator  string    `gorm:"size:128"`
+	Detail    string    `gorm:"size:512"`
+	TimeLabel string    `gorm:"size:64"`
+	CreatedAt time.Time `gorm:"index"`
 }
 
 // AIChatMessage stores individual AI assistant exchanges.

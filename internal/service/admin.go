@@ -35,7 +35,41 @@ var (
 	ErrAdminAccountNotLocked = errors.New("account is not locked")
 	// ErrAdminPasswordResetPending indicates a reset request is already pending.
 	ErrAdminPasswordResetPending = errors.New("password reset already pending")
+	// ErrAdminBatchAccountIDsRequired indicates batch operations lack targets.
+	ErrAdminBatchAccountIDsRequired = errors.New("account_ids required")
+	// ErrAdminBatchActionUnsupported indicates action field invalid.
+	ErrAdminBatchActionUnsupported = errors.New("unsupported batch action")
 )
+
+// AdminBatchAction enumerates supported administrative bulk operations.
+type AdminBatchAction string
+
+const (
+	AdminBatchActionLock          AdminBatchAction = "lock"
+	AdminBatchActionUnlock        AdminBatchAction = "unlock"
+	AdminBatchActionResetPassword AdminBatchAction = "reset_password"
+	AdminBatchActionDelete        AdminBatchAction = "delete"
+)
+
+var adminBatchActionSet = map[AdminBatchAction]struct{}{
+	AdminBatchActionLock:          {},
+	AdminBatchActionUnlock:        {},
+	AdminBatchActionResetPassword: {},
+	AdminBatchActionDelete:        {},
+}
+
+// AdminBatchOperationInput wraps request parameters for batch account operations.
+type AdminBatchOperationInput struct {
+	SchoolID   string
+	AccountIDs []string
+	Action     AdminBatchAction
+}
+
+// AdminBatchOperationResult summarizes execution outcome of a batch action.
+type AdminBatchOperationResult struct {
+	Succeeded []string          `json:"succeeded"`
+	Failed    map[string]string `json:"failed"`
+}
 
 // NewAdminService constructs an AdminService.
 func NewAdminService(acc repository.AccountRepository, teachers repository.TeacherRepository, students repository.StudentRepository, departments repository.DepartmentRepository, classes repository.ClassRepository, links repository.TeacherStudentRepository) *AdminService {
@@ -323,6 +357,49 @@ func (s *AdminService) ListAccounts(ctx context.Context, opts ListAccountsOption
 	return summaries, filteredTotal, nil
 }
 
+// BatchOperateAccounts executes a single administrative action across multiple accounts.
+func (s *AdminService) BatchOperateAccounts(ctx context.Context, input AdminBatchOperationInput) (*AdminBatchOperationResult, error) {
+	if input.SchoolID == "" {
+		return nil, errors.New("school_id required")
+	}
+	ids := deduplicateStrings(input.AccountIDs)
+	if len(ids) == 0 {
+		return nil, ErrAdminBatchAccountIDsRequired
+	}
+	if _, ok := adminBatchActionSet[input.Action]; !ok {
+		return nil, ErrAdminBatchActionUnsupported
+	}
+
+	result := &AdminBatchOperationResult{
+		Succeeded: make([]string, 0, len(ids)),
+		Failed:    make(map[string]string),
+	}
+
+	for _, accountID := range ids {
+		var err error
+		switch input.Action {
+		case AdminBatchActionLock:
+			err = s.LockAccount(ctx, input.SchoolID, accountID)
+		case AdminBatchActionUnlock:
+			err = s.UnlockAccount(ctx, input.SchoolID, accountID)
+		case AdminBatchActionResetPassword:
+			err = s.ResetAccountPassword(ctx, input.SchoolID, accountID)
+		case AdminBatchActionDelete:
+			err = s.DeleteAccount(ctx, input.SchoolID, accountID)
+		default:
+			err = ErrAdminBatchActionUnsupported
+		}
+
+		if err != nil {
+			result.Failed[accountID] = err.Error()
+			continue
+		}
+		result.Succeeded = append(result.Succeeded, accountID)
+	}
+
+	return result, nil
+}
+
 func (s *AdminService) ResetAccountPassword(ctx context.Context, schoolID, accountID string) error {
 	account, err := s.ensureManageableAccount(ctx, schoolID, accountID)
 	if err != nil {
@@ -550,4 +627,24 @@ func (s *AdminService) DeleteClass(ctx context.Context, schoolID, classID string
 	}
 
 	return s.classes.Delete(ctx, classID, schoolID)
+}
+
+func deduplicateStrings(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(values))
+	clean := make([]string, 0, len(values))
+	for _, v := range values {
+		trimmed := strings.TrimSpace(v)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		clean = append(clean, trimmed)
+	}
+	return clean
 }

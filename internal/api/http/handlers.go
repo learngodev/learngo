@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
@@ -30,6 +31,8 @@ type Handler struct {
 	auth          *service.AuthService
 	admin         *service.AdminService
 	assignments   *service.AssignmentService
+	teacher       *service.TeacherPortalService
+	student       *service.StudentPortalService
 	notes         *service.NoteService
 	noteComments  *service.NoteCommentService
 	conversations *service.ConversationService
@@ -41,11 +44,13 @@ type Handler struct {
 }
 
 // NewHandler constructs a Handler instance.
-func NewHandler(auth *service.AuthService, admin *service.AdminService, assignments *service.AssignmentService, conversations *service.ConversationService, notes *service.NoteService, noteComments *service.NoteCommentService, oss *service.AdminOssService, system *service.AdminSystemService, ai *service.AIAssistantService, streamHub *realtime.Hub) *Handler {
+func NewHandler(auth *service.AuthService, admin *service.AdminService, assignments *service.AssignmentService, teacher *service.TeacherPortalService, student *service.StudentPortalService, conversations *service.ConversationService, notes *service.NoteService, noteComments *service.NoteCommentService, oss *service.AdminOssService, system *service.AdminSystemService, ai *service.AIAssistantService, streamHub *realtime.Hub) *Handler {
 	return &Handler{
 		auth:          auth,
 		admin:         admin,
 		assignments:   assignments,
+		teacher:       teacher,
+		student:       student,
 		notes:         notes,
 		noteComments:  noteComments,
 		conversations: conversations,
@@ -78,6 +83,7 @@ func (h *Handler) RegisterRoutes(r *gin.Engine, adminGuard gin.HandlerFunc, teac
 		admin.GET("/departments", h.ListDepartments)
 		admin.GET("/departments/:id/classes", h.ListClasses)
 		admin.GET("/accounts", h.ListAccounts)
+		admin.POST("/accounts/batch", h.BatchOperateAccounts)
 		admin.POST("/accounts/:id/password/reset", h.ResetAccountPassword)
 		admin.POST("/accounts/:id/lock", h.LockAccount)
 		admin.POST("/accounts/:id/unlock", h.UnlockAccount)
@@ -116,6 +122,25 @@ func (h *Handler) RegisterRoutes(r *gin.Engine, adminGuard gin.HandlerFunc, teac
 		submissions.POST(":id/submissions", h.SubmitAssignment)
 		submissions.GET(":id", h.GetAssignment)
 		submissions.GET(":id/submissions/me", h.GetMySubmission)
+
+		student := api.Group("/student", studentGuard)
+		student.GET("/assignments", h.ListStudentAssignments)
+		student.GET("/schedule", h.ListStudentSchedule)
+		student.GET("/agenda", h.ListStudentAgenda)
+		student.GET("/exams", h.ListStudentExams)
+		student.GET("/reminders", h.ListStudentReminders)
+		student.POST("/reminders", h.CreateStudentReminder)
+		student.PATCH("/reminders/:id", h.UpdateStudentReminder)
+		student.DELETE("/reminders/:id", h.DeleteStudentReminder)
+		student.POST("/reminders/complete_all", h.MarkAllStudentRemindersComplete)
+
+		teacher := api.Group("/teacher", teacherGuard)
+		teacher.GET("/schedule", h.ListTeacherSchedule)
+		teacher.GET("/assignments", h.ListTeacherAssignments)
+		teacher.GET("/exams", h.ListTeacherExams)
+		teacher.GET("/assignments/:id", h.GetTeacherAssignment)
+		teacher.GET("/assignments/:id/export", h.ExportTeacherAssignmentGrades)
+		teacher.GET("/agenda", h.ListTeacherAgenda)
 
 		notes := api.Group("/notes", studentGuard)
 		notes.POST("", h.CreateNote)
@@ -161,9 +186,9 @@ type passwordResetRequest struct {
 }
 
 type passwordResetConfirmRequest struct {
-	SchoolID   string `json:"school_id" validate:"required"`
-	Identifier string `json:"identifier" validate:"required"`
-	Token      string `json:"token" validate:"required"`
+	SchoolID    string `json:"school_id" validate:"required"`
+	Identifier  string `json:"identifier" validate:"required"`
+	Token       string `json:"token" validate:"required"`
 	NewPassword string `json:"new_password" validate:"required,min=6"`
 }
 
@@ -350,6 +375,31 @@ type createStudentRequest struct {
 	ClassID    string   `json:"class_id" validate:"required"`
 	TeacherIDs []string `json:"teacher_ids" validate:"required,min=1,dive,required"`
 	DefaultPwd string   `json:"default_password" validate:"required"`
+}
+
+type batchAccountActionRequest struct {
+	SchoolID   string   `json:"school_id" validate:"required"`
+	AccountIDs []string `json:"account_ids" validate:"required,min=1,dive,required"`
+	Action     string   `json:"action" validate:"required"`
+}
+
+type createStudentReminderRequest struct {
+	Title       string `json:"title" validate:"required"`
+	Description string `json:"description"`
+	TimeLabel   string `json:"time_label"`
+	Route       string `json:"route"`
+	Priority    string `json:"priority" validate:"omitempty,oneof=normal high"`
+	Icon        string `json:"icon"`
+}
+
+type updateStudentReminderRequest struct {
+	Title       *string `json:"title"`
+	Description *string `json:"description"`
+	TimeLabel   *string `json:"time_label"`
+	Route       *string `json:"route"`
+	Priority    *string `json:"priority"`
+	Icon        *string `json:"icon"`
+	Completed   *bool   `json:"completed"`
 }
 
 func (h *Handler) CreateStudent(c *gin.Context) {
@@ -698,6 +748,40 @@ func (h *Handler) DeleteAccount(c *gin.Context) {
 
 	response.Success(c, http.StatusOK, gin.H{
 		"account_id": accountID,
+	})
+}
+
+func (h *Handler) BatchOperateAccounts(c *gin.Context) {
+	var req batchAccountActionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		return
+	}
+	if err := h.validate.Struct(req); err != nil {
+		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		return
+	}
+
+	result, err := h.admin.BatchOperateAccounts(c.Request.Context(), service.AdminBatchOperationInput{
+		SchoolID:   strings.TrimSpace(req.SchoolID),
+		AccountIDs: req.AccountIDs,
+		Action:     service.AdminBatchAction(strings.ToLower(strings.TrimSpace(req.Action))),
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrAdminBatchAccountIDsRequired):
+			response.Error(c, http.StatusBadRequest, "account_ids required", nil)
+		case errors.Is(err, service.ErrAdminBatchActionUnsupported):
+			response.Error(c, http.StatusBadRequest, "unsupported action", nil)
+		default:
+			response.Error(c, http.StatusBadRequest, "unable to complete batch operation", err.Error())
+		}
+		return
+	}
+
+	response.Success(c, http.StatusOK, gin.H{
+		"succeeded": result.Succeeded,
+		"failed":    result.Failed,
 	})
 }
 
@@ -1952,7 +2036,11 @@ func (h *Handler) ListSystemSwitches(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, "school_id required", nil)
 		return
 	}
-	switches := h.system.ListSwitches(schoolID)
+	switches, err := h.system.ListSwitches(c.Request.Context(), schoolID)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "unable to list switches", err.Error())
+		return
+	}
 	response.Success(c, http.StatusOK, gin.H{"switches": switches})
 }
 
@@ -1973,7 +2061,7 @@ func (h *Handler) UpdateSystemSwitch(c *gin.Context) {
 		return
 	}
 
-	updated, err := h.system.UpdateSwitchState(req.SchoolID, switchID, *req.Enabled, "")
+	updated, err := h.system.UpdateSwitchState(c.Request.Context(), req.SchoolID, switchID, *req.Enabled, "")
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrSystemSwitchNotFound):
@@ -1993,7 +2081,11 @@ func (h *Handler) ListSystemParameters(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, "school_id required", nil)
 		return
 	}
-	params := h.system.ListParameters(schoolID)
+	params, err := h.system.ListParameters(c.Request.Context(), schoolID)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "unable to list parameters", err.Error())
+		return
+	}
 	response.Success(c, http.StatusOK, gin.H{"parameters": params})
 }
 
@@ -2014,7 +2106,7 @@ func (h *Handler) UpdateSystemParameter(c *gin.Context) {
 		return
 	}
 
-	updated, err := h.system.UpdateParameter(req.SchoolID, parameterID, req.Value, "")
+	updated, err := h.system.UpdateParameter(c.Request.Context(), req.SchoolID, parameterID, req.Value, "")
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrSystemParameterNotFound):
@@ -2034,7 +2126,11 @@ func (h *Handler) ListSystemBroadcasts(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, "school_id required", nil)
 		return
 	}
-	items := h.system.ListBroadcasts(schoolID)
+	items, err := h.system.ListBroadcasts(c.Request.Context(), schoolID)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "unable to list broadcasts", err.Error())
+		return
+	}
 	response.Success(c, http.StatusOK, gin.H{"broadcasts": items})
 }
 
@@ -2079,7 +2175,7 @@ func (h *Handler) UpdateSystemBroadcast(c *gin.Context) {
 		return
 	}
 
-	updated, err := h.system.UpdateBroadcast(req.SchoolID, broadcastID, statusPtr, req.Pinned, "")
+	updated, err := h.system.UpdateBroadcast(c.Request.Context(), req.SchoolID, broadcastID, statusPtr, req.Pinned, "")
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrSystemBroadcastNotFound):
@@ -2104,7 +2200,11 @@ func (h *Handler) ListSystemAuditLogs(c *gin.Context) {
 	if err != nil {
 		limit = 0
 	}
-	logs := h.system.ListAuditLogs(schoolID, limit)
+	logs, err := h.system.ListAuditLogs(c.Request.Context(), schoolID, limit)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "unable to list audit logs", err.Error())
+		return
+	}
 	response.Success(c, http.StatusOK, gin.H{"logs": logs})
 }
 func (h *Handler) ListOssAuditLogs(c *gin.Context) {
@@ -2384,6 +2484,737 @@ func (h *Handler) ListAssignmentSubmissions(c *gin.Context) {
 	response.Success(c, http.StatusOK, gin.H{"submissions": payload})
 }
 
+func (h *Handler) ListStudentAssignments(c *gin.Context) {
+	accountID := getAccountID(c)
+	if accountID == "" {
+		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		return
+	}
+
+	limit := parseLimit(c.DefaultQuery("limit", "20"), 20, 200)
+	items, err := h.student.ListAssignments(c.Request.Context(), accountID, limit)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrStudentProfileNotFound):
+			response.Error(c, http.StatusNotFound, "student profile not found", nil)
+		default:
+			response.Error(c, http.StatusInternalServerError, "unable to fetch assignments", err.Error())
+		}
+		return
+	}
+
+	payload := make([]gin.H, 0, len(items))
+	for _, item := range items {
+		payload = append(payload, gin.H{
+			"id":             item.ID,
+			"title":          item.Title,
+			"description":    item.Description,
+			"course_id":      item.CourseID,
+			"course_name":    item.CourseName,
+			"teacher_id":     item.TeacherID,
+			"teacher_name":   item.TeacherName,
+			"type":           string(item.Type),
+			"start_at":       item.StartAt,
+			"due_at":         item.DueAt,
+			"allow_resubmit": item.AllowResubmit,
+			"status":         item.Status,
+			"submitted_at":   item.SubmittedAt,
+			"score":          item.Score,
+			"feedback":       item.Feedback,
+			"is_overdue":     item.IsOverdue,
+		})
+	}
+
+	response.Success(c, http.StatusOK, gin.H{"assignments": payload})
+}
+
+func (h *Handler) ListStudentExams(c *gin.Context) {
+	accountID := getAccountID(c)
+	if accountID == "" {
+		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		return
+	}
+
+	limit := parseLimit(c.DefaultQuery("limit", "20"), 20, 200)
+	items, err := h.student.ListExams(c.Request.Context(), accountID, limit)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrStudentProfileNotFound):
+			response.Error(c, http.StatusNotFound, "student profile not found", nil)
+		default:
+			response.Error(c, http.StatusInternalServerError, "unable to fetch exams", err.Error())
+		}
+		return
+	}
+
+	payload := make([]gin.H, 0, len(items))
+	for _, item := range items {
+		payload = append(payload, gin.H{
+			"id":             item.ID,
+			"title":          item.Title,
+			"description":    item.Description,
+			"course_id":      item.CourseID,
+			"course_name":    item.CourseName,
+			"teacher_id":     item.TeacherID,
+			"teacher_name":   item.TeacherName,
+			"type":           string(item.Type),
+			"start_at":       item.StartAt,
+			"due_at":         item.DueAt,
+			"allow_resubmit": item.AllowResubmit,
+			"status":         item.Status,
+			"submitted_at":   item.SubmittedAt,
+			"score":          item.Score,
+			"feedback":       item.Feedback,
+			"is_overdue":     item.IsOverdue,
+		})
+	}
+
+	response.Success(c, http.StatusOK, gin.H{"exams": payload})
+}
+
+func (h *Handler) ListStudentSchedule(c *gin.Context) {
+	accountID := getAccountID(c)
+	if accountID == "" {
+		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		return
+	}
+
+	start, end, err := parseScheduleRange(c.Query("from"), c.Query("to"))
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid time range", err.Error())
+		return
+	}
+
+	items, err := h.student.ListSchedule(c.Request.Context(), accountID, start, end)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrStudentProfileNotFound):
+			response.Error(c, http.StatusNotFound, "student profile not found", nil)
+		default:
+			response.Error(c, http.StatusInternalServerError, "unable to fetch schedule", err.Error())
+		}
+		return
+	}
+
+	payload := make([]gin.H, 0, len(items))
+	for _, item := range items {
+		payload = append(payload, gin.H{
+			"session_id":   item.SessionID,
+			"course_id":    item.CourseID,
+			"course_name":  item.CourseName,
+			"teacher_id":   item.TeacherID,
+			"teacher_name": item.TeacherName,
+			"starts_at":    item.StartsAt,
+			"ends_at":      item.EndsAt,
+			"day":          item.Day,
+			"slot_id":      item.SlotID,
+			"slot_name":    item.SlotName,
+			"location":     item.Location,
+			"source":       item.Source,
+		})
+	}
+
+	response.Success(c, http.StatusOK, gin.H{"sessions": payload})
+}
+
+func (h *Handler) ListStudentAgenda(c *gin.Context) {
+	accountID := getAccountID(c)
+	if accountID == "" {
+		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		return
+	}
+
+	start, end, err := parseScheduleRange(c.Query("from"), c.Query("to"))
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid time range", err.Error())
+		return
+	}
+	includeAssignments := parseBool(c.DefaultQuery("include_assignments", "true"), true)
+
+	items, err := h.student.ListAgenda(c.Request.Context(), accountID, start, end, includeAssignments)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrStudentProfileNotFound):
+			response.Error(c, http.StatusNotFound, "student profile not found", nil)
+		default:
+			response.Error(c, http.StatusInternalServerError, "unable to fetch agenda", err.Error())
+		}
+		return
+	}
+
+	agenda := make([]gin.H, 0, len(items))
+	for _, item := range items {
+		entry := gin.H{
+			"id":           item.ID,
+			"kind":         string(item.Kind),
+			"title":        item.Title,
+			"description":  item.Description,
+			"course_id":    item.CourseID,
+			"course_name":  item.CourseName,
+			"teacher_id":   item.TeacherID,
+			"teacher_name": item.TeacherName,
+			"starts_at":    item.StartsAt,
+			"day":          item.Day,
+			"location":     item.Location,
+			"source":       item.Source,
+			"status":       item.Status,
+			"is_overdue":   item.IsOverdue,
+			"feedback":     item.Feedback,
+		}
+		if item.EndsAt != nil {
+			entry["ends_at"] = item.EndsAt
+		}
+		if item.SubmittedAt != nil {
+			entry["submitted_at"] = item.SubmittedAt
+		}
+		if item.Score != nil {
+			entry["score"] = item.Score
+		}
+		agenda = append(agenda, entry)
+	}
+
+	response.Success(c, http.StatusOK, gin.H{"agenda": agenda})
+}
+
+func (h *Handler) ListStudentReminders(c *gin.Context) {
+	accountID := getAccountID(c)
+	if accountID == "" {
+		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		return
+	}
+
+	items, err := h.student.ListCustomReminders(c.Request.Context(), accountID)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrStudentProfileNotFound):
+			response.Error(c, http.StatusNotFound, "student profile not found", nil)
+		default:
+			response.Error(c, http.StatusInternalServerError, "unable to fetch reminders", err.Error())
+		}
+		return
+	}
+
+	reminders := make([]gin.H, 0, len(items))
+	for _, item := range items {
+		reminders = append(reminders, studentReminderPayload(item))
+	}
+
+	response.Success(c, http.StatusOK, gin.H{"reminders": reminders})
+}
+
+func (h *Handler) CreateStudentReminder(c *gin.Context) {
+	var req createStudentReminderRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		return
+	}
+	if err := h.validate.Struct(req); err != nil {
+		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		return
+	}
+
+	accountID := getAccountID(c)
+	if accountID == "" {
+		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		return
+	}
+
+	priority := parseReminderPriority(req.Priority)
+	reminder, err := h.student.CreateCustomReminder(c.Request.Context(), accountID, service.CreateStudentReminderInput{
+		Title:       req.Title,
+		Description: req.Description,
+		TimeLabel:   req.TimeLabel,
+		Route:       req.Route,
+		Priority:    priority,
+		Icon:        req.Icon,
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrStudentProfileNotFound):
+			response.Error(c, http.StatusNotFound, "student profile not found", nil)
+		case errors.Is(err, service.ErrStudentReminderInvalid):
+			response.Error(c, http.StatusBadRequest, "invalid reminder", nil)
+		default:
+			response.Error(c, http.StatusInternalServerError, "unable to create reminder", err.Error())
+		}
+		return
+	}
+
+	response.Success(c, http.StatusCreated, gin.H{"reminder": studentReminderPayload(*reminder)})
+}
+
+func (h *Handler) UpdateStudentReminder(c *gin.Context) {
+	reminderID := strings.TrimSpace(c.Param("id"))
+	if reminderID == "" {
+		response.Error(c, http.StatusBadRequest, "missing reminder id", nil)
+		return
+	}
+
+	var req updateStudentReminderRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		return
+	}
+
+	accountID := getAccountID(c)
+	if accountID == "" {
+		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		return
+	}
+
+	input := service.UpdateStudentReminderInput{}
+	if req.Title != nil {
+		input.Title = req.Title
+	}
+	if req.Description != nil {
+		input.Description = req.Description
+	}
+	if req.TimeLabel != nil {
+		input.TimeLabel = req.TimeLabel
+	}
+	if req.Route != nil {
+		input.Route = req.Route
+	}
+	if req.Priority != nil {
+		priority := parseReminderPriority(*req.Priority)
+		input.Priority = &priority
+	}
+	if req.Icon != nil {
+		input.Icon = req.Icon
+	}
+	if req.Completed != nil {
+		input.Completed = req.Completed
+	}
+
+	reminder, err := h.student.UpdateCustomReminder(c.Request.Context(), accountID, reminderID, input)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrStudentProfileNotFound):
+			response.Error(c, http.StatusNotFound, "student profile not found", nil)
+		case errors.Is(err, service.ErrStudentReminderNotFound):
+			response.Error(c, http.StatusNotFound, "reminder not found", nil)
+		case errors.Is(err, service.ErrStudentReminderInvalid):
+			response.Error(c, http.StatusBadRequest, "invalid reminder", nil)
+		default:
+			response.Error(c, http.StatusInternalServerError, "unable to update reminder", err.Error())
+		}
+		return
+	}
+
+	response.Success(c, http.StatusOK, gin.H{"reminder": studentReminderPayload(*reminder)})
+}
+
+func (h *Handler) DeleteStudentReminder(c *gin.Context) {
+	reminderID := strings.TrimSpace(c.Param("id"))
+	if reminderID == "" {
+		response.Error(c, http.StatusBadRequest, "missing reminder id", nil)
+		return
+	}
+
+	accountID := getAccountID(c)
+	if accountID == "" {
+		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		return
+	}
+
+	if err := h.student.DeleteCustomReminder(c.Request.Context(), accountID, reminderID); err != nil {
+		switch {
+		case errors.Is(err, service.ErrStudentProfileNotFound):
+			response.Error(c, http.StatusNotFound, "student profile not found", nil)
+		case errors.Is(err, service.ErrStudentReminderNotFound):
+			response.Error(c, http.StatusNotFound, "reminder not found", nil)
+		default:
+			response.Error(c, http.StatusInternalServerError, "unable to delete reminder", err.Error())
+		}
+		return
+	}
+
+	response.Success(c, http.StatusNoContent, nil)
+}
+
+func (h *Handler) MarkAllStudentRemindersComplete(c *gin.Context) {
+	accountID := getAccountID(c)
+	if accountID == "" {
+		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		return
+	}
+
+	if err := h.student.MarkAllRemindersComplete(c.Request.Context(), accountID); err != nil {
+		switch {
+		case errors.Is(err, service.ErrStudentProfileNotFound):
+			response.Error(c, http.StatusNotFound, "student profile not found", nil)
+		default:
+			response.Error(c, http.StatusInternalServerError, "unable to update reminders", err.Error())
+		}
+		return
+	}
+
+	response.Success(c, http.StatusNoContent, nil)
+}
+
+func (h *Handler) ListTeacherSchedule(c *gin.Context) {
+	accountID := getAccountID(c)
+	if accountID == "" {
+		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		return
+	}
+
+	start, end, err := parseScheduleRange(c.Query("from"), c.Query("to"))
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid time range", err.Error())
+		return
+	}
+
+	items, err := h.teacher.ListSchedule(c.Request.Context(), accountID, start, end)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrTeacherProfileNotFound):
+			response.Error(c, http.StatusNotFound, "teacher profile not found", nil)
+		default:
+			response.Error(c, http.StatusInternalServerError, "unable to fetch schedule", err.Error())
+		}
+		return
+	}
+
+	sessions := make([]gin.H, 0, len(items))
+	for _, item := range items {
+		sessions = append(sessions, gin.H{
+			"session_id":  item.SessionID,
+			"course_id":   item.CourseID,
+			"course_name": item.CourseName,
+			"class_id":    item.ClassID,
+			"class_name":  item.ClassName,
+			"starts_at":   item.StartsAt,
+			"ends_at":     item.EndsAt,
+			"day":         item.Day,
+			"slot_id":     item.SlotID,
+			"slot_name":   item.SlotName,
+			"location":    item.Location,
+			"source":      item.Source,
+		})
+	}
+
+	response.Success(c, http.StatusOK, gin.H{"sessions": sessions})
+}
+
+func (h *Handler) ListTeacherAssignments(c *gin.Context) {
+	accountID := getAccountID(c)
+	if accountID == "" {
+		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		return
+	}
+
+	limit := parseLimit(c.DefaultQuery("limit", "20"), 20, 200)
+	classID := c.Query("class_id")
+	types := parseAssignmentTypes(c.Query("types"))
+
+	items, err := h.teacher.ListAssignments(c.Request.Context(), accountID, limit, classID, types)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrTeacherProfileNotFound):
+			response.Error(c, http.StatusNotFound, "teacher profile not found", nil)
+		default:
+			response.Error(c, http.StatusInternalServerError, "unable to fetch assignments", err.Error())
+		}
+		return
+	}
+
+	assignments := h.buildTeacherAssignmentPayloads(items)
+
+	response.Success(c, http.StatusOK, gin.H{"assignments": assignments})
+}
+
+func (h *Handler) ListTeacherExams(c *gin.Context) {
+	accountID := getAccountID(c)
+	if accountID == "" {
+		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		return
+	}
+
+	limit := parseLimit(c.DefaultQuery("limit", "20"), 20, 200)
+	classID := c.Query("class_id")
+
+	items, err := h.teacher.ListExams(c.Request.Context(), accountID, limit, classID)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrTeacherProfileNotFound):
+			response.Error(c, http.StatusNotFound, "teacher profile not found", nil)
+		default:
+			response.Error(c, http.StatusInternalServerError, "unable to fetch exams", err.Error())
+		}
+		return
+	}
+
+	response.Success(c, http.StatusOK, gin.H{"exams": h.buildTeacherAssignmentPayloads(items)})
+}
+
+func (h *Handler) buildTeacherAssignmentPayloads(items []service.TeacherAssignmentItem) []gin.H {
+	assignments := make([]gin.H, 0, len(items))
+	for _, item := range items {
+		payload := gin.H{
+			"id":                  item.ID,
+			"title":               item.Title,
+			"description":         item.Description,
+			"course_id":           item.CourseID,
+			"course_name":         item.CourseName,
+			"class_id":            item.ClassID,
+			"class_name":          item.ClassName,
+			"type":                string(item.Type),
+			"allow_resubmit":      item.AllowResubmit,
+			"submission_count":    item.SubmissionCount,
+			"submitted_count":     item.SubmittedCount,
+			"graded_count":        item.GradedCount,
+			"pending_grade_count": item.PendingGradeCount,
+			"missing_count":       item.MissingCount,
+			"score_distribution": gin.H{
+				"below_60":      item.ScoreDistribution.Below60,
+				"between_60_70": item.ScoreDistribution.Between60And70,
+				"between_70_80": item.ScoreDistribution.Between70And80,
+				"between_80_90": item.ScoreDistribution.Between80And90,
+				"above_90":      item.ScoreDistribution.Above90,
+			},
+		}
+		if item.StartAt != nil {
+			payload["start_at"] = item.StartAt
+		}
+		if item.DueAt != nil {
+			payload["due_at"] = item.DueAt
+		}
+		if item.LatestSubmissionAt != nil {
+			payload["latest_submission_at"] = item.LatestSubmissionAt
+		}
+		if item.ScoreAverage != nil {
+			payload["score_average"] = item.ScoreAverage
+		}
+		if item.ScoreMax != nil {
+			payload["score_max"] = item.ScoreMax
+		}
+		if item.ScoreMin != nil {
+			payload["score_min"] = item.ScoreMin
+		}
+		assignments = append(assignments, payload)
+	}
+	return assignments
+}
+
+func (h *Handler) GetTeacherAssignment(c *gin.Context) {
+	accountID := getAccountID(c)
+	if accountID == "" {
+		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		return
+	}
+	assignmentID := c.Param("id")
+	if assignmentID == "" {
+		response.Error(c, http.StatusBadRequest, "missing assignment id", nil)
+		return
+	}
+
+	includeAnswers := parseBool(c.DefaultQuery("include_answers", "false"), false)
+
+	detail, err := h.teacher.GetAssignmentDetail(c.Request.Context(), accountID, assignmentID, includeAnswers)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrTeacherProfileNotFound):
+			response.Error(c, http.StatusNotFound, "teacher profile not found", nil)
+		case errors.Is(err, service.ErrTeacherAssignmentForbidden):
+			response.Error(c, http.StatusForbidden, "assignment not accessible", nil)
+		default:
+			response.Error(c, http.StatusInternalServerError, "unable to fetch assignment", err.Error())
+		}
+		return
+	}
+
+	assignment := gin.H{
+		"id":             detail.ID,
+		"title":          detail.Title,
+		"description":    detail.Description,
+		"course_id":      detail.CourseID,
+		"course_name":    detail.CourseName,
+		"class_id":       detail.ClassID,
+		"class_name":     detail.ClassName,
+		"type":           string(detail.Type),
+		"allow_resubmit": detail.AllowResubmit,
+		"max_score":      detail.MaxScore,
+	}
+	if detail.StartAt != nil {
+		assignment["start_at"] = detail.StartAt
+	}
+	if detail.DueAt != nil {
+		assignment["due_at"] = detail.DueAt
+	}
+
+	questions := make([]gin.H, 0, len(detail.Questions))
+	for _, q := range detail.Questions {
+		entry := gin.H{
+			"id":          q.ID,
+			"type":        string(q.Type),
+			"prompt":      q.Prompt,
+			"score":       q.Score,
+			"order_index": q.OrderIndex,
+		}
+		if includeAnswers {
+			if q.Options != "" {
+				entry["options"] = q.Options
+			}
+			if q.Answer != "" {
+				entry["answer"] = q.Answer
+			}
+		}
+		questions = append(questions, entry)
+	}
+
+	stats := gin.H{
+		"submission_count":    detail.Stats.SubmissionCount,
+		"submitted_count":     detail.Stats.SubmittedCount,
+		"graded_count":        detail.Stats.GradedCount,
+		"pending_grade_count": detail.Stats.PendingGradeCount,
+		"missing_count":       detail.Stats.MissingCount,
+		"class_student_count": detail.Stats.ClassStudentCount,
+	}
+	if detail.Stats.ScoreAverage != nil {
+		stats["score_average"] = detail.Stats.ScoreAverage
+	}
+	if detail.Stats.ScoreMax != nil {
+		stats["score_max"] = detail.Stats.ScoreMax
+	}
+	if detail.Stats.ScoreMin != nil {
+		stats["score_min"] = detail.Stats.ScoreMin
+	}
+	if detail.Stats.LatestSubmissionAt != nil {
+		stats["latest_submission_at"] = detail.Stats.LatestSubmissionAt
+	}
+
+	response.Success(c, http.StatusOK, gin.H{
+		"assignment": assignment,
+		"questions":  questions,
+		"stats":      stats,
+	})
+}
+
+func (h *Handler) ExportTeacherAssignmentGrades(c *gin.Context) {
+	accountID := getAccountID(c)
+	if accountID == "" {
+		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		return
+	}
+	assignmentID := c.Param("id")
+	if assignmentID == "" {
+		response.Error(c, http.StatusBadRequest, "missing assignment id", nil)
+		return
+	}
+
+	export, err := h.teacher.ExportAssignmentGrades(c.Request.Context(), accountID, assignmentID)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrTeacherProfileNotFound):
+			response.Error(c, http.StatusNotFound, "teacher profile not found", nil)
+		case errors.Is(err, service.ErrTeacherAssignmentForbidden):
+			response.Error(c, http.StatusForbidden, "assignment not accessible", nil)
+		default:
+			response.Error(c, http.StatusInternalServerError, "unable to export grades", err.Error())
+		}
+		return
+	}
+
+	buffer := &bytes.Buffer{}
+	writer := csv.NewWriter(buffer)
+	headers := []string{"student_id", "student_number", "student_name", "status", "score", "submitted_at"}
+	if err := writer.Write(headers); err != nil {
+		response.Error(c, http.StatusInternalServerError, "unable to export grades", err.Error())
+		return
+	}
+
+	for _, row := range export.Rows {
+		scoreValue := ""
+		if row.Score != nil {
+			scoreValue = strconv.FormatFloat(*row.Score, 'f', 2, 64)
+		}
+		submittedAt := ""
+		if row.SubmittedAt != nil {
+			submittedAt = row.SubmittedAt.UTC().Format(time.RFC3339)
+		}
+		record := []string{
+			row.StudentID,
+			row.StudentNumber,
+			row.StudentName,
+			row.Status,
+			scoreValue,
+			submittedAt,
+		}
+		if err := writer.Write(record); err != nil {
+			response.Error(c, http.StatusInternalServerError, "unable to export grades", err.Error())
+			return
+		}
+	}
+
+	writer.Flush()
+	if err := writer.Error(); err != nil {
+		response.Error(c, http.StatusInternalServerError, "unable to export grades", err.Error())
+		return
+	}
+
+	filename := fmt.Sprintf("%s-%s-grades.csv", safeFilenameComponent(export.ClassName), safeFilenameComponent(export.AssignmentTitle))
+	if filename == "-grades.csv" {
+		filename = "assignment-grades.csv"
+	}
+	c.Header("Content-Type", "text/csv; charset=utf-8")
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filename))
+	c.Header("Cache-Control", "no-store")
+	c.Data(http.StatusOK, "text/csv; charset=utf-8", buffer.Bytes())
+}
+
+func (h *Handler) ListTeacherAgenda(c *gin.Context) {
+	accountID := getAccountID(c)
+	if accountID == "" {
+		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		return
+	}
+
+	start, end, err := parseScheduleRange(c.Query("from"), c.Query("to"))
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid time range", err.Error())
+		return
+	}
+	includeAssignments := parseBool(c.DefaultQuery("include_assignments", "true"), true)
+
+	items, err := h.teacher.ListAgenda(c.Request.Context(), accountID, start, end, includeAssignments)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrTeacherProfileNotFound):
+			response.Error(c, http.StatusNotFound, "teacher profile not found", nil)
+		default:
+			response.Error(c, http.StatusInternalServerError, "unable to fetch agenda", err.Error())
+		}
+		return
+	}
+
+	agenda := make([]gin.H, 0, len(items))
+	for _, item := range items {
+		entry := gin.H{
+			"id":          item.ID,
+			"kind":        item.Kind,
+			"title":       item.Title,
+			"description": item.Description,
+			"course_id":   item.CourseID,
+			"course_name": item.CourseName,
+			"class_id":    item.ClassID,
+			"class_name":  item.ClassName,
+			"starts_at":   item.StartsAt,
+			"day":         item.Day,
+			"slot_id":     item.SlotID,
+			"slot_name":   item.SlotName,
+			"location":    item.Location,
+			"source":      item.Source,
+		}
+		if item.EndsAt != nil {
+			entry["ends_at"] = item.EndsAt
+		}
+		agenda = append(agenda, entry)
+	}
+
+	response.Success(c, http.StatusOK, gin.H{"agenda": agenda})
+}
+
 type submitAssignmentRequest struct {
 	StudentID string                   `json:"student_id" validate:"required"`
 	Status    string                   `json:"status" validate:"required"`
@@ -2551,6 +3382,130 @@ func (h *Handler) GetAssignmentSubmission(c *gin.Context) {
 		"comments":   submissionCommentsPayload(comments),
 	}
 	response.Success(c, http.StatusOK, payload)
+}
+
+func parseLimit(raw string, defVal, maxVal int) int {
+	val, err := strconv.Atoi(raw)
+	if err != nil || val <= 0 {
+		return defVal
+	}
+	if val > maxVal {
+		return maxVal
+	}
+	return val
+}
+
+func parseBool(raw string, defaultVal bool) bool {
+	if raw == "" {
+		return defaultVal
+	}
+	v, err := strconv.ParseBool(raw)
+	if err != nil {
+		return defaultVal
+	}
+	return v
+}
+
+func parseScheduleRange(fromRaw, toRaw string) (time.Time, time.Time, error) {
+	loc := time.Now().Location()
+	var start time.Time
+	var err error
+	if fromRaw == "" {
+		start = time.Now().Truncate(24 * time.Hour)
+	} else {
+		start, err = time.Parse(time.RFC3339, fromRaw)
+		if err != nil {
+			return time.Time{}, time.Time{}, err
+		}
+	}
+	start = time.Date(start.Year(), start.Month(), start.Day(), 0, 0, 0, 0, loc)
+
+	var end time.Time
+	if toRaw == "" {
+		end = start.AddDate(0, 0, 7)
+	} else {
+		end, err = time.Parse(time.RFC3339, toRaw)
+		if err != nil {
+			return time.Time{}, time.Time{}, err
+		}
+	}
+
+	if !end.After(start) {
+		return time.Time{}, time.Time{}, fmt.Errorf("end must be after start")
+	}
+
+	return start, end, nil
+}
+
+func parseAssignmentTypes(raw string) []domain.AssignmentType {
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	result := make([]domain.AssignmentType, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		switch strings.ToLower(part) {
+		case string(domain.AssignmentHomework):
+			result = append(result, domain.AssignmentHomework)
+		case string(domain.AssignmentExam):
+			result = append(result, domain.AssignmentExam)
+		}
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
+func studentReminderPayload(item domain.StudentReminder) gin.H {
+	payload := gin.H{
+		"id":           item.ID,
+		"title":        item.Title,
+		"description":  item.Description,
+		"time_label":   item.TimeLabel,
+		"priority":     item.Priority,
+		"icon":         item.Icon,
+		"route":        item.Route,
+		"is_completed": item.CompletedAt != nil,
+	}
+	if item.CompletedAt != nil {
+		payload["completed_at"] = item.CompletedAt
+	}
+	return payload
+}
+
+func parseReminderPriority(raw string) domain.StudentReminderPriority {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case string(domain.StudentReminderPriorityHigh):
+		return domain.StudentReminderPriorityHigh
+	default:
+		return domain.StudentReminderPriorityNormal
+	}
+}
+
+func safeFilenameComponent(input string) string {
+	lowered := strings.ToLower(strings.TrimSpace(input))
+	if lowered == "" {
+		return ""
+	}
+	var builder strings.Builder
+	for _, r := range lowered {
+		switch {
+		case unicode.IsLetter(r) || unicode.IsDigit(r):
+			builder.WriteRune(r)
+		case r == '-' || r == '_':
+			builder.WriteRune(r)
+		case unicode.IsSpace(r):
+			builder.WriteRune('-')
+		default:
+			builder.WriteRune('-')
+		}
+	}
+	return strings.Trim(builder.String(), "-")
 }
 
 func (h *Handler) GradeSubmission(c *gin.Context) {

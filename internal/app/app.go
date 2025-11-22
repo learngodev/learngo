@@ -67,10 +67,14 @@ func New() (*Application, error) {
 	studentRepo := gormrepo.NewStudentStore(db)
 	departmentRepo := gormrepo.NewDepartmentStore(db)
 	classRepo := gormrepo.NewClassStore(db)
+	courseRepo := gormrepo.NewCourseStore(db)
+	courseSlotRepo := gormrepo.NewCourseSlotStore(db)
+	courseSessionRepo := gormrepo.NewCourseSessionStore(db)
 	teacherStudentRepo := gormrepo.NewTeacherStudentStore(db)
 	assignmentRepo := gormrepo.NewAssignmentStore(db)
 	submissionRepo := gormrepo.NewSubmissionStore(db)
 	submissionCommentRepo := gormrepo.NewSubmissionCommentStore(db)
+	studentReminderRepo := gormrepo.NewStudentReminderStore(db)
 	noteRepo := gormrepo.NewNoteStore(db)
 	noteCommentRepo := gormrepo.NewNoteCommentStore(db)
 	conversationRepo := gormrepo.NewConversationStore(db)
@@ -83,16 +87,22 @@ func New() (*Application, error) {
 	aiAuditRepo := gormrepo.NewAIAgentSettingAuditStore(db)
 	aiSessionRepo := gormrepo.NewAIChatSessionStore(db)
 	aiMessageRepo := gormrepo.NewAIChatMessageStore(db)
+	systemSwitchRepo := gormrepo.NewSystemSwitchStore(db)
+	systemParameterRepo := gormrepo.NewSystemParameterStore(db)
+	systemBroadcastRepo := gormrepo.NewSystemBroadcastStore(db)
+	systemAuditRepo := gormrepo.NewSystemAuditStore(db)
 	passwordResetRepo := gormrepo.NewPasswordResetTokenStore(db)
 
 	authService := service.NewAuthService(accountRepo, passwordResetRepo, cfg)
 	adminService := service.NewAdminService(accountRepo, teacherRepo, studentRepo, departmentRepo, classRepo, teacherStudentRepo)
 	assignmentService := service.NewAssignmentService(assignmentRepo, submissionRepo, submissionCommentRepo)
+	teacherPortalService := service.NewTeacherPortalService(teacherRepo, assignmentRepo, submissionRepo, studentRepo, courseSessionRepo, courseRepo, classRepo, courseSlotRepo, accountRepo)
+	studentPortalService := service.NewStudentPortalService(studentRepo, assignmentRepo, submissionRepo, courseRepo, courseSlotRepo, courseSessionRepo, teacherRepo, accountRepo, studentReminderRepo)
 	conversationService := service.NewConversationService(conversationRepo, messageRepo, receiptRepo, accountRepo)
 	noteService := service.NewNoteService(noteRepo, accountRepo)
 	noteCommentService := service.NewNoteCommentService(noteRepo, noteCommentRepo, accountRepo)
 	ossService := service.NewAdminOssService(ossCredentialRepo, ossPolicyRepo, ossAuditRepo, accountRepo)
-	systemService := service.NewAdminSystemService()
+	systemService := service.NewAdminSystemService(systemSwitchRepo, systemParameterRepo, systemBroadcastRepo, systemAuditRepo)
 	aiModel := service.NewEchoAIChatModel()
 	aiService := service.NewAIAssistantService(aiSettingRepo, aiAuditRepo, aiSessionRepo, aiMessageRepo, accountRepo, aiModel)
 	streamHub := realtime.NewHub()
@@ -106,7 +116,7 @@ func New() (*Application, error) {
 	)
 	apigrpc.RegisterConversationServiceServer(grpcServer, grpcserver.NewConversationServer(conversationService, streamHub))
 
-	handler := apihandlers.NewHandler(authService, adminService, assignmentService, conversationService, noteService, noteCommentService, ossService, systemService, aiService, streamHub)
+	handler := apihandlers.NewHandler(authService, adminService, assignmentService, teacherPortalService, studentPortalService, conversationService, noteService, noteCommentService, ossService, systemService, aiService, streamHub)
 
 	adminGuard := middleware.JWTAuth(middleware.AuthConfig{Secret: cfg.JWTSecret, AllowedRoles: []string{string(domain.RoleAdmin)}})
 	teacherGuard := middleware.JWTAuth(middleware.AuthConfig{Secret: cfg.JWTSecret, AllowedRoles: []string{string(domain.RoleTeacher), string(domain.RoleAdmin)}})
@@ -147,6 +157,7 @@ func migrate(db *gorm.DB) error {
 		&domain.Account{},
 		&domain.Teacher{},
 		&domain.Student{},
+		&domain.StudentReminder{},
 		&domain.TeacherStudentLink{},
 		&domain.Department{},
 		&domain.Class{},
@@ -167,6 +178,10 @@ func migrate(db *gorm.DB) error {
 		&domain.OssCredential{},
 		&domain.OssPolicy{},
 		&domain.OssAuditLog{},
+		&domain.SystemSwitch{},
+		&domain.SystemParameter{},
+		&domain.SystemBroadcast{},
+		&domain.SystemAuditLog{},
 		&domain.AIAgentSetting{},
 		&domain.AIAgentSettingAudit{},
 		&domain.AIChatSession{},
