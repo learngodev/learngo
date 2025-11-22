@@ -69,6 +69,8 @@ type StudentReminderRepository interface {
 	UpdateFields(ctx context.Context, id string, studentID string, updates map[string]any) (*domain.StudentReminder, error)
 	Delete(ctx context.Context, id string, studentID string) error
 	MarkAllCompleted(ctx context.Context, studentID string, completed bool, timestamp *time.Time) error
+	SetCompletion(ctx context.Context, id string, studentID string, completed bool, timestamp *time.Time) (*domain.StudentReminder, error)
+	MarkBatchCompleted(ctx context.Context, studentID string, ids []string, completed bool, timestamp *time.Time) error
 }
 
 // CourseRepository retrieves course metadata.

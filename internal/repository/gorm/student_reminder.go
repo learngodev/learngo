@@ -75,25 +75,64 @@ func (s *StudentReminderStore) Delete(ctx context.Context, id string, studentID 
 	return nil
 }
 
-func (s *StudentReminderStore) MarkAllCompleted(ctx context.Context, studentID string, completed bool, timestamp *time.Time) error {
-	var value any
-	if completed {
-		ts := time.Now()
-		if timestamp != nil {
-			ts = *timestamp
-		}
-		value = ts
-	} else {
-		value = nil
+func (s *StudentReminderStore) SetCompletion(ctx context.Context, id string, studentID string, completed bool, timestamp *time.Time) (*domain.StudentReminder, error) {
+	updates := map[string]any{
+		"completed_at": reminderCompletionValue(completed, timestamp),
+		"updated_at":   time.Now(),
 	}
 
+	result := s.db.WithContext(ctx).
+		Model(&domain.StudentReminder{}).
+		Where("id = ? AND student_id = ?", id, studentID).
+		Updates(updates)
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	if result.RowsAffected == 0 {
+		return nil, gorm.ErrRecordNotFound
+	}
+	return s.GetByID(ctx, id)
+}
+
+func (s *StudentReminderStore) MarkBatchCompleted(ctx context.Context, studentID string, ids []string, completed bool, timestamp *time.Time) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	updates := map[string]any{
+		"completed_at": reminderCompletionValue(completed, timestamp),
+		"updated_at":   time.Now(),
+	}
+	result := s.db.WithContext(ctx).
+		Model(&domain.StudentReminder{}).
+		Where("student_id = ? AND id IN ?", studentID, ids).
+		Updates(updates)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
+func (s *StudentReminderStore) MarkAllCompleted(ctx context.Context, studentID string, completed bool, timestamp *time.Time) error {
 	return s.db.WithContext(ctx).
 		Model(&domain.StudentReminder{}).
 		Where("student_id = ?", studentID).
 		Updates(map[string]any{
-			"completed_at": value,
+			"completed_at": reminderCompletionValue(completed, timestamp),
 			"updated_at":   time.Now(),
 		}).Error
+}
+
+func reminderCompletionValue(completed bool, timestamp *time.Time) any {
+	if !completed {
+		return nil
+	}
+	if timestamp != nil {
+		return *timestamp
+	}
+	return time.Now()
 }
 
 var _ repository.StudentReminderRepository = (*StudentReminderStore)(nil)

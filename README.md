@@ -291,6 +291,68 @@
 
 ---
 
+### 学生提醒 API
+
+自定义提醒用于补充“作业/考试/课表”之外的个人待办。所有接口均需学生角色访问。
+
+| 方法 | 路径 | 描述 |
+| --- | --- | --- |
+| `GET` | `/api/v1/student/reminders` | 列出本人自定义提醒，按创建时间倒序。|
+| `POST` | `/api/v1/student/reminders` | 新建提醒（标题必填，可选描述、时间、图标、跳转路由、优先级）。|
+| `PATCH` | `/api/v1/student/reminders/:id` | 更新提醒任意字段，含 `completed` 状态。|
+| `DELETE` | `/api/v1/student/reminders/:id` | 删除提醒。|
+| `POST` | `/api/v1/student/reminders/:id/completion` | 仅更新单条提醒的完成状态。|
+| `POST` | `/api/v1/student/reminders/completion/batch` | 批量设置多条提醒的完成/未完成状态。|
+| `POST` | `/api/v1/student/reminders/completion/all` | 一键将所有提醒标记为完成或重新激活。兼容旧路径 `/reminders/complete_all`。|
+
+#### 新建提醒请求示例
+
+```json
+{
+  "title": "准备英语演讲",
+  "description": "整理 PPT，练习 3 遍",
+  "time_label": "周五 18:00 前",
+  "priority": "high",
+  "icon": "assignment",
+  "route": "/student/notes"
+}
+```
+
+#### 单条完成状态请求
+
+> `POST /api/v1/student/reminders/:id/completion`
+
+```json
+{
+  "completed": true
+}
+```
+
+- `completed` 省略时默认为 `true`，用于“标记完成”；
+- 传 `false` 可重新激活提醒；
+- 成功时返回更新后的提醒对象，字段 `is_completed`、`completed_at` 会同步更新。
+
+#### 批量完成/撤销请求
+
+```json
+{
+  "reminder_ids": ["rem-101", "rem-205"],
+  "completed": false
+}
+```
+
+当部分 ID 不存在或不属于当前学生时，接口将返回 `404` 并提示 `reminders not found`。全部成功则返回 `204 No Content`。
+
+#### 一键完成
+
+```json
+{
+  "completed": true
+}
+```
+
+若请求体为空（或仅包含 `completed`），接口同样有效。前端可在“全部完成”按钮中直接调用。
+
 ### 笔记 / 随笔模块（学生角色，部分接口教师也可访问）
 
 | 方法 | 路径 | 描述 |

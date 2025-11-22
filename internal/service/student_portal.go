@@ -661,12 +661,66 @@ func (s *StudentPortalService) DeleteCustomReminder(ctx context.Context, account
 
 // MarkAllRemindersComplete marks all reminders as completed for the student.
 func (s *StudentPortalService) MarkAllRemindersComplete(ctx context.Context, accountID string) error {
+	return s.SetAllRemindersCompletion(ctx, accountID, true)
+}
+
+// SetReminderCompletion toggles completion for a single reminder.
+func (s *StudentPortalService) SetReminderCompletion(ctx context.Context, accountID, reminderID string, completed bool) (*domain.StudentReminder, error) {
+	student, err := s.currentStudent(ctx, accountID)
+	if err != nil {
+		return nil, err
+	}
+	var ts *time.Time
+	if completed {
+		now := time.Now()
+		ts = &now
+	}
+	updated, err := s.reminders.SetCompletion(ctx, reminderID, student.ID, completed, ts)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrStudentReminderNotFound
+		}
+		return nil, err
+	}
+	return updated, nil
+}
+
+// BatchSetReminderCompletion toggles completion for multiple reminders.
+func (s *StudentPortalService) BatchSetReminderCompletion(ctx context.Context, accountID string, reminderIDs []string, completed bool) error {
+	ids := uniqueStrings(reminderIDs)
+	if len(ids) == 0 {
+		return ErrStudentReminderInvalid
+	}
 	student, err := s.currentStudent(ctx, accountID)
 	if err != nil {
 		return err
 	}
-	now := time.Now()
-	return s.reminders.MarkAllCompleted(ctx, student.ID, true, &now)
+	var ts *time.Time
+	if completed {
+		now := time.Now()
+		ts = &now
+	}
+	if err := s.reminders.MarkBatchCompleted(ctx, student.ID, ids, completed, ts); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrStudentReminderNotFound
+		}
+		return err
+	}
+	return nil
+}
+
+// SetAllRemindersCompletion updates completion flag for all reminders.
+func (s *StudentPortalService) SetAllRemindersCompletion(ctx context.Context, accountID string, completed bool) error {
+	student, err := s.currentStudent(ctx, accountID)
+	if err != nil {
+		return err
+	}
+	var ts *time.Time
+	if completed {
+		now := time.Now()
+		ts = &now
+	}
+	return s.reminders.MarkAllCompleted(ctx, student.ID, completed, ts)
 }
 
 func (s *StudentPortalService) currentStudent(ctx context.Context, accountID string) (*domain.Student, error) {

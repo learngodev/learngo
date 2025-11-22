@@ -131,8 +131,11 @@ func (h *Handler) RegisterRoutes(r *gin.Engine, adminGuard gin.HandlerFunc, teac
 		student.GET("/reminders", h.ListStudentReminders)
 		student.POST("/reminders", h.CreateStudentReminder)
 		student.PATCH("/reminders/:id", h.UpdateStudentReminder)
+		student.POST("/reminders/:id/completion", h.UpdateStudentReminderCompletion)
+		student.POST("/reminders/completion/batch", h.BatchUpdateStudentReminderCompletion)
+		student.POST("/reminders/completion/all", h.UpdateAllStudentRemindersCompletion)
 		student.DELETE("/reminders/:id", h.DeleteStudentReminder)
-		student.POST("/reminders/complete_all", h.MarkAllStudentRemindersComplete)
+		student.POST("/reminders/complete_all", h.UpdateAllStudentRemindersCompletion)
 
 		teacher := api.Group("/teacher", teacherGuard)
 		teacher.GET("/schedule", h.ListTeacherSchedule)
@@ -400,6 +403,15 @@ type updateStudentReminderRequest struct {
 	Priority    *string `json:"priority"`
 	Icon        *string `json:"icon"`
 	Completed   *bool   `json:"completed"`
+}
+
+type reminderCompletionRequest struct {
+	Completed *bool `json:"completed"`
+}
+
+type batchReminderCompletionRequest struct {
+	ReminderIDs []string `json:"reminder_ids" validate:"required,min=1,dive,required"`
+	Completed   *bool    `json:"completed"`
 }
 
 func (h *Handler) CreateStudent(c *gin.Context) {
@@ -2832,14 +2844,115 @@ func (h *Handler) DeleteStudentReminder(c *gin.Context) {
 	response.Success(c, http.StatusNoContent, nil)
 }
 
-func (h *Handler) MarkAllStudentRemindersComplete(c *gin.Context) {
+func (h *Handler) UpdateStudentReminderCompletion(c *gin.Context) {
+	reminderID := strings.TrimSpace(c.Param("id"))
+	if reminderID == "" {
+		response.Error(c, http.StatusBadRequest, "missing reminder id", nil)
+		return
+	}
+
+	var req reminderCompletionRequest
+	if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
+		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		return
+	}
+	completed := true
+	if req.Completed != nil {
+		completed = *req.Completed
+	}
+
 	accountID := getAccountID(c)
 	if accountID == "" {
 		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
 		return
 	}
 
-	if err := h.student.MarkAllRemindersComplete(c.Request.Context(), accountID); err != nil {
+	reminder, err := h.student.SetReminderCompletion(c.Request.Context(), accountID, reminderID, completed)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrStudentProfileNotFound):
+			response.Error(c, http.StatusNotFound, "student profile not found", nil)
+		case errors.Is(err, service.ErrStudentReminderNotFound):
+			response.Error(c, http.StatusNotFound, "reminder not found", nil)
+		default:
+			response.Error(c, http.StatusInternalServerError, "unable to update reminder", err.Error())
+		}
+		return
+	}
+
+	response.Success(c, http.StatusOK, gin.H{"reminder": studentReminderPayload(*reminder)})
+}
+
+func (h *Handler) BatchUpdateStudentReminderCompletion(c *gin.Context) {
+	var req batchReminderCompletionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		return
+	}
+	if err := h.validate.Struct(req); err != nil {
+		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		return
+	}
+
+	accountID := getAccountID(c)
+	if accountID == "" {
+		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		return
+	}
+
+	ids := make([]string, 0, len(req.ReminderIDs))
+	for _, id := range req.ReminderIDs {
+		trimmed := strings.TrimSpace(id)
+		if trimmed == "" {
+			continue
+		}
+		ids = append(ids, trimmed)
+	}
+	if len(ids) == 0 {
+		response.Error(c, http.StatusBadRequest, "reminder ids required", nil)
+		return
+	}
+
+	completed := true
+	if req.Completed != nil {
+		completed = *req.Completed
+	}
+
+	if err := h.student.BatchSetReminderCompletion(c.Request.Context(), accountID, ids, completed); err != nil {
+		switch {
+		case errors.Is(err, service.ErrStudentProfileNotFound):
+			response.Error(c, http.StatusNotFound, "student profile not found", nil)
+		case errors.Is(err, service.ErrStudentReminderInvalid):
+			response.Error(c, http.StatusBadRequest, "invalid reminder ids", nil)
+		case errors.Is(err, service.ErrStudentReminderNotFound):
+			response.Error(c, http.StatusNotFound, "reminders not found", nil)
+		default:
+			response.Error(c, http.StatusInternalServerError, "unable to update reminders", err.Error())
+		}
+		return
+	}
+
+	response.Success(c, http.StatusNoContent, nil)
+}
+
+func (h *Handler) UpdateAllStudentRemindersCompletion(c *gin.Context) {
+	var req reminderCompletionRequest
+	if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
+		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		return
+	}
+	completed := true
+	if req.Completed != nil {
+		completed = *req.Completed
+	}
+
+	accountID := getAccountID(c)
+	if accountID == "" {
+		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		return
+	}
+
+	if err := h.student.SetAllRemindersCompletion(c.Request.Context(), accountID, completed); err != nil {
 		switch {
 		case errors.Is(err, service.ErrStudentProfileNotFound):
 			response.Error(c, http.StatusNotFound, "student profile not found", nil)
