@@ -35,6 +35,11 @@ type AccountRepository interface {
 	Delete(ctx context.Context, accountID, schoolID string) error
 }
 
+// SchoolRepository handles school persistence.
+type SchoolRepository interface {
+	List(ctx context.Context) ([]domain.School, error)
+}
+
 // PasswordResetTokenRepository manages password reset tokens.
 type PasswordResetTokenRepository interface {
 	Create(ctx context.Context, token *domain.PasswordResetToken) error

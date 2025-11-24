@@ -39,12 +39,13 @@ type Handler struct {
 	oss           *service.AdminOssService
 	system        *service.AdminSystemService
 	ai            *service.AIAssistantService
+	school        *service.SchoolService
 	streamHub     *realtime.Hub
 	validate      *validator.Validate
 }
 
 // NewHandler constructs a Handler instance.
-func NewHandler(auth *service.AuthService, admin *service.AdminService, assignments *service.AssignmentService, teacher *service.TeacherPortalService, student *service.StudentPortalService, conversations *service.ConversationService, notes *service.NoteService, noteComments *service.NoteCommentService, oss *service.AdminOssService, system *service.AdminSystemService, ai *service.AIAssistantService, streamHub *realtime.Hub) *Handler {
+func NewHandler(auth *service.AuthService, admin *service.AdminService, assignments *service.AssignmentService, teacher *service.TeacherPortalService, student *service.StudentPortalService, conversations *service.ConversationService, notes *service.NoteService, noteComments *service.NoteCommentService, oss *service.AdminOssService, system *service.AdminSystemService, ai *service.AIAssistantService, school *service.SchoolService, streamHub *realtime.Hub) *Handler {
 	return &Handler{
 		auth:          auth,
 		admin:         admin,
@@ -57,6 +58,7 @@ func NewHandler(auth *service.AuthService, admin *service.AdminService, assignme
 		oss:           oss,
 		system:        system,
 		ai:            ai,
+		school:        school,
 		streamHub:     streamHub,
 		validate:      validator.New(),
 	}
@@ -70,6 +72,7 @@ func (h *Handler) RegisterRoutes(r *gin.Engine, adminGuard gin.HandlerFunc, teac
 		api.POST("/auth/refresh", h.RefreshToken)
 		api.POST("/auth/password/reset/request", h.RequestPasswordReset)
 		api.POST("/auth/password/reset/confirm", h.ConfirmPasswordReset)
+		api.GET("/schools", h.ListSchools)
 
 		admin := api.Group("/admin", adminGuard)
 		admin.POST("/teachers", h.CreateTeacher)
@@ -4244,10 +4247,15 @@ func submissionCommentsPayload(comments []domain.SubmissionComment) []gin.H {
 func conversationPayload(summary service.ConversationSummary) gin.H {
 	members := make([]gin.H, 0, len(summary.Members))
 	for _, member := range summary.Members {
+		name := ""
+		if acc, ok := summary.MemberProfiles[member.AccountID]; ok {
+			name = acc.DisplayName
+		}
 		members = append(members, gin.H{
 			"id":              member.ID,
 			"conversation_id": member.ConversationID,
 			"account_id":      member.AccountID,
+			"account_name":    name,
 			"role":            string(member.Role),
 			"created_at":      member.CreatedAt,
 		})
@@ -4460,4 +4468,23 @@ func convertToTime(t *service.TimeISO8601) *time.Time {
 	}
 	parsed := t.Time
 	return &parsed
+}
+
+// ListSchools returns all schools.
+func (h *Handler) ListSchools(c *gin.Context) {
+	schools, err := h.school.ListSchools(c.Request.Context())
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "unable to list schools", err.Error())
+		return
+	}
+
+	items := make([]gin.H, 0, len(schools))
+	for _, s := range schools {
+		items = append(items, gin.H{
+			"id":   s.ID,
+			"name": s.Name,
+		})
+	}
+
+	response.Success(c, http.StatusOK, gin.H{"schools": items})
 }

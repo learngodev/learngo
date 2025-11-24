@@ -92,6 +92,7 @@ func New() (*Application, error) {
 	systemBroadcastRepo := gormrepo.NewSystemBroadcastStore(db)
 	systemAuditRepo := gormrepo.NewSystemAuditStore(db)
 	passwordResetRepo := gormrepo.NewPasswordResetTokenStore(db)
+	schoolRepo := gormrepo.NewSchoolStore(db)
 
 	authService := service.NewAuthService(accountRepo, passwordResetRepo, cfg)
 	adminService := service.NewAdminService(accountRepo, teacherRepo, studentRepo, departmentRepo, classRepo, teacherStudentRepo)
@@ -116,7 +117,9 @@ func New() (*Application, error) {
 	)
 	apigrpc.RegisterConversationServiceServer(grpcServer, grpcserver.NewConversationServer(conversationService, streamHub))
 
-	handler := apihandlers.NewHandler(authService, adminService, assignmentService, teacherPortalService, studentPortalService, conversationService, noteService, noteCommentService, ossService, systemService, aiService, streamHub)
+	schoolService := service.NewSchoolService(schoolRepo)
+
+	handler := apihandlers.NewHandler(authService, adminService, assignmentService, teacherPortalService, studentPortalService, conversationService, noteService, noteCommentService, ossService, systemService, aiService, schoolService, streamHub)
 
 	adminGuard := middleware.JWTAuth(middleware.AuthConfig{Secret: cfg.JWTSecret, AllowedRoles: []string{string(domain.RoleAdmin)}})
 	teacherGuard := middleware.JWTAuth(middleware.AuthConfig{Secret: cfg.JWTSecret, AllowedRoles: []string{string(domain.RoleTeacher), string(domain.RoleAdmin)}})

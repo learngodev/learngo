@@ -43,10 +43,11 @@ func NewConversationService(conversations repository.ConversationRepository, mes
 
 // ConversationSummary aggregates conversation with metadata.
 type ConversationSummary struct {
-	Conversation domain.Conversation
-	Members      []domain.ConversationMember
-	LastMessage  *domain.Message
-	UnreadCount  int64
+	Conversation   domain.Conversation
+	Members        []domain.ConversationMember
+	MemberProfiles map[string]domain.Account
+	LastMessage    *domain.Message
+	UnreadCount    int64
 }
 
 // SendMessageInput describes payload for sending a message.
@@ -161,11 +162,26 @@ func (s *ConversationService) ListConversations(ctx context.Context, accountID s
 		if err != nil {
 			return nil, err
 		}
+
+		memberIDs := make([]string, len(members))
+		for i, m := range members {
+			memberIDs[i] = m.AccountID
+		}
+		accounts, err := s.accounts.ListByIDs(ctx, memberIDs)
+		if err != nil {
+			return nil, err
+		}
+		profiles := make(map[string]domain.Account)
+		for _, acc := range accounts {
+			profiles[acc.ID] = acc
+		}
+
 		summaries = append(summaries, ConversationSummary{
-			Conversation: conv,
-			Members:      members,
-			LastMessage:  last,
-			UnreadCount:  unread,
+			Conversation:   conv,
+			Members:        members,
+			MemberProfiles: profiles,
+			LastMessage:    last,
+			UnreadCount:    unread,
 		})
 	}
 	return summaries, nil
