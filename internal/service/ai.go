@@ -814,10 +814,28 @@ func (s *AIAssistantService) SendMessage(ctx context.Context, input SendAIChatMe
 		return result, nil
 	}
 
+	// Fetch recent history for context
+	// Limit to last 10 messages to avoid token overflow, can be configurable
+	historyLimit := 10
+	historyMessages, err := s.messages.ListBySession(ctx, session.ID, historyLimit, now)
+	if err != nil {
+		// Log error but proceed without history? Or fail?
+		// For now, let's proceed without history if fetch fails, or maybe just log it.
+		// Since we don't have a logger here, we might just ignore or return error.
+		// Let's return error to be safe.
+		return nil, fmt.Errorf("failed to fetch history: %w", err)
+	}
+
+	// Reverse history to be chronological (oldest first)
+	for i, j := 0, len(historyMessages)-1; i < j; i, j = i+1, j-1 {
+		historyMessages[i], historyMessages[j] = historyMessages[j], historyMessages[i]
+	}
+
 	resp, err := s.model.GenerateResponse(ctx, AIChatModelRequest{
 		Setting: setting,
 		Session: session,
 		Message: content,
+		History: historyMessages,
 	})
 	if err != nil {
 		providerErr := NormalizeProviderError(err)

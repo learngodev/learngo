@@ -104,7 +104,7 @@ func New() (*Application, error) {
 	noteCommentService := service.NewNoteCommentService(noteRepo, noteCommentRepo, accountRepo)
 	ossService := service.NewAdminOssService(ossCredentialRepo, ossPolicyRepo, ossAuditRepo, accountRepo)
 	systemService := service.NewAdminSystemService(systemSwitchRepo, systemParameterRepo, systemBroadcastRepo, systemAuditRepo)
-	aiModel := service.NewEchoAIChatModel()
+	aiModel := service.NewOpenAIChatModel()
 	aiService := service.NewAIAssistantService(aiSettingRepo, aiAuditRepo, aiSessionRepo, aiMessageRepo, accountRepo, aiModel)
 	streamHub := realtime.NewHub()
 
