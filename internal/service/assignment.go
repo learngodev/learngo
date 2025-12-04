@@ -282,6 +282,7 @@ type SubmissionCommentInput struct {
 type GradeSubmissionInput struct {
 	AssignmentID string
 	SubmissionID string
+	AccountID    string
 	Score        *float64
 	Feedback     string
 	ItemScores   map[string]*float64
@@ -347,10 +348,13 @@ func (s *AssignmentService) GradeSubmission(ctx context.Context, teacherID strin
 	}
 
 	if input.Comment != nil && strings.TrimSpace(input.Comment.Content) != "" {
+		if input.AccountID == "" {
+			return nil, nil, errors.New("account id required for comment")
+		}
 		comment := &domain.SubmissionComment{
 			ID:           uuid.NewString(),
 			SubmissionID: submission.ID,
-			AuthorID:     teacherID,
+			AuthorID:     input.AccountID,
 			AuthorRole:   domain.RoleTeacher,
 			Content:      input.Comment.Content,
 			CreatedAt:    time.Now(),

@@ -3472,9 +3472,19 @@ func (h *Handler) GetAssignmentSubmission(c *gin.Context) {
 		return
 	}
 
-	teacherID := getAccountID(c)
-	if teacherID == "" {
+	accountID := getAccountID(c)
+	if accountID == "" {
 		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		return
+	}
+
+	teacherID, err := h.teacher.GetTeacherID(c.Request.Context(), accountID)
+	if err != nil {
+		if errors.Is(err, service.ErrTeacherProfileNotFound) {
+			response.Error(c, http.StatusForbidden, "teacher profile required", nil)
+		} else {
+			response.Error(c, http.StatusInternalServerError, "unable to resolve teacher profile", err.Error())
+		}
 		return
 	}
 
@@ -3642,15 +3652,26 @@ func (h *Handler) GradeSubmission(c *gin.Context) {
 		return
 	}
 
-	teacherID := getAccountID(c)
-	if teacherID == "" {
+	accountID := getAccountID(c)
+	if accountID == "" {
 		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		return
+	}
+
+	teacherID, err := h.teacher.GetTeacherID(c.Request.Context(), accountID)
+	if err != nil {
+		if errors.Is(err, service.ErrTeacherProfileNotFound) {
+			response.Error(c, http.StatusForbidden, "teacher profile required", nil)
+		} else {
+			response.Error(c, http.StatusInternalServerError, "unable to resolve teacher profile", err.Error())
+		}
 		return
 	}
 
 	input := service.GradeSubmissionInput{
 		AssignmentID: assignmentID,
 		SubmissionID: submissionID,
+		AccountID:    accountID,
 		Score:        req.Score,
 		Feedback:     req.Feedback,
 		ItemScores:   req.ItemScores,

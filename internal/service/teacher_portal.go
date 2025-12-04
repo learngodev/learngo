@@ -699,6 +699,18 @@ func (s *TeacherPortalService) loadStudentProfiles(ctx context.Context, ids []st
 	return result, nil
 }
 
+// GetTeacherID resolves the teacher ID for a given account ID.
+func (s *TeacherPortalService) GetTeacherID(ctx context.Context, accountID string) (string, error) {
+	teacher, err := s.teachers.GetByAccountID(ctx, accountID)
+	if err != nil {
+		return "", err
+	}
+	if teacher == nil {
+		return "", ErrTeacherProfileNotFound
+	}
+	return teacher.ID, nil
+}
+
 func (s *TeacherPortalService) loadAccounts(ctx context.Context, ids []string) (map[string]*domain.Account, error) {
 	result := make(map[string]*domain.Account)
 	if s.accounts == nil {
