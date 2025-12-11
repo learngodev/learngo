@@ -39,13 +39,14 @@ type Handler struct {
 	oss           *service.AdminOssService
 	system        *service.AdminSystemService
 	ai            *service.AIAssistantService
+	aiGrading     *service.AIGradingService
 	school        *service.SchoolService
 	streamHub     *realtime.Hub
 	validate      *validator.Validate
 }
 
 // NewHandler constructs a Handler instance.
-func NewHandler(auth *service.AuthService, admin *service.AdminService, assignments *service.AssignmentService, teacher *service.TeacherPortalService, student *service.StudentPortalService, conversations *service.ConversationService, notes *service.NoteService, noteComments *service.NoteCommentService, oss *service.AdminOssService, system *service.AdminSystemService, ai *service.AIAssistantService, school *service.SchoolService, streamHub *realtime.Hub) *Handler {
+func NewHandler(auth *service.AuthService, admin *service.AdminService, assignments *service.AssignmentService, teacher *service.TeacherPortalService, student *service.StudentPortalService, conversations *service.ConversationService, notes *service.NoteService, noteComments *service.NoteCommentService, oss *service.AdminOssService, system *service.AdminSystemService, ai *service.AIAssistantService, aiGrading *service.AIGradingService, school *service.SchoolService, streamHub *realtime.Hub) *Handler {
 	return &Handler{
 		auth:          auth,
 		admin:         admin,
@@ -58,6 +59,7 @@ func NewHandler(auth *service.AuthService, admin *service.AdminService, assignme
 		oss:           oss,
 		system:        system,
 		ai:            ai,
+		aiGrading:     aiGrading,
 		school:        school,
 		streamHub:     streamHub,
 		validate:      validator.New(),
@@ -147,6 +149,8 @@ func (h *Handler) RegisterRoutes(r *gin.Engine, adminGuard gin.HandlerFunc, teac
 		teacher.GET("/assignments/:id", h.GetTeacherAssignment)
 		teacher.GET("/assignments/:id/export", h.ExportTeacherAssignmentGrades)
 		teacher.GET("/agenda", h.ListTeacherAgenda)
+		teacher.POST("/grade_assignment", h.GradeAssignment)
+		teacher.POST("/generate_questions", h.GenerateQuestions)
 
 		notes := api.Group("/notes", studentGuard)
 		notes.POST("", h.CreateNote)
@@ -166,6 +170,7 @@ func (h *Handler) RegisterRoutes(r *gin.Engine, adminGuard gin.HandlerFunc, teac
 		aiStudent.POST("/sessions/:id/close", h.CloseAIChatSession)
 		aiStudent.GET("/sessions/:id/messages", h.ListAIChatMessages)
 		aiStudent.POST("/sessions/:id/messages", h.SendAIChatMessage)
+		aiStudent.POST("/check_assignment", h.CheckAssignment)
 
 		conversations := api.Group("/conversations", studentGuard)
 		conversations.POST("", h.CreateConversation)

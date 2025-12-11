@@ -106,6 +106,7 @@ func New() (*Application, error) {
 	systemService := service.NewAdminSystemService(systemSwitchRepo, systemParameterRepo, systemBroadcastRepo, systemAuditRepo)
 	aiModel := service.NewOpenAIChatModel()
 	aiService := service.NewAIAssistantService(aiSettingRepo, aiAuditRepo, aiSessionRepo, aiMessageRepo, accountRepo, aiModel)
+	aiGradingService := service.NewAIGradingService(aiSettingRepo, aiModel)
 	streamHub := realtime.NewHub()
 
 	engine := gin.New()
@@ -119,7 +120,7 @@ func New() (*Application, error) {
 
 	schoolService := service.NewSchoolService(schoolRepo)
 
-	handler := apihandlers.NewHandler(authService, adminService, assignmentService, teacherPortalService, studentPortalService, conversationService, noteService, noteCommentService, ossService, systemService, aiService, schoolService, streamHub)
+	handler := apihandlers.NewHandler(authService, adminService, assignmentService, teacherPortalService, studentPortalService, conversationService, noteService, noteCommentService, ossService, systemService, aiService, aiGradingService, schoolService, streamHub)
 
 	adminGuard := middleware.JWTAuth(middleware.AuthConfig{Secret: cfg.JWTSecret, AllowedRoles: []string{string(domain.RoleAdmin)}})
 	teacherGuard := middleware.JWTAuth(middleware.AuthConfig{Secret: cfg.JWTSecret, AllowedRoles: []string{string(domain.RoleTeacher), string(domain.RoleAdmin)}})
