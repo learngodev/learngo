@@ -209,6 +209,7 @@ func (f *fakeTeacherRepo) GetByAccountID(ctx context.Context, accountID string) 
 	}
 	return nil, nil
 }
+func (f *fakeTeacherRepo) UpdateDepartmentID(context.Context, string, *string) error { return nil }
 
 type fakeAssignmentRepo struct {
 	assignment *domain.Assignment
@@ -315,6 +316,7 @@ func (f *fakeStudentRepo) CountByClassIDs(ctx context.Context, classIDs []string
 	}
 	return result, nil
 }
+func (f *fakeStudentRepo) UpdateClassID(context.Context, string, string) error { return nil }
 
 type fakeCourseRepo struct {
 	courses map[string]string
@@ -359,7 +361,9 @@ func (f *teacherAccountRepoStub) Create(context.Context, *domain.Account) error 
 func (f *teacherAccountRepoStub) FindByIdentifier(context.Context, string, string) (*domain.Account, error) {
 	return nil, nil
 }
-func (f *teacherAccountRepoStub) FindByID(context.Context, string) (*domain.Account, error) { return nil, nil }
+func (f *teacherAccountRepoStub) FindByID(context.Context, string) (*domain.Account, error) {
+	return nil, nil
+}
 func (f *teacherAccountRepoStub) ListByIDs(ctx context.Context, ids []string) ([]domain.Account, error) {
 	if len(ids) == 0 {
 		return []domain.Account{}, nil
@@ -378,5 +382,7 @@ func (f *teacherAccountRepoStub) ListByRole(context.Context, string, domain.Role
 func (f *teacherAccountRepoStub) UpdateStatus(context.Context, string, string, domain.AccountStatus) error {
 	return nil
 }
-func (f *teacherAccountRepoStub) UpdatePasswordHash(context.Context, string, string) error { return nil }
-func (f *teacherAccountRepoStub) Delete(context.Context, string, string) error             { return nil }
+func (f *teacherAccountRepoStub) UpdatePasswordHash(context.Context, string, string) error {
+	return nil
+}
+func (f *teacherAccountRepoStub) Delete(context.Context, string, string) error { return nil }

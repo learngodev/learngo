@@ -147,6 +147,7 @@ func (noopTeacherRepo) GetByID(context.Context, string) (*domain.Teacher, error)
 func (noopTeacherRepo) GetByAccountID(context.Context, string) (*domain.Teacher, error) {
 	return nil, nil
 }
+func (noopTeacherRepo) UpdateDepartmentID(context.Context, string, *string) error { return nil }
 
 var _ repository.TeacherRepository = (*noopTeacherRepo)(nil)
 
@@ -166,6 +167,7 @@ func (noopStudentRepo) ListByIDs(context.Context, []string) ([]domain.Student, e
 func (noopStudentRepo) CountByClassIDs(context.Context, []string) (map[string]int64, error) {
 	return map[string]int64{}, nil
 }
+func (noopStudentRepo) UpdateClassID(context.Context, string, string) error { return nil }
 
 var _ repository.StudentRepository = (*noopStudentRepo)(nil)
 
