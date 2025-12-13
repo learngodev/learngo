@@ -89,6 +89,7 @@ func (h *Handler) RegisterRoutes(r *gin.Engine, adminGuard gin.HandlerFunc, teac
 		admin.GET("/departments/:id/classes", h.ListClasses)
 		admin.GET("/accounts", h.ListAccounts)
 		admin.POST("/accounts/batch", h.BatchOperateAccounts)
+		admin.PATCH("/accounts/:id/structure", h.UpdateAccountStructure)
 		admin.POST("/accounts/:id/password/reset", h.ResetAccountPassword)
 		admin.POST("/accounts/:id/lock", h.LockAccount)
 		admin.POST("/accounts/:id/unlock", h.UnlockAccount)
@@ -679,6 +680,43 @@ func (h *Handler) ResetAccountPassword(c *gin.Context) {
 		"account_id": accountID,
 		"status":     domain.AccountStatusPasswordResetRequired,
 	})
+}
+
+func (h *Handler) UpdateAccountStructure(c *gin.Context) {
+	accountID := strings.TrimSpace(c.Param("id"))
+	if accountID == "" {
+		response.Error(c, http.StatusBadRequest, "account id is required", nil)
+		return
+	}
+
+	type updateRequest struct {
+		DepartmentID *string `json:"department_id"`
+		ClassID      *string `json:"class_id"`
+	}
+	var req updateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		return
+	}
+
+	schoolID := c.GetString("school_id")
+	if schoolID == "" {
+		response.Error(c, http.StatusUnauthorized, "school context missing", nil)
+		return
+	}
+
+	err := h.admin.UpdateAccountStructure(c.Request.Context(), service.UpdateAccountStructureInput{
+		SchoolID:     schoolID,
+		AccountID:    accountID,
+		DepartmentID: req.DepartmentID,
+		ClassID:      req.ClassID,
+	})
+	if err != nil {
+		h.handleAdminAccountError(c, err, "unable to update account structure")
+		return
+	}
+
+	response.Success(c, http.StatusOK, nil)
 }
 
 func (h *Handler) LockAccount(c *gin.Context) {

@@ -79,14 +79,15 @@ type Class struct {
 
 // Teacher profile.
 type Teacher struct {
-	ID        string `gorm:"primaryKey;size:36"`
-	SchoolID  string `gorm:"size:36;index"`
-	AccountID string `gorm:"size:36;uniqueIndex"`
-	Number    string `gorm:"size:64;uniqueIndex"`
-	Email     string `gorm:"size:128"`
-	Phone     string `gorm:"size:32"`
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID           string  `gorm:"primaryKey;size:36"`
+	SchoolID     string  `gorm:"size:36;index"`
+	AccountID    string  `gorm:"size:36;uniqueIndex"`
+	Number       string  `gorm:"size:64;uniqueIndex"`
+	DepartmentID *string `gorm:"size:36;index"`
+	Email        string  `gorm:"size:128"`
+	Phone        string  `gorm:"size:32"`
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }
 
 // Student profile.

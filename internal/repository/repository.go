@@ -54,6 +54,7 @@ type TeacherRepository interface {
 	GetByNumber(ctx context.Context, schoolID, number string) (*domain.Teacher, error)
 	GetByID(ctx context.Context, id string) (*domain.Teacher, error)
 	GetByAccountID(ctx context.Context, accountID string) (*domain.Teacher, error)
+	UpdateDepartmentID(ctx context.Context, teacherID string, departmentID *string) error
 }
 
 // StudentRepository handles student profile persistence.
@@ -64,6 +65,7 @@ type StudentRepository interface {
 	GetByAccountID(ctx context.Context, accountID string) (*domain.Student, error)
 	ListByIDs(ctx context.Context, ids []string) ([]domain.Student, error)
 	CountByClassIDs(ctx context.Context, classIDs []string) (map[string]int64, error)
+	UpdateClassID(ctx context.Context, studentID string, classID string) error
 }
 
 // StudentReminderRepository persists custom reminders created by students.

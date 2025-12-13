@@ -51,4 +51,8 @@ func (s *TeacherStore) GetByAccountID(ctx context.Context, accountID string) (*d
 	return &teacher, nil
 }
 
+func (s *TeacherStore) UpdateDepartmentID(ctx context.Context, teacherID string, departmentID *string) error {
+	return s.db.WithContext(ctx).Model(&domain.Teacher{}).Where("id = ?", teacherID).Update("department_id", departmentID).Error
+}
+
 var _ repository.TeacherRepository = (*TeacherStore)(nil)

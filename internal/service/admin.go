@@ -307,6 +307,13 @@ func (s *AdminService) ListAccounts(ctx context.Context, opts ListAccountsOption
 			if profile != nil {
 				summary.Email = profile.Email
 				summary.Phone = profile.Phone
+				if profile.DepartmentID != nil {
+					summary.DepartmentID = *profile.DepartmentID
+					department, derr := s.departments.GetByID(ctx, *profile.DepartmentID)
+					if derr == nil && department != nil {
+						summary.Department = department.Name
+					}
+				}
 			}
 		case domain.RoleStudent:
 			profile, perr := s.students.GetByAccountID(ctx, account.ID)
@@ -647,4 +654,76 @@ func deduplicateStrings(values []string) []string {
 		clean = append(clean, trimmed)
 	}
 	return clean
+}
+
+// UpdateAccountStructureInput defines parameters for updating account belonging.
+type UpdateAccountStructureInput struct {
+	SchoolID     string
+	AccountID    string
+	DepartmentID *string
+	ClassID      *string
+}
+
+// UpdateAccountStructure updates the belonging structure (class/department) of an account.
+func (s *AdminService) UpdateAccountStructure(ctx context.Context, input UpdateAccountStructureInput) error {
+	account, err := s.accounts.FindByID(ctx, input.AccountID)
+	if err != nil {
+		return err
+	}
+	if account.SchoolID != input.SchoolID {
+		return ErrAdminAccountNotFound
+	}
+
+	if account.Role == domain.RoleStudent {
+		if input.ClassID == nil {
+			return nil
+		}
+		student, err := s.students.GetByAccountID(ctx, input.AccountID)
+		if err != nil {
+			return err
+		}
+		if student == nil {
+			return errors.New("student profile not found")
+		}
+
+		classID := strings.TrimSpace(*input.ClassID)
+		if classID != "" {
+			class, err := s.classes.GetByID(ctx, classID)
+			if err != nil {
+				return err
+			}
+			if class.SchoolID != input.SchoolID {
+				return errors.New("class not found in school")
+			}
+		}
+
+		return s.students.UpdateClassID(ctx, student.ID, classID)
+	} else if account.Role == domain.RoleTeacher {
+		teacher, err := s.teachers.GetByAccountID(ctx, input.AccountID)
+		if err != nil {
+			return err
+		}
+		if teacher == nil {
+			return errors.New("teacher profile not found")
+		}
+
+		var deptID *string
+		if input.DepartmentID != nil {
+			val := strings.TrimSpace(*input.DepartmentID)
+			if val != "" {
+				dept, err := s.departments.GetByID(ctx, val)
+				if err != nil {
+					return err
+				}
+				if dept.SchoolID != input.SchoolID {
+					return errors.New("department not found in school")
+				}
+				deptID = &val
+			}
+		}
+
+		return s.teachers.UpdateDepartmentID(ctx, teacher.ID, deptID)
+	}
+
+	return nil
 }
