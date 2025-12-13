@@ -51,6 +51,10 @@ func (f *fakeSessionRepo) UpdateFields(ctx context.Context, sessionID string, up
 	return errors.New("not implemented")
 }
 
+func (f *fakeSessionRepo) Delete(ctx context.Context, sessionID string) error {
+	return errors.New("not implemented")
+}
+
 type fakeAccountRepo struct{}
 
 func (f *fakeAccountRepo) Create(ctx context.Context, account *domain.Account) error {

@@ -167,6 +167,7 @@ func (h *Handler) RegisterRoutes(r *gin.Engine, adminGuard gin.HandlerFunc, teac
 		aiStudent.GET("/sessions", h.ListAIChatSessions)
 		aiStudent.POST("/sessions", h.CreateAIChatSession)
 		aiStudent.PATCH("/sessions/:id", h.UpdateAIChatSession)
+		aiStudent.DELETE("/sessions/:id", h.DeleteAIChatSession)
 		aiStudent.POST("/sessions/:id/close", h.CloseAIChatSession)
 		aiStudent.GET("/sessions/:id/messages", h.ListAIChatMessages)
 		aiStudent.POST("/sessions/:id/messages", h.SendAIChatMessage)
@@ -1526,6 +1527,36 @@ func (h *Handler) UpdateAIChatSession(c *gin.Context) {
 	}
 
 	response.Success(c, http.StatusOK, gin.H{"session": aiChatSessionPayload(*session)})
+}
+
+func (h *Handler) DeleteAIChatSession(c *gin.Context) {
+	accountID := getAccountID(c)
+	if accountID == "" {
+		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		return
+	}
+
+	sessionID := strings.TrimSpace(c.Param("id"))
+	if sessionID == "" {
+		response.Error(c, http.StatusBadRequest, "session_id required", nil)
+		return
+	}
+
+	if err := h.ai.DeleteSession(c.Request.Context(), accountID, sessionID); err != nil {
+		switch {
+		case errors.Is(err, service.ErrAIAccountNotFound):
+			response.Error(c, http.StatusUnauthorized, "account not found", nil)
+		case errors.Is(err, service.ErrAIChatSessionNotFound):
+			response.Error(c, http.StatusNotFound, "session not found", nil)
+		case errors.Is(err, service.ErrAIChatSessionForbidden):
+			response.Error(c, http.StatusForbidden, "not allowed to access session", nil)
+		default:
+			response.Error(c, http.StatusInternalServerError, "unable to delete ai session", err.Error())
+		}
+		return
+	}
+
+	response.Success(c, http.StatusOK, nil)
 }
 
 func (h *Handler) ListAIChatSessions(c *gin.Context) {

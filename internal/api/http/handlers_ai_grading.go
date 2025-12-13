@@ -28,7 +28,12 @@ func (h *Handler) CheckAssignment(c *gin.Context) {
 		return
 	}
 
-	schoolID := c.GetString("schoolID")
+	accountID := getAccountID(c)
+	schoolID, err := h.teacher.GetSchoolID(c.Request.Context(), accountID)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "failed to resolve school context", err.Error())
+		return
+	}
 
 	// Optional: Check if student has permission, etc.
 	// For now, we just use the service.
@@ -69,7 +74,12 @@ func (h *Handler) GradeAssignment(c *gin.Context) {
 		return
 	}
 
-	schoolID := c.GetString("schoolID")
+	accountID := getAccountID(c)
+	schoolID, err := h.teacher.GetSchoolID(c.Request.Context(), accountID)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "failed to resolve school context", err.Error())
+		return
+	}
 
 	input := service.GradeAssignmentInput{
 		SchoolID:    schoolID,
@@ -107,7 +117,12 @@ func (h *Handler) GenerateQuestions(c *gin.Context) {
 		return
 	}
 
-	schoolID := c.GetString("schoolID")
+	accountID := getAccountID(c)
+	schoolID, err := h.teacher.GetSchoolID(c.Request.Context(), accountID)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "failed to resolve school context", err.Error())
+		return
+	}
 
 	input := service.GenerateQuestionsInput{
 		SchoolID:   schoolID,

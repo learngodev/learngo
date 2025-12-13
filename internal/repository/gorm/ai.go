@@ -182,19 +182,20 @@ func (s *AIChatSessionStore) UpdateFields(ctx context.Context, sessionID string,
 	if len(updates) == 0 {
 		return nil
 	}
-
-	result := s.db.WithContext(ctx).
+	return s.db.WithContext(ctx).
 		Model(&domain.AIChatSession{}).
 		Where("id = ?", sessionID).
-		Updates(updates)
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
-		return gorm.ErrRecordNotFound
-	}
-	return nil
+		Updates(updates).Error
 }
+
+func (s *AIChatSessionStore) Delete(ctx context.Context, sessionID string) error {
+	if sessionID == "" {
+		return errors.New("session_id required")
+	}
+	return s.db.WithContext(ctx).Delete(&domain.AIChatSession{}, "id = ?", sessionID).Error
+}
+
+var _ repository.AIChatSessionRepository = (*AIChatSessionStore)(nil)
 
 var _ repository.AIChatSessionRepository = (*AIChatSessionStore)(nil)
 

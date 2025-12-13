@@ -254,6 +254,7 @@ type AIChatSessionRepository interface {
 	GetByID(ctx context.Context, sessionID string) (*domain.AIChatSession, error)
 	ListByAccount(ctx context.Context, accountID string, limit int) ([]domain.AIChatSession, error)
 	UpdateFields(ctx context.Context, sessionID string, updates map[string]any) error
+	Delete(ctx context.Context, sessionID string) error
 }
 
 // AIChatMessageRepository persists AI assistant message transcripts.

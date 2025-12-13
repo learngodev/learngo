@@ -29,6 +29,18 @@ type TeacherPortalService struct {
 	accounts    repository.AccountRepository
 }
 
+// GetSchoolID retrieves the school ID for a given account.
+func (s *TeacherPortalService) GetSchoolID(ctx context.Context, accountID string) (string, error) {
+	account, err := s.accounts.FindByID(ctx, accountID)
+	if err != nil {
+		return "", err
+	}
+	if account == nil {
+		return "", errors.New("account not found")
+	}
+	return account.SchoolID, nil
+}
+
 // NewTeacherPortalService constructs TeacherPortalService.
 func NewTeacherPortalService(
 	teachers repository.TeacherRepository,

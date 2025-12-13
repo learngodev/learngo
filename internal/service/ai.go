@@ -988,3 +988,27 @@ func (s *AIAssistantService) UpdateSessionTitle(ctx context.Context, accountID, 
 
 	return session, nil
 }
+
+func (s *AIAssistantService) DeleteSession(ctx context.Context, accountID, sessionID string) error {
+	accountID = strings.TrimSpace(accountID)
+	if accountID == "" {
+		return errors.New("account_id required")
+	}
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return errors.New("session_id required")
+	}
+
+	session, err := s.sessions.GetByID(ctx, sessionID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrAIChatSessionNotFound
+		}
+		return err
+	}
+	if session.AccountID != accountID {
+		return ErrAIChatSessionForbidden
+	}
+
+	return s.sessions.Delete(ctx, sessionID)
+}
