@@ -699,9 +699,9 @@ func (h *Handler) UpdateAccountStructure(c *gin.Context) {
 		return
 	}
 
-	schoolID := c.GetString("school_id")
+	schoolID := strings.TrimSpace(c.Query("school_id"))
 	if schoolID == "" {
-		response.Error(c, http.StatusUnauthorized, "school context missing", nil)
+		response.Error(c, http.StatusBadRequest, "school_id required", nil)
 		return
 	}
 
