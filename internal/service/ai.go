@@ -498,6 +498,14 @@ func (s *AIAssistantService) ListAllUsageSummaries(ctx context.Context, input Li
 
 // UpdateSetting creates or updates the AI assistant configuration.
 func (s *AIAssistantService) UpdateSetting(ctx context.Context, input UpdateAIAgentSettingInput) (*domain.AIAgentSetting, error) {
+	// Sanitize API Key
+	if input.APIKey != "" {
+		input.APIKey = strings.TrimSpace(input.APIKey)
+		if strings.HasPrefix(strings.ToLower(input.APIKey), "bearer ") {
+			input.APIKey = strings.TrimSpace(input.APIKey[7:])
+		}
+	}
+
 	if input.SchoolID == "" {
 		return nil, errors.New("school_id required")
 	}

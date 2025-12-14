@@ -161,7 +161,12 @@ func (m *OpenAIChatModel) GenerateResponse(ctx context.Context, req AIChatModelR
 	}
 
 	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", fmt.Sprintf("Bearer %s", req.Setting.APIKey))
+
+	apiKey := strings.TrimSpace(req.Setting.APIKey)
+	if strings.HasPrefix(strings.ToLower(apiKey), "bearer ") {
+		apiKey = strings.TrimSpace(apiKey[7:])
+	}
+	httpReq.Header.Set("Authorization", fmt.Sprintf("Bearer %s", apiKey))
 
 	resp, err := m.client.Do(httpReq)
 	if err != nil {
