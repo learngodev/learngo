@@ -210,6 +210,9 @@ func (f *fakeTeacherRepo) GetByAccountID(ctx context.Context, accountID string) 
 	return nil, nil
 }
 func (f *fakeTeacherRepo) UpdateDepartmentID(context.Context, string, *string) error { return nil }
+func (f *fakeTeacherRepo) ListByDepartmentID(context.Context, string) ([]domain.Teacher, error) {
+	return nil, nil
+}
 
 type fakeAssignmentRepo struct {
 	assignment *domain.Assignment
@@ -324,6 +327,12 @@ func (f *fakeStudentRepo) CountByClassIDs(ctx context.Context, classIDs []string
 	return result, nil
 }
 func (f *fakeStudentRepo) UpdateClassID(context.Context, string, string) error { return nil }
+func (f *fakeStudentRepo) ListByClassID(context.Context, string) ([]domain.Student, error) {
+	return nil, nil
+}
+func (f *fakeStudentRepo) ListByDepartmentID(context.Context, string) ([]domain.Student, error) {
+	return nil, nil
+}
 
 type fakeCourseRepo struct {
 	courses map[string]string

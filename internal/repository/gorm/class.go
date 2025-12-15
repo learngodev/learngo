@@ -24,11 +24,14 @@ func (s *ClassStore) Create(ctx context.Context, class *domain.Class) error {
 
 func (s *ClassStore) ListByDepartment(ctx context.Context, schoolID, departmentID string) ([]domain.Class, error) {
 	var classes []domain.Class
-	query := s.db.WithContext(ctx).Where("school_id = ?", schoolID)
+	query := s.db.WithContext(ctx).Table("classes").
+		Select("classes.*, (SELECT count(*) FROM students WHERE students.class_id = classes.id) as student_count").
+		Where("classes.school_id = ?", schoolID)
+
 	if departmentID != "" {
-		query = query.Where("department_id = ?", departmentID)
+		query = query.Where("classes.department_id = ?", departmentID)
 	}
-	if err := query.Order("created_at").Find(&classes).Error; err != nil {
+	if err := query.Order("classes.created_at").Scan(&classes).Error; err != nil {
 		return nil, err
 	}
 	return classes, nil

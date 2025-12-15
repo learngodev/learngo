@@ -128,6 +128,46 @@ CREATE TABLE courses (
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE time_slots (
+    id          CHAR(36) PRIMARY KEY,
+    school_id   CHAR(36) NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    name        VARCHAR(64) NOT NULL,
+    start_time  VARCHAR(5) NOT NULL,
+    end_time    VARCHAR(5) NOT NULL,
+    sort_order  INT DEFAULT 0,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE course_schedules (
+    id          CHAR(36) PRIMARY KEY,
+    school_id   CHAR(36) NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    course_id   CHAR(36) NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+    class_id    CHAR(36) NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+    teacher_id  CHAR(36) NOT NULL REFERENCES teachers(id) ON DELETE CASCADE,
+    slot_id     CHAR(36) NOT NULL REFERENCES time_slots(id) ON DELETE CASCADE,
+    day_of_week INT NOT NULL,
+    location    VARCHAR(128),
+    start_date  TIMESTAMPTZ NOT NULL,
+    end_date    TIMESTAMPTZ NOT NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE course_sessions (
+    id          CHAR(36) PRIMARY KEY,
+    course_id   CHAR(36) NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+    class_id    CHAR(36) NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+    teacher_id  CHAR(36) NOT NULL REFERENCES teachers(id) ON DELETE CASCADE,
+    slot_id     CHAR(36) REFERENCES time_slots(id) ON DELETE SET NULL,
+    starts_at   TIMESTAMPTZ NOT NULL,
+    ends_at     TIMESTAMPTZ NOT NULL,
+    location    VARCHAR(128),
+    source      VARCHAR(32),
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE teaching_assignments (
     id          CHAR(36) PRIMARY KEY,
     school_id   CHAR(36) NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
@@ -295,6 +335,23 @@ VALUES
     ('77777777-7777-7777-7777-777777777777', '11111111-1111-1111-1111-111111111111', '计算机网络', '大二核心课程'),
     ('77777777-7777-7777-7777-777777777778', '11111111-1111-1111-1111-111111111111', '操作系统', '深入理解计算机系统核心'),
     ('77777777-7777-7777-7777-777777777779', '11111111-1111-1111-1111-111111111111', '数据结构与算法', '编程基础必修课');
+
+INSERT INTO time_slots (id, school_id, name, start_time, end_time)
+VALUES
+    ('slot-001', '11111111-1111-1111-1111-111111111111', '第1-2节', '08:00', '09:40'),
+    ('slot-002', '11111111-1111-1111-1111-111111111111', '第3-4节', '10:00', '11:40');
+
+INSERT INTO course_schedules (id, school_id, course_id, class_id, teacher_id, slot_id, day_of_week, location, start_date, end_date)
+VALUES
+    ('sched-001', '11111111-1111-1111-1111-111111111111', '77777777-7777-7777-7777-777777777777', '33333333-3333-3333-3333-333333333333', '44444444-4444-4444-4444-444444444444', 'slot-001', 1, 'A101', '2025-09-01 00:00:00+00', '2026-01-31 00:00:00+00'),
+    ('sched-002', '11111111-1111-1111-1111-111111111111', '77777777-7777-7777-7777-777777777778', '33333333-3333-3333-3333-333333333333', '44444444-4444-4444-4444-444444444444', 'slot-002', 2, 'B202', '2025-09-01 00:00:00+00', '2026-01-31 00:00:00+00');
+
+INSERT INTO course_sessions (id, course_id, class_id, teacher_id, slot_id, starts_at, ends_at, location, source)
+VALUES
+    ('sess-001', '77777777-7777-7777-7777-777777777777', '33333333-3333-3333-3333-333333333333', '44444444-4444-4444-4444-444444444444', 'slot-001', '2025-09-16 08:00:00+00', '2025-09-16 09:40:00+00', 'A101', 'system'),
+    ('sess-002', '77777777-7777-7777-7777-777777777778', '33333333-3333-3333-3333-333333333333', '44444444-4444-4444-4444-444444444444', 'slot-002', '2025-09-16 10:00:00+00', '2025-09-16 11:40:00+00', 'B202', 'system'),
+    ('sess-003', '77777777-7777-7777-7777-777777777777', '33333333-3333-3333-3333-333333333333', '44444444-4444-4444-4444-444444444444', 'slot-001', '2025-12-15 08:00:00+00', '2025-12-15 09:40:00+00', 'A101', 'system'),
+    ('sess-004', '77777777-7777-7777-7777-777777777778', '33333333-3333-3333-3333-333333333333', '44444444-4444-4444-4444-444444444444', 'slot-002', '2025-12-16 10:00:00+00', '2025-12-16 11:40:00+00', 'B202', 'system');
 
 INSERT INTO teaching_assignments (id, school_id, course_id, teacher_id, class_id)
 VALUES

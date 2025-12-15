@@ -64,6 +64,10 @@ type Department struct {
 	Name      string `gorm:"size:128"`
 	CreatedAt time.Time
 	UpdatedAt time.Time
+
+	// Virtual fields for counts
+	TeacherCount int64 `gorm:"-"`
+	StudentCount int64 `gorm:"-"`
 }
 
 // Class is a teaching class under a department.
@@ -75,6 +79,9 @@ type Class struct {
 	HomeroomID   *string `gorm:"size:36"`
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
+
+	// Virtual fields for counts
+	StudentCount int64 `gorm:"-"`
 }
 
 // Teacher profile.
@@ -135,13 +142,18 @@ type TeacherStudentLink struct {
 	CreatedAt time.Time
 }
 
-// CourseSlot defines a lesson time window.
-type CourseSlot struct {
+// CourseSchedule defines a recurring class rule.
+type CourseSchedule struct {
 	ID        string `gorm:"primaryKey;size:36"`
 	SchoolID  string `gorm:"size:36;index"`
-	Name      string `gorm:"size:64"`
-	StartTime time.Time
-	EndTime   time.Time
+	CourseID  string `gorm:"size:36;index"`
+	ClassID   string `gorm:"size:36;index"`
+	TeacherID string `gorm:"size:36;index"`
+	SlotID    string `gorm:"size:36;index"` // References TimeSlot
+	DayOfWeek int    `gorm:"index"`         // 1=Monday, 7=Sunday
+	Location  string `gorm:"size:128"`
+	StartDate time.Time
+	EndDate   time.Time
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
@@ -164,6 +176,15 @@ type TeachingAssignment struct {
 	TeacherID string `gorm:"size:36;index"`
 	ClassID   string `gorm:"size:36;index"`
 	CreatedAt time.Time
+}
+
+// TeachingAssignmentDetail extends TeachingAssignment with related entity names.
+type TeachingAssignmentDetail struct {
+	TeachingAssignment
+	ClassName    string `json:"class_name"`
+	TeacherName  string `json:"teacher_name"`
+	CourseName   string `json:"course_name"`
+	StudentCount int64  `json:"student_count"`
 }
 
 // CourseAssignmentInfo represents enriched course assignment data.
@@ -191,6 +212,22 @@ type CourseSession struct {
 	Source    string `gorm:"size:32"` // system or teacher
 	CreatedAt time.Time
 	UpdatedAt time.Time
+}
+
+// CourseStudent links a student to a course (enrollment).
+type CourseStudent struct {
+	ID        string `gorm:"primaryKey;size:36"`
+	CourseID  string `gorm:"size:36;index"`
+	StudentID string `gorm:"size:36;index"`
+	CreatedAt time.Time
+}
+
+// CourseTeacher links a teacher to a course.
+type CourseTeacher struct {
+	ID        string `gorm:"primaryKey;size:36"`
+	CourseID  string `gorm:"size:36;index"`
+	TeacherID string `gorm:"size:36;index"`
+	CreatedAt time.Time
 }
 
 // AssignmentType enumerates assignment/exam types.

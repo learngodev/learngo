@@ -24,7 +24,16 @@ func (s *DepartmentStore) Create(ctx context.Context, department *domain.Departm
 
 func (s *DepartmentStore) List(ctx context.Context, schoolID string) ([]domain.Department, error) {
 	var departments []domain.Department
-	if err := s.db.WithContext(ctx).Where("school_id = ?", schoolID).Order("created_at").Find(&departments).Error; err != nil {
+	err := s.db.WithContext(ctx).
+		Table("departments").
+		Select("departments.*, "+
+			"(SELECT count(*) FROM teachers WHERE teachers.department_id = departments.id) as teacher_count, "+
+			"(SELECT count(*) FROM students JOIN classes ON students.class_id = classes.id WHERE classes.department_id = departments.id) as student_count").
+		Where("departments.school_id = ?", schoolID).
+		Order("departments.created_at").
+		Scan(&departments).Error
+
+	if err != nil {
 		return nil, err
 	}
 	return departments, nil

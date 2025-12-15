@@ -69,6 +69,45 @@ func (s *TeachingAssignmentStore) List(ctx context.Context, schoolID string, cou
 	return assignments, total, nil
 }
 
+// ListDetails returns a paginated list of teaching assignments with related entity names.
+func (s *TeachingAssignmentStore) ListDetails(ctx context.Context, schoolID string, courseID, teacherID, classID string, page, size int) ([]domain.TeachingAssignmentDetail, int64, error) {
+	var assignments []domain.TeachingAssignmentDetail
+	var total int64
+
+	query := s.db.WithContext(ctx).Table("teaching_assignments").
+		Select("teaching_assignments.*, classes.name as class_name, accounts.display_name as teacher_name, courses.name as course_name, (SELECT count(*) FROM students WHERE students.class_id = teaching_assignments.class_id) as student_count").
+		Joins("LEFT JOIN classes ON classes.id = teaching_assignments.class_id").
+		Joins("LEFT JOIN teachers ON teachers.id = teaching_assignments.teacher_id").
+		Joins("LEFT JOIN accounts ON accounts.id = teachers.account_id").
+		Joins("LEFT JOIN courses ON courses.id = teaching_assignments.course_id").
+		Where("teaching_assignments.school_id = ?", schoolID)
+
+	if courseID != "" {
+		query = query.Where("teaching_assignments.course_id = ?", courseID)
+	}
+	if teacherID != "" {
+		query = query.Where("teaching_assignments.teacher_id = ?", teacherID)
+	}
+	if classID != "" {
+		query = query.Where("teaching_assignments.class_id = ?", classID)
+	}
+
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	if size > 0 {
+		offset := (page - 1) * size
+		query = query.Offset(offset).Limit(size)
+	}
+
+	if err := query.Scan(&assignments).Error; err != nil {
+		return nil, 0, err
+	}
+
+	return assignments, total, nil
+}
+
 // Delete removes a teaching assignment.
 func (s *TeachingAssignmentStore) Delete(ctx context.Context, id string) error {
 	result := s.db.WithContext(ctx).Delete(&domain.TeachingAssignment{}, "id = ?", id)

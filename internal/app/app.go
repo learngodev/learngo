@@ -95,6 +95,9 @@ func New() (*Application, error) {
 	passwordResetRepo := gormrepo.NewPasswordResetTokenStore(db)
 	schoolRepo := gormrepo.NewSchoolStore(db)
 	timeSlotRepo := gormrepo.NewTimeSlotRepository(db)
+	courseStudentRepo := gormrepo.NewCourseStudentStore(db)
+	courseTeacherRepo := gormrepo.NewCourseTeacherStore(db)
+	courseScheduleRepo := gormrepo.NewCourseScheduleStore(db)
 
 	authService := service.NewAuthService(accountRepo, passwordResetRepo, cfg)
 	adminService := service.NewAdminService(accountRepo, teacherRepo, studentRepo, departmentRepo, classRepo, teacherStudentRepo)
@@ -121,9 +124,10 @@ func New() (*Application, error) {
 	apigrpc.RegisterConversationServiceServer(grpcServer, grpcserver.NewConversationServer(conversationService, streamHub))
 
 	schoolService := service.NewSchoolService(schoolRepo, timeSlotRepo)
-	courseService := service.NewCourseService(courseRepo, teachingAssignmentRepo)
+	courseService := service.NewCourseService(courseRepo, teachingAssignmentRepo, courseStudentRepo, courseTeacherRepo, studentRepo, teacherRepo)
+	scheduleService := service.NewScheduleService(timeSlotRepo, courseScheduleRepo, courseSessionRepo, courseRepo)
 
-	handler := apihandlers.NewHandler(authService, adminService, assignmentService, teacherPortalService, studentPortalService, conversationService, noteService, noteCommentService, ossService, systemService, aiService, aiGradingService, schoolService, courseService, streamHub)
+	handler := apihandlers.NewHandler(authService, adminService, assignmentService, teacherPortalService, studentPortalService, conversationService, noteService, noteCommentService, ossService, systemService, aiService, aiGradingService, schoolService, courseService, scheduleService, streamHub)
 
 	adminGuard := middleware.JWTAuth(middleware.AuthConfig{Secret: cfg.JWTSecret, AllowedRoles: []string{string(domain.RoleAdmin)}})
 	teacherGuard := middleware.JWTAuth(middleware.AuthConfig{Secret: cfg.JWTSecret, AllowedRoles: []string{string(domain.RoleTeacher), string(domain.RoleAdmin)}})
@@ -169,6 +173,8 @@ func migrate(db *gorm.DB) error {
 		&domain.Department{},
 		&domain.Class{},
 		&domain.Course{},
+		&domain.CourseStudent{},
+		&domain.CourseTeacher{},
 		&domain.CourseSlot{},
 		&domain.CourseSession{},
 		&domain.Assignment{},

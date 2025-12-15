@@ -183,3 +183,19 @@ func (s *CourseSessionStore) ListByTeacherBetween(ctx context.Context, teacherID
 	}
 	return sessions, nil
 }
+
+func (s *CourseSessionStore) Create(ctx context.Context, session *domain.CourseSession) error {
+	return s.db.WithContext(ctx).Create(session).Error
+}
+
+func (s *CourseSessionStore) Update(ctx context.Context, session *domain.CourseSession) error {
+	return s.db.WithContext(ctx).Save(session).Error
+}
+
+func (s *CourseSessionStore) GetByID(ctx context.Context, id string) (*domain.CourseSession, error) {
+	var session domain.CourseSession
+	if err := s.db.WithContext(ctx).First(&session, "id = ?", id).Error; err != nil {
+		return nil, err
+	}
+	return &session, nil
+}

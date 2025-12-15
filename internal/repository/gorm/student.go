@@ -91,4 +91,24 @@ func (s *StudentStore) UpdateClassID(ctx context.Context, studentID string, clas
 	return s.db.WithContext(ctx).Model(&domain.Student{}).Where("id = ?", studentID).Update("class_id", classID).Error
 }
 
+func (s *StudentStore) ListByClassID(ctx context.Context, classID string) ([]domain.Student, error) {
+	var students []domain.Student
+	if err := s.db.WithContext(ctx).Where("class_id = ?", classID).Find(&students).Error; err != nil {
+		return nil, err
+	}
+	return students, nil
+}
+
+func (s *StudentStore) ListByDepartmentID(ctx context.Context, departmentID string) ([]domain.Student, error) {
+	var students []domain.Student
+	// Join with classes to filter by department_id
+	if err := s.db.WithContext(ctx).
+		Joins("JOIN classes ON classes.id = students.class_id").
+		Where("classes.department_id = ?", departmentID).
+		Find(&students).Error; err != nil {
+		return nil, err
+	}
+	return students, nil
+}
+
 var _ repository.StudentRepository = (*StudentStore)(nil)

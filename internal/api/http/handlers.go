@@ -42,12 +42,13 @@ type Handler struct {
 	aiGrading     *service.AIGradingService
 	school        *service.SchoolService
 	courseService *service.CourseService
+	schedule      *service.ScheduleService
 	streamHub     *realtime.Hub
 	validate      *validator.Validate
 }
 
 // NewHandler constructs a Handler instance.
-func NewHandler(auth *service.AuthService, admin *service.AdminService, assignments *service.AssignmentService, teacher *service.TeacherPortalService, student *service.StudentPortalService, conversations *service.ConversationService, notes *service.NoteService, noteComments *service.NoteCommentService, oss *service.AdminOssService, system *service.AdminSystemService, ai *service.AIAssistantService, aiGrading *service.AIGradingService, school *service.SchoolService, courseService *service.CourseService, streamHub *realtime.Hub) *Handler {
+func NewHandler(auth *service.AuthService, admin *service.AdminService, assignments *service.AssignmentService, teacher *service.TeacherPortalService, student *service.StudentPortalService, conversations *service.ConversationService, notes *service.NoteService, noteComments *service.NoteCommentService, oss *service.AdminOssService, system *service.AdminSystemService, ai *service.AIAssistantService, aiGrading *service.AIGradingService, school *service.SchoolService, courseService *service.CourseService, schedule *service.ScheduleService, streamHub *realtime.Hub) *Handler {
 	return &Handler{
 		auth:          auth,
 		admin:         admin,
@@ -63,6 +64,7 @@ func NewHandler(auth *service.AuthService, admin *service.AdminService, assignme
 		aiGrading:     aiGrading,
 		school:        school,
 		courseService: courseService,
+		schedule:      schedule,
 		streamHub:     streamHub,
 		validate:      validator.New(),
 	}
@@ -124,6 +126,9 @@ func (h *Handler) RegisterRoutes(r *gin.Engine, adminGuard gin.HandlerFunc, teac
 		admin.PATCH("/time-slots/:id", h.UpdateTimeSlot)
 		admin.DELETE("/time-slots/:id", h.DeleteTimeSlot)
 
+		admin.POST("/schedules/rules", h.CreateSchedule)
+		admin.POST("/schedules/generate", h.GenerateSessions)
+
 		admin.GET("/courses", h.ListCourses)
 		admin.POST("/courses", h.CreateCourse)
 		admin.PATCH("/courses/:id", h.UpdateCourse)
@@ -133,6 +138,8 @@ func (h *Handler) RegisterRoutes(r *gin.Engine, adminGuard gin.HandlerFunc, teac
 		admin.GET("/courses/assignments", h.ListAssignments)
 		admin.DELETE("/courses/assignments/:id", h.RemoveAssignment)
 		admin.POST("/courses/assignments/batch-remove", h.BatchRemoveAssignments)
+		admin.POST("/courses/:id/assign/students", h.AssignStudents)
+		admin.POST("/courses/:id/assign/teachers", h.AssignTeachers)
 
 		assignments := api.Group("/assignments", teacherGuard)
 		assignments.POST("", h.CreateAssignment)
@@ -172,6 +179,7 @@ func (h *Handler) RegisterRoutes(r *gin.Engine, adminGuard gin.HandlerFunc, teac
 		teacher.GET("/agenda", h.ListTeacherAgenda)
 		teacher.POST("/grade_assignment", h.GradeAssignment)
 		teacher.POST("/generate_questions", h.GenerateQuestions)
+		teacher.PATCH("/sessions/:id", h.UpdateSession)
 
 		notes := api.Group("/notes", studentGuard)
 		notes.POST("", h.CreateNote)
@@ -2434,11 +2442,13 @@ func (h *Handler) ListDepartments(c *gin.Context) {
 	items := make([]gin.H, 0, len(departments))
 	for _, dept := range departments {
 		items = append(items, gin.H{
-			"id":         dept.ID,
-			"school_id":  dept.SchoolID,
-			"name":       dept.Name,
-			"created_at": dept.CreatedAt,
-			"updated_at": dept.UpdatedAt,
+			"id":            dept.ID,
+			"school_id":     dept.SchoolID,
+			"name":          dept.Name,
+			"created_at":    dept.CreatedAt,
+			"updated_at":    dept.UpdatedAt,
+			"teacher_count": dept.TeacherCount,
+			"student_count": dept.StudentCount,
 		})
 	}
 
@@ -2473,6 +2483,7 @@ func (h *Handler) ListClasses(c *gin.Context) {
 			"name":          class.Name,
 			"created_at":    class.CreatedAt,
 			"updated_at":    class.UpdatedAt,
+			"student_count": class.StudentCount,
 		}
 		if class.HomeroomID != nil {
 			payload["homeroom_id"] = class.HomeroomID
