@@ -373,6 +373,129 @@ func (s *AssignmentService) GradeSubmission(ctx context.Context, teacherID strin
 	return &SubmissionDetail{Submission: *submission, Items: mergedItems}, comments, nil
 }
 
+// ReturnSubmissionInput captures return submission payload.
+type ReturnSubmissionInput struct {
+	AssignmentID string
+	SubmissionID string
+	AccountID    string
+	Comment      string
+}
+
+// ReturnSubmission returns a submission to student for rework.
+func (s *AssignmentService) ReturnSubmission(ctx context.Context, teacherID string, input ReturnSubmissionInput) (*SubmissionDetail, []domain.SubmissionComment, error) {
+	if teacherID == "" {
+		return nil, nil, errors.New("teacher id required")
+	}
+	if input.AssignmentID == "" || input.SubmissionID == "" {
+		return nil, nil, errors.New("assignment and submission required")
+	}
+
+	assignment, _, err := s.GetAssignment(ctx, input.AssignmentID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if assignment.TeacherID != teacherID {
+		return nil, nil, ErrSubmissionForbidden
+	}
+
+	submission, items, err := s.submissions.GetByID(ctx, input.SubmissionID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil, ErrSubmissionNotFound
+		}
+		return nil, nil, err
+	}
+	if submission.AssignmentID != input.AssignmentID {
+		return nil, nil, ErrSubmissionForbidden
+	}
+
+	submission.Status = "returned"
+	submission.UpdatedAt = time.Now()
+
+	// We use UpdateGrades here as it updates the submission record, even if items are empty
+	if err := s.submissions.UpdateGrades(ctx, submission, []domain.SubmissionItem{}); err != nil {
+		return nil, nil, err
+	}
+
+	if strings.TrimSpace(input.Comment) != "" {
+		if input.AccountID == "" {
+			return nil, nil, errors.New("account id required for comment")
+		}
+		comment := &domain.SubmissionComment{
+			ID:           uuid.NewString(),
+			SubmissionID: submission.ID,
+			AuthorID:     input.AccountID,
+			AuthorRole:   domain.RoleTeacher,
+			Content:      input.Comment,
+			CreatedAt:    time.Now(),
+		}
+		if err := s.comments.Create(ctx, comment); err != nil {
+			return nil, nil, err
+		}
+	}
+
+	comments, err := s.comments.ListBySubmission(ctx, submission.ID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return &SubmissionDetail{Submission: *submission, Items: items}, comments, nil
+}
+
+// UpdateAssignmentInput contains data for updating an assignment.
+type UpdateAssignmentInput struct {
+	ID            string
+	TeacherID     string
+	Title         *string
+	Description   *string
+	StartAt       *time.Time
+	DueAt         *time.Time
+	MaxScore      *float64
+	AllowResubmit *bool
+}
+
+// UpdateAssignment updates an existing assignment.
+func (s *AssignmentService) UpdateAssignment(ctx context.Context, input UpdateAssignmentInput) (*domain.Assignment, error) {
+	if input.ID == "" || input.TeacherID == "" {
+		return nil, errors.New("assignment id and teacher id required")
+	}
+
+	assignment, _, err := s.assignments.Get(ctx, input.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	if assignment.TeacherID != input.TeacherID {
+		return nil, errors.New("forbidden")
+	}
+
+	if input.Title != nil {
+		assignment.Title = *input.Title
+	}
+	if input.Description != nil {
+		assignment.Description = *input.Description
+	}
+	if input.StartAt != nil {
+		assignment.StartAt = input.StartAt
+	}
+	if input.DueAt != nil {
+		assignment.DueAt = input.DueAt
+	}
+	if input.MaxScore != nil {
+		assignment.MaxScore = *input.MaxScore
+	}
+	if input.AllowResubmit != nil {
+		assignment.AllowResubmit = *input.AllowResubmit
+	}
+	assignment.UpdatedAt = time.Now()
+
+	if err := s.assignments.Update(ctx, assignment); err != nil {
+		return nil, err
+	}
+
+	return assignment, nil
+}
+
 func mergeItems(original []domain.SubmissionItem, updates []domain.SubmissionItem) []domain.SubmissionItem {
 	if len(updates) == 0 {
 		return original

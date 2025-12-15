@@ -146,6 +146,11 @@ func (s *AuthService) RefreshTokens(ctx context.Context, refreshToken string) (s
 	return accessToken, newRefresh, account, nil
 }
 
+// GetAccount retrieves an account by ID.
+func (s *AuthService) GetAccount(ctx context.Context, accountID string) (*domain.Account, error) {
+	return s.accounts.FindByID(ctx, accountID)
+}
+
 // RequestPasswordReset creates a single-use token and returns plain value plus expiry.
 func (s *AuthService) RequestPasswordReset(ctx context.Context, schoolID, identifier string) (string, time.Time, error) {
 	if s.resetTokens == nil {

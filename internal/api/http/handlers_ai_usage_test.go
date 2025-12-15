@@ -175,7 +175,7 @@ func TestExportAIUsageSummariesReturnsCSV(t *testing.T) {
 		},
 		usageStatsSet: true,
 	}
-	aiService := service.NewAIAssistantService(settingRepo, nil, nil, messageRepo, accountRepo, nil)
+	aiService := service.NewAIAssistantService(settingRepo, nil, nil, messageRepo, accountRepo, nil, nil, nil, nil)
 	handler := &Handler{ai: aiService}
 
 	w := httptest.NewRecorder()
@@ -237,7 +237,7 @@ func TestGetAIUsageReportReturnsMetrics(t *testing.T) {
 		},
 		usageRoleSet: true,
 	}
-	aiService := service.NewAIAssistantService(settingRepo, nil, nil, messageRepo, accountRepo, nil)
+	aiService := service.NewAIAssistantService(settingRepo, nil, nil, messageRepo, accountRepo, nil, nil, nil, nil)
 	handler := &Handler{ai: aiService}
 
 	w := httptest.NewRecorder()
@@ -369,7 +369,7 @@ func TestGetAIUsageTimelineReturnsPayload(t *testing.T) {
 
 	messageRepo := &stubMessageRepo{timelineRows: rows}
 	settingRepo := &stubSettingRepo{setting: &domain.AIAgentSetting{SchoolID: "school"}}
-	aiService := service.NewAIAssistantService(settingRepo, nil, nil, messageRepo, nil, nil)
+	aiService := service.NewAIAssistantService(settingRepo, nil, nil, messageRepo, nil, nil, nil, nil, nil)
 	handler := &Handler{ai: aiService}
 
 	w := httptest.NewRecorder()
@@ -412,7 +412,7 @@ func TestGetAIUsageTimelineReportsInvalidRange(t *testing.T) {
 
 	messageRepo := &stubMessageRepo{}
 	settingRepo := &stubSettingRepo{setting: &domain.AIAgentSetting{SchoolID: "school"}}
-	aiService := service.NewAIAssistantService(settingRepo, nil, nil, messageRepo, nil, nil)
+	aiService := service.NewAIAssistantService(settingRepo, nil, nil, messageRepo, nil, nil, nil, nil, nil)
 	handler := &Handler{ai: aiService}
 
 	w := httptest.NewRecorder()
@@ -525,7 +525,7 @@ func TestGetAIUsageSummaryReturnsPayload(t *testing.T) {
 		},
 	}
 
-	aiService := service.NewAIAssistantService(settingRepo, nil, nil, messageRepo, accountRepo, nil)
+	aiService := service.NewAIAssistantService(settingRepo, nil, nil, messageRepo, accountRepo, nil, nil, nil, nil)
 	handler := &Handler{ai: aiService}
 
 	w := httptest.NewRecorder()
@@ -597,7 +597,7 @@ func TestGetAIUsageSummaryHandlesAccountMissing(t *testing.T) {
 	settingRepo := &stubSettingRepo{}
 	messageRepo := &stubMessageRepo{}
 
-	aiService := service.NewAIAssistantService(settingRepo, nil, nil, messageRepo, accountRepo, nil)
+	aiService := service.NewAIAssistantService(settingRepo, nil, nil, messageRepo, accountRepo, nil, nil, nil, nil)
 	handler := &Handler{ai: aiService}
 
 	w := httptest.NewRecorder()
@@ -631,7 +631,7 @@ func TestGetAIUsageSummaryHandlesSettingMissing(t *testing.T) {
 	settingRepo := &stubSettingRepo{err: gorm.ErrRecordNotFound}
 	messageRepo := &stubMessageRepo{}
 
-	aiService := service.NewAIAssistantService(settingRepo, nil, nil, messageRepo, accountRepo, nil)
+	aiService := service.NewAIAssistantService(settingRepo, nil, nil, messageRepo, accountRepo, nil, nil, nil, nil)
 	handler := &Handler{ai: aiService}
 
 	w := httptest.NewRecorder()
@@ -667,7 +667,7 @@ func TestGetAIUsageSummaryHandlesInternalError(t *testing.T) {
 	}
 	messageRepo := &stubMessageRepo{err: errors.New("boom")}
 
-	aiService := service.NewAIAssistantService(settingRepo, nil, nil, messageRepo, accountRepo, nil)
+	aiService := service.NewAIAssistantService(settingRepo, nil, nil, messageRepo, accountRepo, nil, nil, nil, nil)
 	handler := &Handler{ai: aiService}
 
 	w := httptest.NewRecorder()
@@ -782,7 +782,7 @@ func (s *stubAccountRepo) ListByIDs(ctx context.Context, ids []string) ([]domain
 	return result, nil
 }
 
-func (s *stubAccountRepo) ListByRole(context.Context, string, domain.Role, domain.AccountStatus, string, string, bool, bool, int, int, string) ([]domain.Account, int64, error) {
+func (s *stubAccountRepo) ListByRole(context.Context, string, domain.Role, domain.AccountStatus, string, string, string, bool, bool, int, int, string) ([]domain.Account, int64, error) {
 	panic("unexpected call")
 }
 

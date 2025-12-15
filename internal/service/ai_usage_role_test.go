@@ -69,7 +69,7 @@ func (f *fakeAccountRepo) FindByID(ctx context.Context, id string) (*domain.Acco
 func (f *fakeAccountRepo) ListByIDs(ctx context.Context, ids []string) ([]domain.Account, error) {
 	return nil, errors.New("not implemented")
 }
-func (f *fakeAccountRepo) ListByRole(ctx context.Context, schoolID string, role domain.Role, status domain.AccountStatus, departmentID string, classID string, onlyClassless bool, onlyDepartmentless bool, page int, size int, query string) ([]domain.Account, int64, error) {
+func (f *fakeAccountRepo) ListByRole(ctx context.Context, schoolID string, role domain.Role, status domain.AccountStatus, departmentID string, classID string, courseID string, onlyClassless bool, onlyDepartmentless bool, page int, size int, query string) ([]domain.Account, int64, error) {
 	return nil, 0, errors.New("not implemented")
 }
 func (f *fakeAccountRepo) UpdateStatus(ctx context.Context, accountID, schoolID string, status domain.AccountStatus) error {

@@ -54,6 +54,7 @@ type GradeAssignmentResult struct {
 	Score       int      `json:"score"`
 	Summary     string   `json:"summary"`
 	Suggestions []string `json:"suggestions"`
+	ItemScores  []int    `json:"item_scores"`
 }
 
 // CheckAssignment performs a pre-check on the assignment for students.
@@ -64,7 +65,7 @@ func (s *AIGradingService) CheckAssignment(ctx context.Context, input CheckAssig
 	}
 
 	prompt := fmt.Sprintf(`
-You are a helpful teaching assistant. Please review the following assignment submission and provide feedback to the student.
+You are a helpful teaching assistant. Please review the following assignment submission and provide feedback to the student in Chinese (Simplified).
 Focus on:
 1. Relevance to the topic.
 2. Clarity and structure.
@@ -77,7 +78,7 @@ Assignment Description: %s
 Student Submission:
 %s
 
-Please return the result in strict JSON format as follows:
+Please return the result in strict JSON format as follows (ensure all text fields are in Chinese):
 {
   "issues": ["issue 1", "issue 2"],
   "suggestions": ["suggestion 1", "suggestion 2"],
@@ -112,6 +113,7 @@ func (s *AIGradingService) GradeAssignment(ctx context.Context, input GradeAssig
 
 	prompt := fmt.Sprintf(`
 You are a professional teacher. Please grade the following assignment submission based on the requirements.
+Please provide all feedback, summary, and suggestions in Chinese (Simplified).
 
 Assignment Title: %s
 Assignment Description: %s
@@ -120,11 +122,12 @@ Rubrics/Requirements: %s
 Student Submission:
 %s
 
-Please return the result in strict JSON format as follows:
+Please return the result in strict JSON format as follows (ensure all text fields are in Chinese):
 {
   "score": 85, // Integer 0-100
   "summary": "Brief summary of the grading",
-  "suggestions": ["suggestion 1", "suggestion 2"]
+  "suggestions": ["suggestion 1", "suggestion 2"],
+  "item_scores": [10, 15, 20] // Scores for each question in the order they appear
 }
 `, input.Title, input.Description, input.Rubrics, input.Content)
 

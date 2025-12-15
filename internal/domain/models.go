@@ -156,6 +156,28 @@ type Course struct {
 	UpdatedAt   time.Time
 }
 
+// TeachingAssignment links a course, a teacher, and a class.
+type TeachingAssignment struct {
+	ID        string `gorm:"primaryKey;size:36"`
+	SchoolID  string `gorm:"size:36;index"`
+	CourseID  string `gorm:"size:36;index"`
+	TeacherID string `gorm:"size:36;index"`
+	ClassID   string `gorm:"size:36;index"`
+	CreatedAt time.Time
+}
+
+// CourseAssignmentInfo represents enriched course assignment data.
+type CourseAssignmentInfo struct {
+	CourseID     string `json:"course_id"`
+	CourseName   string `json:"course_name"`
+	Description  string `json:"description"`
+	TeacherID    string `json:"teacher_id"`
+	TeacherName  string `json:"teacher_name"`
+	ClassID      string `json:"class_id"`
+	ClassName    string `json:"class_name"`
+	StudentCount int64  `json:"student_count"`
+}
+
 // CourseSession is a scheduled lesson.
 type CourseSession struct {
 	ID        string `gorm:"primaryKey;size:36"`
@@ -494,4 +516,16 @@ type AIChatMessage struct {
 	ResultTokens int       `gorm:"default:0"`
 	LatencyMS    int       `gorm:"default:0"`
 	CreatedAt    time.Time `gorm:"index"`
+}
+
+// TimeSlot defines a class period.
+type TimeSlot struct {
+	ID        string `gorm:"primaryKey;size:36"`
+	SchoolID  string `gorm:"size:36;index"`
+	Name      string `gorm:"size:64"` // e.g., "第1-2节"
+	StartTime string `gorm:"size:5"`  // HH:mm
+	EndTime   string `gorm:"size:5"`  // HH:mm
+	SortOrder int    `gorm:"default:0"`
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }

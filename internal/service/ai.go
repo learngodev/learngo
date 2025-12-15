@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -57,25 +58,41 @@ func (l *concurrencyLimiter) TryAcquire(key string, max int) (bool, func()) {
 
 // AIAssistantService coordinates AI assistant configuration and usage flows.
 type AIAssistantService struct {
-	settings repository.AIAgentSettingRepository
-	audits   repository.AIAgentSettingAuditRepository
-	sessions repository.AIChatSessionRepository
-	messages repository.AIChatMessageRepository
-	accounts repository.AccountRepository
-	model    AIChatModel
-	limiter  *concurrencyLimiter
+	settings          repository.AIAgentSettingRepository
+	audits            repository.AIAgentSettingAuditRepository
+	sessions          repository.AIChatSessionRepository
+	messages          repository.AIChatMessageRepository
+	accounts          repository.AccountRepository
+	model             AIChatModel
+	limiter           *concurrencyLimiter
+	studentPortal     *StudentPortalService
+	teacherPortal     *TeacherPortalService
+	assignmentService *AssignmentService
 }
 
 // NewAIAssistantService constructs the AI assistant service.
-func NewAIAssistantService(settings repository.AIAgentSettingRepository, audits repository.AIAgentSettingAuditRepository, sessions repository.AIChatSessionRepository, messages repository.AIChatMessageRepository, accounts repository.AccountRepository, model AIChatModel) *AIAssistantService {
+func NewAIAssistantService(
+	settings repository.AIAgentSettingRepository,
+	audits repository.AIAgentSettingAuditRepository,
+	sessions repository.AIChatSessionRepository,
+	messages repository.AIChatMessageRepository,
+	accounts repository.AccountRepository,
+	model AIChatModel,
+	studentPortal *StudentPortalService,
+	teacherPortal *TeacherPortalService,
+	assignmentService *AssignmentService,
+) *AIAssistantService {
 	return &AIAssistantService{
-		settings: settings,
-		audits:   audits,
-		sessions: sessions,
-		messages: messages,
-		accounts: accounts,
-		model:    model,
-		limiter:  newConcurrencyLimiter(),
+		settings:          settings,
+		audits:            audits,
+		sessions:          sessions,
+		messages:          messages,
+		accounts:          accounts,
+		model:             model,
+		limiter:           newConcurrencyLimiter(),
+		studentPortal:     studentPortal,
+		teacherPortal:     teacherPortal,
+		assignmentService: assignmentService,
 	}
 }
 
@@ -839,20 +856,67 @@ func (s *AIAssistantService) SendMessage(ctx context.Context, input SendAIChatMe
 		historyMessages[i], historyMessages[j] = historyMessages[j], historyMessages[i]
 	}
 
-	resp, err := s.model.GenerateResponse(ctx, AIChatModelRequest{
-		Setting: setting,
-		Session: session,
-		Message: content,
-		History: historyMessages,
-	})
-	if err != nil {
-		providerErr := NormalizeProviderError(err)
-		result.ProviderError = providerErr
-		if providerErr != nil {
-			result.ProviderReason = providerErr.Reason
+	const toolInstructions = `
+You have access to the following tools. To use a tool, reply with ONLY the tool call in the format: TOOL_CALL: <tool_name> <json_arguments>.
+Do not add any other text when calling a tool.
+
+Tools:
+1. get_my_courses: List the courses I am enrolled in. Args: {}
+2. get_upcoming_sessions: List my upcoming course sessions. Args: {"limit": 5}
+3. create_assignment: (Teacher only) Create a new assignment. Args: {"course_id": "...", "class_id": "...", "title": "...", "description": "...", "due_at": "YYYY-MM-DDTHH:MM:SSZ"}
+4. check_assignment_status: (Teacher only) Check submission status of assignments. Args: {"query": "assignment title keyword"}
+
+If the user asks about courses or schedule, use the appropriate tool.
+If the user asks to assign homework, ask for missing details if necessary, then use create_assignment.
+If the user asks about assignment submission status (e.g. "collected?", "who submitted?"), use check_assignment_status.
+`
+	originalSystemPrompt := setting.SystemPrompt
+	setting.SystemPrompt = originalSystemPrompt + "\n" + toolInstructions
+
+	var resp *AIChatModelResponse
+	var toolIterations int
+	maxToolIterations := 3
+
+	currentHistory := historyMessages
+	currentMessage := content
+
+	for {
+		resp, err = s.model.GenerateResponse(ctx, AIChatModelRequest{
+			Setting: setting,
+			Session: session,
+			Message: currentMessage,
+			History: currentHistory,
+		})
+		if err != nil {
+			providerErr := NormalizeProviderError(err)
+			result.ProviderError = providerErr
+			if providerErr != nil {
+				result.ProviderReason = providerErr.Reason
+			}
+			return result, nil
 		}
-		return result, nil
+
+		if strings.HasPrefix(resp.Content, "TOOL_CALL:") {
+			if toolIterations >= maxToolIterations {
+				resp.Content = "Error: Too many tool calls."
+				break
+			}
+			toolIterations++
+
+			toolOutput := s.executeTool(ctx, account, resp.Content)
+
+			currentHistory = append(currentHistory, domain.AIChatMessage{
+				Sender:  "assistant",
+				Content: resp.Content,
+			})
+
+			currentMessage = fmt.Sprintf("Tool Output: %s", toolOutput)
+			continue
+		}
+		break
 	}
+
+	setting.SystemPrompt = originalSystemPrompt
 
 	reason := resp.Reason
 	if reason == "" {
@@ -1019,4 +1083,166 @@ func (s *AIAssistantService) DeleteSession(ctx context.Context, accountID, sessi
 	}
 
 	return s.sessions.Delete(ctx, sessionID)
+}
+
+func (s *AIAssistantService) executeTool(ctx context.Context, account *domain.Account, toolCall string) string {
+	parts := strings.SplitN(strings.TrimPrefix(toolCall, "TOOL_CALL: "), " ", 2)
+	if len(parts) < 1 {
+		return "Error: Invalid tool call format."
+	}
+	toolName := parts[0]
+	argsJSON := "{}"
+	if len(parts) > 1 {
+		argsJSON = parts[1]
+	}
+
+	switch toolName {
+	case "get_my_courses":
+		if account.Role == domain.RoleStudent {
+			if s.studentPortal == nil {
+				return "Error: Student portal service not available."
+			}
+			start := time.Now()
+			end := start.AddDate(0, 0, 30)
+			agenda, err := s.studentPortal.ListAgenda(ctx, account.ID, start, end, false)
+			if err != nil {
+				return fmt.Sprintf("Error: %v", err)
+			}
+			courses := make(map[string]string)
+			for _, item := range agenda {
+				courses[item.CourseName] = item.TeacherName
+			}
+			if len(courses) == 0 {
+				return "No upcoming courses found."
+			}
+			var result []string
+			for c, t := range courses {
+				result = append(result, fmt.Sprintf("%s (Teacher: %s)", c, t))
+			}
+			return strings.Join(result, "\n")
+		}
+		return "Tool only available for students."
+
+	case "get_upcoming_sessions":
+		if account.Role == domain.RoleStudent {
+			if s.studentPortal == nil {
+				return "Error: Student portal service not available."
+			}
+			start := time.Now()
+			end := start.AddDate(0, 0, 7)
+			agenda, err := s.studentPortal.ListAgenda(ctx, account.ID, start, end, false)
+			if err != nil {
+				return fmt.Sprintf("Error: %v", err)
+			}
+			if len(agenda) == 0 {
+				return "No upcoming sessions in the next 7 days."
+			}
+			var result []string
+			for _, item := range agenda {
+				result = append(result, fmt.Sprintf("%s: %s at %s", item.StartsAt.Format("Mon 15:04"), item.CourseName, item.Location))
+			}
+			return strings.Join(result, "\n")
+		}
+		return "Tool only available for students."
+
+	case "create_assignment":
+		if account.Role != domain.RoleTeacher && account.Role != domain.RoleAdmin {
+			return "Error: Permission denied. Only teachers can create assignments."
+		}
+		if s.assignmentService == nil {
+			return "Error: Service unavailable."
+		}
+
+		var args struct {
+			CourseID    string `json:"course_id"`
+			ClassID     string `json:"class_id"`
+			Title       string `json:"title"`
+			Description string `json:"description"`
+			DueAt       string `json:"due_at"`
+		}
+		if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
+			return fmt.Sprintf("Error parsing arguments: %v", err)
+		}
+
+		if args.ClassID == "" {
+			return "Error: class_id is required."
+		}
+
+		var dueAt *time.Time
+		if args.DueAt != "" {
+			t, err := time.Parse(time.RFC3339, args.DueAt)
+			if err == nil {
+				dueAt = &t
+			}
+		}
+
+		input := CreateAssignmentInput{
+			CourseID:      args.CourseID,
+			TeacherID:     account.ID,
+			ClassID:       args.ClassID,
+			Type:          domain.AssignmentHomework,
+			Title:         args.Title,
+			Description:   args.Description,
+			DueAt:         dueAt,
+			MaxScore:      100,
+			AllowResubmit: true,
+		}
+
+		asg, err := s.assignmentService.CreateAssignment(ctx, input)
+		if err != nil {
+			return fmt.Sprintf("Error creating assignment: %v", err)
+		}
+		return fmt.Sprintf("Assignment created successfully. ID: %s", asg.ID)
+
+	case "check_assignment_status":
+		if account.Role != domain.RoleTeacher && account.Role != domain.RoleAdmin {
+			return "Error: Permission denied. Only teachers can check assignment status."
+		}
+		if s.teacherPortal == nil {
+			return "Error: Teacher portal service not available."
+		}
+
+		var args struct {
+			Query string `json:"query"`
+		}
+		_ = json.Unmarshal([]byte(argsJSON), &args)
+
+		// Fetch recent assignments (e.g., last 20)
+		var assignments []TeacherAssignmentItem
+		var err error
+
+		if args.Query != "" {
+			assignments, err = s.teacherPortal.SearchAssignments(ctx, account.ID, args.Query)
+		} else {
+			assignments, err = s.teacherPortal.ListAssignments(ctx, account.ID, 20, "", nil)
+		}
+
+		if err != nil {
+			return fmt.Sprintf("Error fetching assignments: %v", err)
+		}
+
+		if len(assignments) == 0 {
+			return "No assignments found."
+		}
+
+		// If too many matches, just list titles
+		if len(assignments) > 5 {
+			var titles []string
+			for _, a := range assignments[:5] {
+				titles = append(titles, a.Title)
+			}
+			return fmt.Sprintf("Found %d assignments, here are the first 5: %s...", len(assignments), strings.Join(titles, ", "))
+		}
+
+		var result []string
+		for _, a := range assignments {
+			status := fmt.Sprintf("Assignment '%s' (%s): %d/%d submitted, %d missing.",
+				a.Title, a.ClassName, a.SubmittedCount, a.ClassStudentCount, a.MissingCount)
+			result = append(result, status)
+		}
+		return strings.Join(result, "\n")
+
+	default:
+		return fmt.Sprintf("Error: Unknown tool '%s'.", toolName)
+	}
 }

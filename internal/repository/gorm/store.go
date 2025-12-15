@@ -81,6 +81,7 @@ func (s *Store) ListByRole(
 	status domain.AccountStatus,
 	departmentID string,
 	classID string,
+	courseID string,
 	onlyClassless bool,
 	onlyDepartmentless bool,
 	page int,
@@ -138,6 +139,11 @@ func (s *Store) ListByRole(
 	if departmentID != "" {
 		joinClasses()
 		base = base.Where("classes.department_id = ?", departmentID)
+	}
+	if courseID != "" {
+		joinClasses()
+		base = base.Joins("JOIN teaching_assignments ON teaching_assignments.class_id = classes.id").
+			Where("teaching_assignments.course_id = ?", courseID)
 	}
 
 	if onlyClassless {

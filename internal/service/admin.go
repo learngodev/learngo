@@ -222,6 +222,7 @@ type ListAccountsOptions struct {
 	DepartmentScope AccountDepartmentScope
 	ClassID         string
 	ClassScope      AccountClassScope
+	CourseID        string
 	Page            int
 	Size            int
 	Query           string
@@ -272,6 +273,7 @@ func (s *AdminService) ListAccounts(ctx context.Context, opts ListAccountsOption
 		opts.Status,
 		opts.DepartmentID,
 		opts.ClassID,
+		opts.CourseID,
 		onlyClassless,
 		onlyDepartmentless,
 		opts.Page,

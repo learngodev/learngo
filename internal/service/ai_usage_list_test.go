@@ -115,7 +115,7 @@ func (r *listUsageAccountRepo) ListByIDs(ctx context.Context, ids []string) ([]d
 	return result, nil
 }
 
-func (r *listUsageAccountRepo) ListByRole(context.Context, string, domain.Role, domain.AccountStatus, string, string, bool, bool, int, int, string) ([]domain.Account, int64, error) {
+func (r *listUsageAccountRepo) ListByRole(context.Context, string, domain.Role, domain.AccountStatus, string, string, string, bool, bool, int, int, string) ([]domain.Account, int64, error) {
 	return nil, 0, errors.New("not implemented")
 }
 

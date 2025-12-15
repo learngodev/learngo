@@ -24,6 +24,7 @@ type AccountRepository interface {
 		status domain.AccountStatus,
 		departmentID string,
 		classID string,
+		courseID string,
 		onlyClassless bool,
 		onlyDepartmentless bool,
 		page int,
@@ -82,7 +83,22 @@ type StudentReminderRepository interface {
 
 // CourseRepository retrieves course metadata.
 type CourseRepository interface {
+	Create(ctx context.Context, course *domain.Course) error
+	List(ctx context.Context, schoolID string, page, size int) ([]domain.Course, int64, error)
+	GetByID(ctx context.Context, id string) (*domain.Course, error)
+	Update(ctx context.Context, course *domain.Course) error
+	Delete(ctx context.Context, id string) error
 	ListByIDs(ctx context.Context, ids []string) ([]domain.Course, error)
+	ListAssignments(ctx context.Context, schoolID string, departmentID, classID string, page, size int) ([]domain.CourseAssignmentInfo, int64, error)
+}
+
+// TeachingAssignmentRepository manages course assignments.
+type TeachingAssignmentRepository interface {
+	Create(ctx context.Context, assignment *domain.TeachingAssignment) error
+	BatchCreate(ctx context.Context, assignments []domain.TeachingAssignment) error
+	List(ctx context.Context, schoolID string, courseID, teacherID, classID string, page, size int) ([]domain.TeachingAssignment, int64, error)
+	Delete(ctx context.Context, id string) error
+	BatchDelete(ctx context.Context, ids []string) error
 }
 
 // CourseSlotRepository retrieves slot definitions.
@@ -128,6 +144,8 @@ type AssignmentRepository interface {
 	ListDueBetween(ctx context.Context, classID string, start, end time.Time, types []domain.AssignmentType) ([]domain.Assignment, error)
 	ListByTeacher(ctx context.Context, teacherID string, limit int, classID string, types []domain.AssignmentType) ([]domain.Assignment, error)
 	ListDueBetweenByTeacher(ctx context.Context, teacherID string, start, end time.Time, types []domain.AssignmentType) ([]domain.Assignment, error)
+	Search(ctx context.Context, teacherID string, query string) ([]domain.Assignment, error)
+	Update(ctx context.Context, assignment *domain.Assignment) error
 }
 
 // SubmissionRepository handles student submissions.
@@ -350,4 +368,13 @@ type SystemAuditRepository interface {
 	EnsureDefaults(ctx context.Context, schoolID string, defaults []domain.SystemAuditLog) error
 	Create(ctx context.Context, entry *domain.SystemAuditLog) error
 	List(ctx context.Context, schoolID string, limit int) ([]domain.SystemAuditLog, error)
+}
+
+// TimeSlotRepository manages class time slots.
+type TimeSlotRepository interface {
+	Create(ctx context.Context, slot *domain.TimeSlot) error
+	Update(ctx context.Context, slot *domain.TimeSlot) error
+	Delete(ctx context.Context, id string) error
+	List(ctx context.Context, schoolID string) ([]domain.TimeSlot, error)
+	FindByID(ctx context.Context, id string) (*domain.TimeSlot, error)
 }

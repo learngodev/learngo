@@ -97,6 +97,7 @@ type TeacherAssignmentItem struct {
 	AllowResubmit      bool                     `json:"allow_resubmit"`
 	SubmissionCount    int                      `json:"submission_count"`
 	SubmittedCount     int                      `json:"submitted_count"`
+	ClassStudentCount  int                      `json:"class_student_count"`
 	GradedCount        int                      `json:"graded_count"`
 	PendingGradeCount  int                      `json:"pending_grade_count"`
 	LatestSubmissionAt *time.Time               `json:"latest_submission_at"`
@@ -616,6 +617,7 @@ func (s *TeacherPortalService) buildAssignmentItems(ctx context.Context, assignm
 			AllowResubmit:      assignment.AllowResubmit,
 			SubmissionCount:    int(stat.Total),
 			SubmittedCount:     int(stat.Submitted),
+			ClassStudentCount:  int(classSize),
 			GradedCount:        int(stat.Graded),
 			PendingGradeCount:  pending,
 			LatestSubmissionAt: stat.LatestSubmittedAt,
@@ -643,6 +645,23 @@ func (s *TeacherPortalService) buildAssignmentItems(ctx context.Context, assignm
 	})
 
 	return items, nil
+}
+
+// SearchAssignments finds assignments by keyword.
+func (s *TeacherPortalService) SearchAssignments(ctx context.Context, accountID string, query string) ([]TeacherAssignmentItem, error) {
+	teacher, err := s.teachers.GetByAccountID(ctx, accountID)
+	if err != nil {
+		return nil, err
+	}
+	if teacher == nil {
+		return nil, ErrTeacherProfileNotFound
+	}
+
+	assignments, err := s.assignments.Search(ctx, teacher.ID, query)
+	if err != nil {
+		return nil, err
+	}
+	return s.buildAssignmentItems(ctx, assignments)
 }
 
 func (s *TeacherPortalService) loadCourseNames(ctx context.Context, ids []string) (map[string]string, error) {

@@ -109,7 +109,7 @@ func (m *memoryAccountRepo) ListByIDs(context.Context, []string) ([]domain.Accou
 	return nil, errors.New("not implemented")
 }
 
-func (m *memoryAccountRepo) ListByRole(context.Context, string, domain.Role, domain.AccountStatus, string, string, bool, bool, int, int, string) ([]domain.Account, int64, error) {
+func (m *memoryAccountRepo) ListByRole(context.Context, string, domain.Role, domain.AccountStatus, string, string, string, bool, bool, int, int, string) ([]domain.Account, int64, error) {
 	return nil, 0, errors.New("not implemented")
 }
 

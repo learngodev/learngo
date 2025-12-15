@@ -237,6 +237,13 @@ func (f *fakeAssignmentRepo) ListByTeacher(context.Context, string, int, string,
 func (f *fakeAssignmentRepo) ListDueBetweenByTeacher(context.Context, string, time.Time, time.Time, []domain.AssignmentType) ([]domain.Assignment, error) {
 	return nil, nil
 }
+func (f *fakeAssignmentRepo) Search(ctx context.Context, teacherID string, q string) ([]domain.Assignment, error) {
+	return nil, nil
+}
+func (f *fakeAssignmentRepo) Update(ctx context.Context, assignment *domain.Assignment) error {
+	f.assignment = assignment
+	return nil
+}
 
 type fakeSubmissionRepo struct {
 	stats       map[string]repository.AssignmentSubmissionStats
@@ -332,6 +339,19 @@ func (f *fakeCourseRepo) ListByIDs(ctx context.Context, ids []string) ([]domain.
 	return result, nil
 }
 
+func (f *fakeCourseRepo) Create(ctx context.Context, course *domain.Course) error { return nil }
+func (f *fakeCourseRepo) List(ctx context.Context, schoolID string, page, size int) ([]domain.Course, int64, error) {
+	return nil, 0, nil
+}
+func (f *fakeCourseRepo) GetByID(ctx context.Context, id string) (*domain.Course, error) {
+	return nil, nil
+}
+func (f *fakeCourseRepo) Update(ctx context.Context, course *domain.Course) error { return nil }
+func (f *fakeCourseRepo) Delete(ctx context.Context, id string) error             { return nil }
+func (f *fakeCourseRepo) ListAssignments(ctx context.Context, schoolID string, departmentID, classID string, page, size int) ([]domain.CourseAssignmentInfo, int64, error) {
+	return nil, 0, nil
+}
+
 type fakeClassRepo struct {
 	classes map[string]string
 }
@@ -376,7 +396,7 @@ func (f *teacherAccountRepoStub) ListByIDs(ctx context.Context, ids []string) ([
 	}
 	return result, nil
 }
-func (f *teacherAccountRepoStub) ListByRole(context.Context, string, domain.Role, domain.AccountStatus, string, string, bool, bool, int, int, string) ([]domain.Account, int64, error) {
+func (f *teacherAccountRepoStub) ListByRole(context.Context, string, domain.Role, domain.AccountStatus, string, string, string, bool, bool, int, int, string) ([]domain.Account, int64, error) {
 	return nil, 0, nil
 }
 func (f *teacherAccountRepoStub) UpdateStatus(context.Context, string, string, domain.AccountStatus) error {

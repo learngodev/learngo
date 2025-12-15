@@ -41,12 +41,13 @@ type Handler struct {
 	ai            *service.AIAssistantService
 	aiGrading     *service.AIGradingService
 	school        *service.SchoolService
+	courseService *service.CourseService
 	streamHub     *realtime.Hub
 	validate      *validator.Validate
 }
 
 // NewHandler constructs a Handler instance.
-func NewHandler(auth *service.AuthService, admin *service.AdminService, assignments *service.AssignmentService, teacher *service.TeacherPortalService, student *service.StudentPortalService, conversations *service.ConversationService, notes *service.NoteService, noteComments *service.NoteCommentService, oss *service.AdminOssService, system *service.AdminSystemService, ai *service.AIAssistantService, aiGrading *service.AIGradingService, school *service.SchoolService, streamHub *realtime.Hub) *Handler {
+func NewHandler(auth *service.AuthService, admin *service.AdminService, assignments *service.AssignmentService, teacher *service.TeacherPortalService, student *service.StudentPortalService, conversations *service.ConversationService, notes *service.NoteService, noteComments *service.NoteCommentService, oss *service.AdminOssService, system *service.AdminSystemService, ai *service.AIAssistantService, aiGrading *service.AIGradingService, school *service.SchoolService, courseService *service.CourseService, streamHub *realtime.Hub) *Handler {
 	return &Handler{
 		auth:          auth,
 		admin:         admin,
@@ -61,6 +62,7 @@ func NewHandler(auth *service.AuthService, admin *service.AdminService, assignme
 		ai:            ai,
 		aiGrading:     aiGrading,
 		school:        school,
+		courseService: courseService,
 		streamHub:     streamHub,
 		validate:      validator.New(),
 	}
@@ -117,12 +119,28 @@ func (h *Handler) RegisterRoutes(r *gin.Engine, adminGuard gin.HandlerFunc, teac
 		admin.GET("/ai/usage/export", h.ExportAIUsageSummaries)
 		admin.GET("/ai/usage/report", h.GetAIUsageReport)
 		admin.GET("/ai/usage/timeline", h.GetAIUsageTimeline)
+		admin.GET("/time-slots", h.ListTimeSlots)
+		admin.POST("/time-slots", h.CreateTimeSlot)
+		admin.PATCH("/time-slots/:id", h.UpdateTimeSlot)
+		admin.DELETE("/time-slots/:id", h.DeleteTimeSlot)
+
+		admin.GET("/courses", h.ListCourses)
+		admin.POST("/courses", h.CreateCourse)
+		admin.PATCH("/courses/:id", h.UpdateCourse)
+		admin.DELETE("/courses/:id", h.DeleteCourse)
+		admin.POST("/courses/assign", h.AssignCourse)
+		admin.POST("/courses/assign/batch", h.BatchAssignCourse)
+		admin.GET("/courses/assignments", h.ListAssignments)
+		admin.DELETE("/courses/assignments/:id", h.RemoveAssignment)
+		admin.POST("/courses/assignments/batch-remove", h.BatchRemoveAssignments)
 
 		assignments := api.Group("/assignments", teacherGuard)
 		assignments.POST("", h.CreateAssignment)
+		assignments.PATCH(":id", h.UpdateAssignment)
 		assignments.GET(":id/submissions", h.ListAssignmentSubmissions)
 		assignments.GET(":id/submissions/:submissionID", h.GetAssignmentSubmission)
 		assignments.PATCH(":id/submissions/:submissionID/grade", h.GradeSubmission)
+		assignments.POST(":id/submissions/:submissionID/return", h.ReturnSubmission)
 
 		submissions := api.Group("/assignments", studentGuard)
 		submissions.POST(":id/submissions", h.SubmitAssignment)
@@ -132,6 +150,7 @@ func (h *Handler) RegisterRoutes(r *gin.Engine, adminGuard gin.HandlerFunc, teac
 		student := api.Group("/student", studentGuard)
 		student.GET("/assignments", h.ListStudentAssignments)
 		student.GET("/schedule", h.ListStudentSchedule)
+		student.GET("/time-slots", h.ListTimeSlots)
 		student.GET("/agenda", h.ListStudentAgenda)
 		student.GET("/exams", h.ListStudentExams)
 		student.GET("/reminders", h.ListStudentReminders)
@@ -145,6 +164,7 @@ func (h *Handler) RegisterRoutes(r *gin.Engine, adminGuard gin.HandlerFunc, teac
 
 		teacher := api.Group("/teacher", teacherGuard)
 		teacher.GET("/schedule", h.ListTeacherSchedule)
+		teacher.GET("/time-slots", h.ListTimeSlots)
 		teacher.GET("/assignments", h.ListTeacherAssignments)
 		teacher.GET("/exams", h.ListTeacherExams)
 		teacher.GET("/assignments/:id", h.GetTeacherAssignment)
@@ -503,10 +523,11 @@ func (h *Handler) ListAccounts(c *gin.Context) {
 
 	departmentID := strings.TrimSpace(c.Query("department_id"))
 	classID := strings.TrimSpace(c.Query("class_id"))
-	if classID != "" && departmentID == "" {
-		response.Error(c, http.StatusBadRequest, "department_id required when class_id provided", nil)
-		return
-	}
+	courseID := strings.TrimSpace(c.Query("course_id"))
+	// if classID != "" && departmentID == "" {
+	// 	response.Error(c, http.StatusBadRequest, "department_id required when class_id provided", nil)
+	// 	return
+	// }
 
 	deptScopeParam := strings.ToLower(strings.TrimSpace(c.Query("department_scope")))
 	var departmentScope service.AccountDepartmentScope
@@ -548,6 +569,7 @@ func (h *Handler) ListAccounts(c *gin.Context) {
 		DepartmentScope: departmentScope,
 		ClassID:         classID,
 		ClassScope:      classScope,
+		CourseID:        courseID,
 		Page:            page,
 		Size:            size,
 		Query:           query,
@@ -2531,6 +2553,50 @@ func (h *Handler) CreateAssignment(c *gin.Context) {
 	response.Success(c, http.StatusCreated, gin.H{"assignment_id": assignment.ID})
 }
 
+type updateAssignmentRequest struct {
+	TeacherID     string               `json:"teacher_id" validate:"required"`
+	Title         *string              `json:"title"`
+	Description   *string              `json:"description"`
+	StartAt       *service.TimeISO8601 `json:"start_at"`
+	DueAt         *service.TimeISO8601 `json:"due_at"`
+	MaxScore      *float64             `json:"max_score"`
+	AllowResubmit *bool                `json:"allow_resubmit"`
+}
+
+func (h *Handler) UpdateAssignment(c *gin.Context) {
+	assignmentID := strings.TrimSpace(c.Param("id"))
+	if assignmentID == "" {
+		response.Error(c, http.StatusBadRequest, "missing assignment id", nil)
+		return
+	}
+
+	var req updateAssignmentRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		return
+	}
+
+	startAt := convertToTime(req.StartAt)
+	dueAt := convertToTime(req.DueAt)
+
+	assignment, err := h.assignments.UpdateAssignment(c.Request.Context(), service.UpdateAssignmentInput{
+		ID:            assignmentID,
+		TeacherID:     req.TeacherID,
+		Title:         req.Title,
+		Description:   req.Description,
+		StartAt:       startAt,
+		DueAt:         dueAt,
+		MaxScore:      req.MaxScore,
+		AllowResubmit: req.AllowResubmit,
+	})
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "unable to update assignment", err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, gin.H{"assignment_id": assignment.ID})
+}
+
 func (h *Handler) GetAssignment(c *gin.Context) {
 	assignmentID := strings.TrimSpace(c.Param("id"))
 	if assignmentID == "" {
@@ -3765,6 +3831,67 @@ func (h *Handler) GradeSubmission(c *gin.Context) {
 			response.Error(c, http.StatusForbidden, "submission forbidden", nil)
 		default:
 			response.Error(c, http.StatusInternalServerError, "unable to grade submission", err.Error())
+		}
+		return
+	}
+
+	payload := gin.H{
+		"submission": submissionDetailPayload(*detail),
+		"comments":   submissionCommentsPayload(comments),
+	}
+	response.Success(c, http.StatusOK, payload)
+}
+
+type returnSubmissionRequest struct {
+	Comment string `json:"comment"`
+}
+
+func (h *Handler) ReturnSubmission(c *gin.Context) {
+	assignmentID := strings.TrimSpace(c.Param("id"))
+	submissionID := strings.TrimSpace(c.Param("submissionID"))
+	if assignmentID == "" || submissionID == "" {
+		response.Error(c, http.StatusBadRequest, "missing assignment or submission id", nil)
+		return
+	}
+
+	var req returnSubmissionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		return
+	}
+
+	accountID := getAccountID(c)
+	if accountID == "" {
+		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		return
+	}
+
+	teacherID, err := h.teacher.GetTeacherID(c.Request.Context(), accountID)
+	if err != nil {
+		if errors.Is(err, service.ErrTeacherProfileNotFound) {
+			response.Error(c, http.StatusForbidden, "teacher profile required", nil)
+		} else {
+			response.Error(c, http.StatusInternalServerError, "unable to resolve teacher profile", err.Error())
+		}
+		return
+	}
+
+	detail, comments, err := h.assignments.ReturnSubmission(c.Request.Context(), teacherID, service.ReturnSubmissionInput{
+		AssignmentID: assignmentID,
+		SubmissionID: submissionID,
+		AccountID:    accountID,
+		Comment:      req.Comment,
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrAssignmentNotFound):
+			response.Error(c, http.StatusNotFound, "assignment not found", nil)
+		case errors.Is(err, service.ErrSubmissionNotFound):
+			response.Error(c, http.StatusNotFound, "submission not found", nil)
+		case errors.Is(err, service.ErrSubmissionForbidden):
+			response.Error(c, http.StatusForbidden, "submission forbidden", nil)
+		default:
+			response.Error(c, http.StatusInternalServerError, "unable to return submission", err.Error())
 		}
 		return
 	}

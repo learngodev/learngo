@@ -68,6 +68,7 @@ func New() (*Application, error) {
 	departmentRepo := gormrepo.NewDepartmentStore(db)
 	classRepo := gormrepo.NewClassStore(db)
 	courseRepo := gormrepo.NewCourseStore(db)
+	teachingAssignmentRepo := gormrepo.NewTeachingAssignmentStore(db)
 	courseSlotRepo := gormrepo.NewCourseSlotStore(db)
 	courseSessionRepo := gormrepo.NewCourseSessionStore(db)
 	teacherStudentRepo := gormrepo.NewTeacherStudentStore(db)
@@ -93,6 +94,7 @@ func New() (*Application, error) {
 	systemAuditRepo := gormrepo.NewSystemAuditStore(db)
 	passwordResetRepo := gormrepo.NewPasswordResetTokenStore(db)
 	schoolRepo := gormrepo.NewSchoolStore(db)
+	timeSlotRepo := gormrepo.NewTimeSlotRepository(db)
 
 	authService := service.NewAuthService(accountRepo, passwordResetRepo, cfg)
 	adminService := service.NewAdminService(accountRepo, teacherRepo, studentRepo, departmentRepo, classRepo, teacherStudentRepo)
@@ -105,7 +107,7 @@ func New() (*Application, error) {
 	ossService := service.NewAdminOssService(ossCredentialRepo, ossPolicyRepo, ossAuditRepo, accountRepo)
 	systemService := service.NewAdminSystemService(systemSwitchRepo, systemParameterRepo, systemBroadcastRepo, systemAuditRepo)
 	aiModel := service.NewOpenAIChatModel()
-	aiService := service.NewAIAssistantService(aiSettingRepo, aiAuditRepo, aiSessionRepo, aiMessageRepo, accountRepo, aiModel)
+	aiService := service.NewAIAssistantService(aiSettingRepo, aiAuditRepo, aiSessionRepo, aiMessageRepo, accountRepo, aiModel, studentPortalService, teacherPortalService, assignmentService)
 	aiGradingService := service.NewAIGradingService(aiSettingRepo, aiModel)
 	streamHub := realtime.NewHub()
 
@@ -118,9 +120,10 @@ func New() (*Application, error) {
 	)
 	apigrpc.RegisterConversationServiceServer(grpcServer, grpcserver.NewConversationServer(conversationService, streamHub))
 
-	schoolService := service.NewSchoolService(schoolRepo)
+	schoolService := service.NewSchoolService(schoolRepo, timeSlotRepo)
+	courseService := service.NewCourseService(courseRepo, teachingAssignmentRepo)
 
-	handler := apihandlers.NewHandler(authService, adminService, assignmentService, teacherPortalService, studentPortalService, conversationService, noteService, noteCommentService, ossService, systemService, aiService, aiGradingService, schoolService, streamHub)
+	handler := apihandlers.NewHandler(authService, adminService, assignmentService, teacherPortalService, studentPortalService, conversationService, noteService, noteCommentService, ossService, systemService, aiService, aiGradingService, schoolService, courseService, streamHub)
 
 	adminGuard := middleware.JWTAuth(middleware.AuthConfig{Secret: cfg.JWTSecret, AllowedRoles: []string{string(domain.RoleAdmin)}})
 	teacherGuard := middleware.JWTAuth(middleware.AuthConfig{Secret: cfg.JWTSecret, AllowedRoles: []string{string(domain.RoleTeacher), string(domain.RoleAdmin)}})
@@ -191,6 +194,7 @@ func migrate(db *gorm.DB) error {
 		&domain.AIChatSession{},
 		&domain.AIChatMessage{},
 		&domain.PasswordResetToken{},
+		&domain.TimeSlot{},
 	)
 }
 

@@ -130,4 +130,20 @@ func (s *AssignmentStore) ListDueBetweenByTeacher(ctx context.Context, teacherID
 	return assignments, nil
 }
 
+func (s *AssignmentStore) Search(ctx context.Context, teacherID string, q string) ([]domain.Assignment, error) {
+	var assignments []domain.Assignment
+	if err := s.db.WithContext(ctx).
+		Where("teacher_id = ? AND (title LIKE ? OR description LIKE ?)", teacherID, "%"+q+"%", "%"+q+"%").
+		Order("created_at DESC").
+		Limit(20).
+		Find(&assignments).Error; err != nil {
+		return nil, err
+	}
+	return assignments, nil
+}
+
+func (s *AssignmentStore) Update(ctx context.Context, assignment *domain.Assignment) error {
+	return s.db.WithContext(ctx).Save(assignment).Error
+}
+
 var _ repository.AssignmentRepository = (*AssignmentStore)(nil)
