@@ -37,6 +37,37 @@ func (h *Handler) CreateSchedule(c *gin.Context) {
 	response.Success(c, http.StatusCreated, schedule)
 }
 
+func (h *Handler) ListSchedules(c *gin.Context) {
+	schoolID := c.Query("school_id")
+	courseID := c.Query("course_id")
+	if schoolID == "" {
+		response.Error(c, http.StatusBadRequest, "school_id required", nil)
+		return
+	}
+
+	schedules, err := h.schedule.ListSchedules(c.Request.Context(), schoolID, courseID)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "Failed to list schedules", err.Error())
+		return
+	}
+	response.Success(c, http.StatusOK, schedules)
+}
+
+func (h *Handler) GetScheduleStats(c *gin.Context) {
+	schoolID := c.Query("school_id")
+	if schoolID == "" {
+		response.Error(c, http.StatusBadRequest, "school_id required", nil)
+		return
+	}
+
+	stats, err := h.schedule.GetScheduleStats(c.Request.Context(), schoolID)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "Failed to get schedule stats", err.Error())
+		return
+	}
+	response.Success(c, http.StatusOK, stats)
+}
+
 // GenerateSessionsRequest defines payload for generating sessions.
 type GenerateSessionsRequest struct {
 	SchoolID string    `json:"school_id" validate:"required"`

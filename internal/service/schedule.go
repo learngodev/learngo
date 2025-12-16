@@ -77,6 +77,30 @@ func (s *ScheduleService) CreateSchedule(ctx context.Context, schoolID, courseID
 	return schedule, nil
 }
 
+func (s *ScheduleService) ListSchedules(ctx context.Context, schoolID string, courseID string) ([]domain.CourseScheduleDetail, error) {
+	return s.scheduleRepo.ListDetailsBySchool(ctx, schoolID, courseID)
+}
+
+func (s *ScheduleService) GetScheduleStats(ctx context.Context, schoolID string) (*domain.ScheduleStats, error) {
+	stats, err := s.scheduleRepo.GetStats(ctx, schoolID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get total courses count
+	_, totalCourses, err := s.courseRepo.List(ctx, schoolID, 1, 1)
+	if err != nil {
+		return nil, err
+	}
+	stats.TotalCourses = totalCourses
+	stats.UnscheduledCoursesCount = totalCourses - stats.ScheduledCoursesCount
+	if stats.UnscheduledCoursesCount < 0 {
+		stats.UnscheduledCoursesCount = 0
+	}
+
+	return stats, nil
+}
+
 // Session Generation
 
 func (s *ScheduleService) GenerateSessions(ctx context.Context, schoolID string, start, end time.Time) error {

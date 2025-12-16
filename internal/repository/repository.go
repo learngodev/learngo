@@ -55,8 +55,6 @@ type TeacherRepository interface {
 	GetByNumber(ctx context.Context, schoolID, number string) (*domain.Teacher, error)
 	GetByID(ctx context.Context, id string) (*domain.Teacher, error)
 	GetByAccountID(ctx context.Context, accountID string) (*domain.Teacher, error)
-	UpdateDepartmentID(ctx context.Context, teacherID string, departmentID *string) error
-	ListByDepartmentID(ctx context.Context, departmentID string) ([]domain.Teacher, error)
 }
 
 // StudentRepository handles student profile persistence.
@@ -126,6 +124,8 @@ type CourseScheduleRepository interface {
 	Delete(ctx context.Context, id string) error
 	ListByCourse(ctx context.Context, courseID string) ([]domain.CourseSchedule, error)
 	ListBySchool(ctx context.Context, schoolID string) ([]domain.CourseSchedule, error)
+	ListDetailsBySchool(ctx context.Context, schoolID string, courseID string) ([]domain.CourseScheduleDetail, error)
+	GetStats(ctx context.Context, schoolID string) (*domain.ScheduleStats, error)
 }
 
 // CourseSessionRepository retrieves scheduled lessons.
@@ -402,4 +402,9 @@ type TimeSlotRepository interface {
 	Delete(ctx context.Context, id string) error
 	List(ctx context.Context, schoolID string) ([]domain.TimeSlot, error)
 	FindByID(ctx context.Context, id string) (*domain.TimeSlot, error)
+}
+
+// CourseSlotRepository manages course slots (alias for TimeSlotRepository for now).
+type CourseSlotRepository interface {
+	ListByIDs(ctx context.Context, ids []string) ([]domain.CourseSlot, error)
 }

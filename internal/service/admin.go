@@ -142,15 +142,11 @@ type CreateStudentInput struct {
 	Phone      string
 	ClassID    string
 	DefaultPwd string
-	TeacherIDs []string
 }
 
 func (s *AdminService) CreateStudent(ctx context.Context, input CreateStudentInput) (*domain.Student, error) {
 	if input.DefaultPwd == "" {
 		return nil, errors.New("default password required")
-	}
-	if len(input.TeacherIDs) == 0 {
-		return nil, errors.New("at least one teacher required")
 	}
 
 	hash, err := crypto.HashPassword(input.DefaultPwd)
@@ -177,16 +173,15 @@ func (s *AdminService) CreateStudent(ctx context.Context, input CreateStudentInp
 		SchoolID:  input.SchoolID,
 		AccountID: account.ID,
 		Number:    input.Number,
-		ClassID:   input.ClassID,
 		Email:     input.Email,
 		Phone:     input.Phone,
 	}
 
-	if err := s.students.Create(ctx, student); err != nil {
-		return nil, err
+	if input.ClassID != "" {
+		student.ClassID = &input.ClassID
 	}
 
-	if err := s.teacherLinks.BindTeachers(ctx, student.ID, input.TeacherIDs); err != nil {
+	if err := s.students.Create(ctx, student); err != nil {
 		return nil, err
 	}
 
@@ -309,13 +304,6 @@ func (s *AdminService) ListAccounts(ctx context.Context, opts ListAccountsOption
 			if profile != nil {
 				summary.Email = profile.Email
 				summary.Phone = profile.Phone
-				if profile.DepartmentID != nil {
-					summary.DepartmentID = *profile.DepartmentID
-					department, derr := s.departments.GetByID(ctx, *profile.DepartmentID)
-					if derr == nil && department != nil {
-						summary.Department = department.Name
-					}
-				}
 			}
 		case domain.RoleStudent:
 			profile, perr := s.students.GetByAccountID(ctx, account.ID)
@@ -325,15 +313,17 @@ func (s *AdminService) ListAccounts(ctx context.Context, opts ListAccountsOption
 			if profile != nil {
 				summary.Email = profile.Email
 				summary.Phone = profile.Phone
-				summary.ClassID = profile.ClassID
+				if profile.ClassID != nil {
+					summary.ClassID = *profile.ClassID
 
-				class, cerr := s.classes.GetByID(ctx, profile.ClassID)
-				if cerr == nil && class != nil {
-					summary.ClassName = class.Name
-					summary.DepartmentID = class.DepartmentID
-					department, derr := s.departments.GetByID(ctx, class.DepartmentID)
-					if derr == nil && department != nil {
-						summary.Department = department.Name
+					class, cerr := s.classes.GetByID(ctx, *profile.ClassID)
+					if cerr == nil && class != nil {
+						summary.ClassName = class.Name
+						summary.DepartmentID = class.DepartmentID
+						department, derr := s.departments.GetByID(ctx, class.DepartmentID)
+						if derr == nil && department != nil {
+							summary.Department = department.Name
+						}
 					}
 				}
 			}
@@ -660,10 +650,9 @@ func deduplicateStrings(values []string) []string {
 
 // UpdateAccountStructureInput defines parameters for updating account belonging.
 type UpdateAccountStructureInput struct {
-	SchoolID     string
-	AccountID    string
-	DepartmentID *string
-	ClassID      *string
+	SchoolID  string
+	AccountID string
+	ClassID   *string
 }
 
 // UpdateAccountStructure updates the belonging structure (class/department) of an account.
@@ -700,31 +689,6 @@ func (s *AdminService) UpdateAccountStructure(ctx context.Context, input UpdateA
 		}
 
 		return s.students.UpdateClassID(ctx, student.ID, classID)
-	} else if account.Role == domain.RoleTeacher {
-		teacher, err := s.teachers.GetByAccountID(ctx, input.AccountID)
-		if err != nil {
-			return err
-		}
-		if teacher == nil {
-			return errors.New("teacher profile not found")
-		}
-
-		var deptID *string
-		if input.DepartmentID != nil {
-			val := strings.TrimSpace(*input.DepartmentID)
-			if val != "" {
-				dept, err := s.departments.GetByID(ctx, val)
-				if err != nil {
-					return err
-				}
-				if dept.SchoolID != input.SchoolID {
-					return errors.New("department not found in school")
-				}
-				deptID = &val
-			}
-		}
-
-		return s.teachers.UpdateDepartmentID(ctx, teacher.ID, deptID)
 	}
 
 	return nil

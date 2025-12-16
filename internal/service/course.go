@@ -178,15 +178,3 @@ func (s *CourseService) AssignTeachers(ctx context.Context, courseID string, tea
 	}
 	return s.courseTeacherRepo.BatchCreate(ctx, assignments)
 }
-
-func (s *CourseService) AssignTeachersByDepartment(ctx context.Context, courseID string, departmentID string) error {
-	teachers, err := s.teacherRepo.ListByDepartmentID(ctx, departmentID)
-	if err != nil {
-		return err
-	}
-	var teacherIDs []string
-	for _, teacher := range teachers {
-		teacherIDs = append(teacherIDs, teacher.ID)
-	}
-	return s.AssignTeachers(ctx, courseID, teacherIDs)
-}

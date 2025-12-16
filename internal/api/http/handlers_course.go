@@ -281,8 +281,7 @@ type assignStudentsRequest struct {
 }
 
 type assignTeachersRequest struct {
-	TeacherIDs   []string `json:"teacher_ids"`
-	DepartmentID string   `json:"department_id"`
+	TeacherIDs []string `json:"teacher_ids"`
 }
 
 func (h *Handler) AssignStudents(c *gin.Context) {
@@ -328,8 +327,6 @@ func (h *Handler) AssignTeachers(c *gin.Context) {
 
 	if len(req.TeacherIDs) > 0 {
 		err = h.courseService.AssignTeachers(ctx, courseID, req.TeacherIDs)
-	} else if req.DepartmentID != "" {
-		err = h.courseService.AssignTeachersByDepartment(ctx, courseID, req.DepartmentID)
 	} else {
 		response.Error(c, http.StatusBadRequest, "missing_assignment_target", nil)
 		return

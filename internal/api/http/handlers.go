@@ -127,7 +127,11 @@ func (h *Handler) RegisterRoutes(r *gin.Engine, adminGuard gin.HandlerFunc, teac
 		admin.DELETE("/time-slots/:id", h.DeleteTimeSlot)
 
 		admin.POST("/schedules/rules", h.CreateSchedule)
+		admin.GET("/schedules/rules", h.ListSchedules)
+		admin.GET("/schedules/stats", h.GetScheduleStats)
 		admin.POST("/schedules/generate", h.GenerateSessions)
+		admin.GET("/schedules/slots", h.ListTimeSlots)
+		admin.POST("/schedules/slots", h.CreateTimeSlot)
 
 		admin.GET("/courses", h.ListCourses)
 		admin.POST("/courses", h.CreateCourse)
@@ -408,14 +412,13 @@ func (h *Handler) CreateTeacher(c *gin.Context) {
 }
 
 type createStudentRequest struct {
-	SchoolID   string   `json:"school_id" validate:"required"`
-	Number     string   `json:"number" validate:"required"`
-	Name       string   `json:"name" validate:"required"`
-	Email      string   `json:"email" validate:"required,email"`
-	Phone      string   `json:"phone"`
-	ClassID    string   `json:"class_id" validate:"required"`
-	TeacherIDs []string `json:"teacher_ids" validate:"required,min=1,dive,required"`
-	DefaultPwd string   `json:"default_password" validate:"required"`
+	SchoolID   string `json:"school_id" validate:"required"`
+	Number     string `json:"number" validate:"required"`
+	Name       string `json:"name" validate:"required"`
+	Email      string `json:"email" validate:"required,email"`
+	Phone      string `json:"phone"`
+	ClassID    string `json:"class_id"`
+	DefaultPwd string `json:"default_password" validate:"required"`
 }
 
 type batchAccountActionRequest struct {
@@ -471,7 +474,6 @@ func (h *Handler) CreateStudent(c *gin.Context) {
 		Phone:      req.Phone,
 		ClassID:    req.ClassID,
 		DefaultPwd: req.DefaultPwd,
-		TeacherIDs: req.TeacherIDs,
 	})
 	if err != nil {
 		response.Error(c, http.StatusBadRequest, "unable to create student", err.Error())
@@ -720,8 +722,7 @@ func (h *Handler) UpdateAccountStructure(c *gin.Context) {
 	}
 
 	type updateRequest struct {
-		DepartmentID *string `json:"department_id"`
-		ClassID      *string `json:"class_id"`
+		ClassID *string `json:"class_id"`
 	}
 	var req updateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -736,11 +737,11 @@ func (h *Handler) UpdateAccountStructure(c *gin.Context) {
 	}
 
 	err := h.admin.UpdateAccountStructure(c.Request.Context(), service.UpdateAccountStructureInput{
-		SchoolID:     schoolID,
-		AccountID:    accountID,
-		DepartmentID: req.DepartmentID,
-		ClassID:      req.ClassID,
+		SchoolID:  schoolID,
+		AccountID: accountID,
+		ClassID:   req.ClassID,
 	})
+
 	if err != nil {
 		h.handleAdminAccountError(c, err, "unable to update account structure")
 		return

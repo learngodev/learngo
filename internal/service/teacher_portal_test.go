@@ -209,10 +209,6 @@ func (f *fakeTeacherRepo) GetByAccountID(ctx context.Context, accountID string) 
 	}
 	return nil, nil
 }
-func (f *fakeTeacherRepo) UpdateDepartmentID(context.Context, string, *string) error { return nil }
-func (f *fakeTeacherRepo) ListByDepartmentID(context.Context, string) ([]domain.Teacher, error) {
-	return nil, nil
-}
 
 type fakeAssignmentRepo struct {
 	assignment *domain.Assignment

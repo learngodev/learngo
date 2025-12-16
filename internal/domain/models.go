@@ -66,8 +66,8 @@ type Department struct {
 	UpdatedAt time.Time
 
 	// Virtual fields for counts
-	TeacherCount int64 `gorm:"-"`
-	StudentCount int64 `gorm:"-"`
+	TeacherCount int64 `gorm:"->;<-:false"`
+	StudentCount int64 `gorm:"->;<-:false"`
 }
 
 // Class is a teaching class under a department.
@@ -81,31 +81,30 @@ type Class struct {
 	UpdatedAt    time.Time
 
 	// Virtual fields for counts
-	StudentCount int64 `gorm:"-"`
+	StudentCount int64 `gorm:"->;<-:false"`
 }
 
 // Teacher profile.
 type Teacher struct {
-	ID           string  `gorm:"primaryKey;size:36"`
-	SchoolID     string  `gorm:"size:36;index"`
-	AccountID    string  `gorm:"size:36;uniqueIndex"`
-	Number       string  `gorm:"size:64;uniqueIndex"`
-	DepartmentID *string `gorm:"size:36;index"`
-	Email        string  `gorm:"size:128"`
-	Phone        string  `gorm:"size:32"`
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
-}
-
-// Student profile.
-type Student struct {
 	ID        string `gorm:"primaryKey;size:36"`
 	SchoolID  string `gorm:"size:36;index"`
 	AccountID string `gorm:"size:36;uniqueIndex"`
 	Number    string `gorm:"size:64;uniqueIndex"`
-	ClassID   string `gorm:"size:36;index"`
 	Email     string `gorm:"size:128"`
 	Phone     string `gorm:"size:32"`
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+// Student profile.
+type Student struct {
+	ID        string  `gorm:"primaryKey;size:36"`
+	SchoolID  string  `gorm:"size:36;index"`
+	AccountID string  `gorm:"size:36;uniqueIndex"`
+	Number    string  `gorm:"size:64;uniqueIndex"`
+	ClassID   *string `gorm:"size:36;index"`
+	Email     string  `gorm:"size:128"`
+	Phone     string  `gorm:"size:32"`
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
@@ -144,18 +143,36 @@ type TeacherStudentLink struct {
 
 // CourseSchedule defines a recurring class rule.
 type CourseSchedule struct {
-	ID        string `gorm:"primaryKey;size:36"`
-	SchoolID  string `gorm:"size:36;index"`
-	CourseID  string `gorm:"size:36;index"`
-	ClassID   string `gorm:"size:36;index"`
-	TeacherID string `gorm:"size:36;index"`
-	SlotID    string `gorm:"size:36;index"` // References TimeSlot
-	DayOfWeek int    `gorm:"index"`         // 1=Monday, 7=Sunday
-	Location  string `gorm:"size:128"`
-	StartDate time.Time
-	EndDate   time.Time
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID        string    `gorm:"primaryKey;size:36" json:"id"`
+	SchoolID  string    `gorm:"size:36;index" json:"school_id"`
+	CourseID  string    `gorm:"size:36;index" json:"course_id"`
+	ClassID   string    `gorm:"size:36;index" json:"class_id"`
+	TeacherID string    `gorm:"size:36;index" json:"teacher_id"`
+	SlotID    string    `gorm:"size:36;index" json:"slot_id"`
+	DayOfWeek int       `gorm:"index" json:"day_of_week"` // 1=Monday, 7=Sunday
+	Location  string    `gorm:"size:128" json:"location"`
+	StartDate time.Time `json:"start_date"`
+	EndDate   time.Time `json:"end_date"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// CourseScheduleDetail extends CourseSchedule with related entity names.
+type CourseScheduleDetail struct {
+	CourseSchedule
+	CourseName  string `json:"course_name"`
+	ClassName   string `json:"class_name"`
+	TeacherName string `json:"teacher_name"`
+	SlotName    string `json:"slot_name"`
+}
+
+// ScheduleStats aggregates schedule statistics.
+type ScheduleStats struct {
+	TotalRules              int64         `json:"total_rules"`
+	TotalCourses            int64         `json:"total_courses"`
+	ScheduledCoursesCount   int64         `json:"scheduled_courses_count"`
+	UnscheduledCoursesCount int64         `json:"unscheduled_courses_count"`
+	RulesByDay              map[int]int64 `json:"rules_by_day"`
 }
 
 // Course represents a subject taught by a teacher.
@@ -557,12 +574,28 @@ type AIChatMessage struct {
 
 // TimeSlot defines a class period.
 type TimeSlot struct {
-	ID        string `gorm:"primaryKey;size:36"`
-	SchoolID  string `gorm:"size:36;index"`
-	Name      string `gorm:"size:64"` // e.g., "第1-2节"
-	StartTime string `gorm:"size:5"`  // HH:mm
-	EndTime   string `gorm:"size:5"`  // HH:mm
-	SortOrder int    `gorm:"default:0"`
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID        string    `gorm:"primaryKey;size:36" json:"id"`
+	SchoolID  string    `gorm:"size:36;index" json:"school_id"`
+	Name      string    `gorm:"size:64" json:"name"`      // e.g., "第1-2节"
+	StartTime string    `gorm:"size:5" json:"start_time"` // HH:mm
+	EndTime   string    `gorm:"size:5" json:"end_time"`   // HH:mm
+	SortOrder int       `gorm:"default:0" json:"sort_order"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// CourseSlot is an alias for TimeSlot, used in some contexts.
+type CourseSlot struct {
+	ID        string    `gorm:"primaryKey;size:36" json:"id"`
+	SchoolID  string    `gorm:"size:36;index" json:"school_id"`
+	Name      string    `gorm:"size:64" json:"name"`
+	StartTime string    `gorm:"size:5" json:"start_time"`
+	EndTime   string    `gorm:"size:5" json:"end_time"`
+	SortOrder int       `gorm:"default:0" json:"sort_order"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+func (CourseSlot) TableName() string {
+	return "time_slots"
 }

@@ -97,7 +97,7 @@ CREATE TABLE students (
     school_id  CHAR(36) NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
     account_id CHAR(36) NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
     number     VARCHAR(64) NOT NULL,
-    class_id   CHAR(36) NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+    class_id   CHAR(36) REFERENCES classes(id) ON DELETE SET NULL,
     email      VARCHAR(128) NOT NULL,
     phone      VARCHAR(32),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

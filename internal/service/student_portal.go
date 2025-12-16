@@ -159,7 +159,11 @@ func (s *StudentPortalService) ListAssignments(ctx context.Context, accountID st
 		return nil, ErrStudentProfileNotFound
 	}
 
-	assignments, err := s.assignments.ListByClass(ctx, student.ClassID, limit, nil)
+	if student.ClassID == nil {
+		return []StudentAssignmentItem{}, nil
+	}
+
+	assignments, err := s.assignments.ListByClass(ctx, *student.ClassID, limit, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -176,7 +180,11 @@ func (s *StudentPortalService) ListExams(ctx context.Context, accountID string, 
 		return nil, ErrStudentProfileNotFound
 	}
 
-	assignments, err := s.assignments.ListByClass(ctx, student.ClassID, limit, []domain.AssignmentType{domain.AssignmentExam})
+	if student.ClassID == nil {
+		return []StudentAssignmentItem{}, nil
+	}
+
+	assignments, err := s.assignments.ListByClass(ctx, *student.ClassID, limit, []domain.AssignmentType{domain.AssignmentExam})
 	if err != nil {
 		return nil, err
 	}
@@ -193,7 +201,11 @@ func (s *StudentPortalService) ListSchedule(ctx context.Context, accountID strin
 		return nil, ErrStudentProfileNotFound
 	}
 
-	sessions, err := s.sessions.ListByClassBetween(ctx, student.ClassID, start, end)
+	if student.ClassID == nil {
+		return []StudentScheduleItem{}, nil
+	}
+
+	sessions, err := s.sessions.ListByClassBetween(ctx, *student.ClassID, start, end)
 	if err != nil {
 		return nil, err
 	}
@@ -211,7 +223,11 @@ func (s *StudentPortalService) ListAgenda(ctx context.Context, accountID string,
 		return nil, ErrStudentProfileNotFound
 	}
 
-	sessions, err := s.sessions.ListByClassBetween(ctx, student.ClassID, start, end)
+	if student.ClassID == nil {
+		return []StudentAgendaItem{}, nil
+	}
+
+	sessions, err := s.sessions.ListByClassBetween(ctx, *student.ClassID, start, end)
 	if err != nil {
 		return nil, err
 	}
@@ -240,7 +256,7 @@ func (s *StudentPortalService) ListAgenda(ctx context.Context, accountID string,
 	}
 
 	if includeAssignments {
-		assignments, err := s.assignments.ListDueBetween(ctx, student.ClassID, start, end, nil)
+		assignments, err := s.assignments.ListDueBetween(ctx, *student.ClassID, start, end, nil)
 		if err != nil {
 			return nil, err
 		}
