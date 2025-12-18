@@ -22,6 +22,7 @@ DROP TABLE IF EXISTS assignments CASCADE;
 DROP TABLE IF EXISTS course_sessions CASCADE;
 DROP TABLE IF EXISTS courses CASCADE;
 DROP TABLE IF EXISTS course_slots CASCADE;
+DROP TABLE IF EXISTS classrooms CASCADE;
 DROP TABLE IF EXISTS teacher_student_links CASCADE;
 DROP TABLE IF EXISTS students CASCADE;
 DROP TABLE IF EXISTS teachers CASCADE;
@@ -128,6 +129,14 @@ CREATE TABLE courses (
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE classrooms (
+    id          CHAR(36) PRIMARY KEY,
+    school_id   CHAR(36) NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    location    VARCHAR(128) NOT NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE time_slots (
     id          CHAR(36) PRIMARY KEY,
     school_id   CHAR(36) NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
@@ -146,6 +155,7 @@ CREATE TABLE course_schedules (
     class_id    CHAR(36) NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
     teacher_id  CHAR(36) NOT NULL REFERENCES teachers(id) ON DELETE CASCADE,
     slot_id     CHAR(36) NOT NULL REFERENCES time_slots(id) ON DELETE CASCADE,
+    classroom_id CHAR(36) REFERENCES classrooms(id) ON DELETE SET NULL,
     day_of_week INT NOT NULL,
     location    VARCHAR(128),
     start_date  TIMESTAMPTZ NOT NULL,
@@ -172,7 +182,7 @@ CREATE TABLE teaching_assignments (
     id          CHAR(36) PRIMARY KEY,
     school_id   CHAR(36) NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
     course_id   CHAR(36) NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
-    teacher_id  CHAR(36) NOT NULL REFERENCES teachers(id) ON DELETE CASCADE,
+    teacher_id  CHAR(36) REFERENCES teachers(id) ON DELETE CASCADE,
     class_id    CHAR(36) NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT "uni_teaching_assignments" UNIQUE (course_id, teacher_id, class_id)
@@ -341,10 +351,14 @@ VALUES
     ('slot-001', '11111111-1111-1111-1111-111111111111', '第1-2节', '08:00', '09:40'),
     ('slot-002', '11111111-1111-1111-1111-111111111111', '第3-4节', '10:00', '11:40');
 
-INSERT INTO course_schedules (id, school_id, course_id, class_id, teacher_id, slot_id, day_of_week, location, start_date, end_date)
+INSERT INTO classrooms (id, school_id, location) VALUES
+    ('room-001', '11111111-1111-1111-1111-111111111111', 'A101'),
+    ('room-002', '11111111-1111-1111-1111-111111111111', 'B202');
+
+INSERT INTO course_schedules (id, school_id, course_id, class_id, teacher_id, slot_id, classroom_id, day_of_week, location, start_date, end_date)
 VALUES
-    ('sched-001', '11111111-1111-1111-1111-111111111111', '77777777-7777-7777-7777-777777777777', '33333333-3333-3333-3333-333333333333', '44444444-4444-4444-4444-444444444444', 'slot-001', 1, 'A101', '2025-09-01 00:00:00+00', '2026-01-31 00:00:00+00'),
-    ('sched-002', '11111111-1111-1111-1111-111111111111', '77777777-7777-7777-7777-777777777778', '33333333-3333-3333-3333-333333333333', '44444444-4444-4444-4444-444444444444', 'slot-002', 2, 'B202', '2025-09-01 00:00:00+00', '2026-01-31 00:00:00+00');
+    ('sched-001', '11111111-1111-1111-1111-111111111111', '77777777-7777-7777-7777-777777777777', '33333333-3333-3333-3333-333333333333', '44444444-4444-4444-4444-444444444444', 'slot-001', 'room-001', 1, 'A101', '2025-09-01 00:00:00+00', '2026-01-31 00:00:00+00'),
+    ('sched-002', '11111111-1111-1111-1111-111111111111', '77777777-7777-7777-7777-777777777778', '33333333-3333-3333-3333-333333333333', '44444444-4444-4444-4444-444444444444', 'slot-002', 'room-002', 2, 'B202', '2025-09-01 00:00:00+00', '2026-01-31 00:00:00+00');
 
 INSERT INTO course_sessions (id, course_id, class_id, teacher_id, slot_id, starts_at, ends_at, location, source)
 VALUES

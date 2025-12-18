@@ -11,15 +11,16 @@ import (
 
 // CreateScheduleRequest defines payload for creating a schedule rule.
 type CreateScheduleRequest struct {
-	SchoolID  string    `json:"school_id" validate:"required"`
-	CourseID  string    `json:"course_id" validate:"required"`
-	ClassID   string    `json:"class_id" validate:"required"`
-	TeacherID string    `json:"teacher_id" validate:"required"`
-	SlotID    string    `json:"slot_id" validate:"required"`
-	DayOfWeek int       `json:"day_of_week" validate:"required,min=1,max=7"`
-	Location  string    `json:"location"`
-	StartDate time.Time `json:"start_date" validate:"required"`
-	EndDate   time.Time `json:"end_date" validate:"required"`
+	SchoolID    string    `json:"school_id" validate:"required"`
+	CourseID    string    `json:"course_id" validate:"required"`
+	ClassID     string    `json:"class_id" validate:"required"`
+	TeacherID   string    `json:"teacher_id"`
+	SlotID      string    `json:"slot_id" validate:"required"`
+	DayOfWeek   int       `json:"day_of_week" validate:"required,min=1,max=7"`
+	Location    string    `json:"location"`
+	ClassroomID *string   `json:"classroom_id"`
+	StartDate   time.Time `json:"start_date" validate:"required"`
+	EndDate     time.Time `json:"end_date" validate:"required"`
 }
 
 func (h *Handler) CreateSchedule(c *gin.Context) {
@@ -29,12 +30,26 @@ func (h *Handler) CreateSchedule(c *gin.Context) {
 		return
 	}
 
-	schedule, err := h.schedule.CreateSchedule(c.Request.Context(), req.SchoolID, req.CourseID, req.ClassID, req.TeacherID, req.SlotID, req.DayOfWeek, req.Location, req.StartDate, req.EndDate)
+	schedule, err := h.schedule.CreateSchedule(c.Request.Context(), req.SchoolID, req.CourseID, req.ClassID, req.TeacherID, req.SlotID, req.DayOfWeek, req.Location, req.ClassroomID, req.StartDate, req.EndDate)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, "Failed to create schedule", err.Error())
 		return
 	}
 	response.Success(c, http.StatusCreated, schedule)
+}
+
+func (h *Handler) DeleteSchedule(c *gin.Context) {
+	id := c.Param("id")
+	if id == "" {
+		response.Error(c, http.StatusBadRequest, "id required", nil)
+		return
+	}
+
+	if err := h.schedule.DeleteSchedule(c.Request.Context(), id); err != nil {
+		response.Error(c, http.StatusInternalServerError, "Failed to delete schedule", err.Error())
+		return
+	}
+	response.Success(c, http.StatusOK, nil)
 }
 
 func (h *Handler) ListSchedules(c *gin.Context) {

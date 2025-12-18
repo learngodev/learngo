@@ -108,6 +108,20 @@ func (s *TeachingAssignmentStore) ListDetails(ctx context.Context, schoolID stri
 	return assignments, total, nil
 }
 
+// GetByID retrieves a teaching assignment by ID.
+func (s *TeachingAssignmentStore) GetByID(ctx context.Context, id string) (*domain.TeachingAssignment, error) {
+	var assignment domain.TeachingAssignment
+	if err := s.db.WithContext(ctx).First(&assignment, "id = ?", id).Error; err != nil {
+		return nil, err
+	}
+	return &assignment, nil
+}
+
+// Update modifies an existing teaching assignment.
+func (s *TeachingAssignmentStore) Update(ctx context.Context, assignment *domain.TeachingAssignment) error {
+	return s.db.WithContext(ctx).Save(assignment).Error
+}
+
 // Delete removes a teaching assignment.
 func (s *TeachingAssignmentStore) Delete(ctx context.Context, id string) error {
 	result := s.db.WithContext(ctx).Delete(&domain.TeachingAssignment{}, "id = ?", id)

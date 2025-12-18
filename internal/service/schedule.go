@@ -12,10 +12,12 @@ import (
 )
 
 type ScheduleService struct {
-	timeSlotRepo repository.TimeSlotRepository
-	scheduleRepo repository.CourseScheduleRepository
-	sessionRepo  repository.CourseSessionRepository
-	courseRepo   repository.CourseRepository
+	timeSlotRepo  repository.TimeSlotRepository
+	scheduleRepo  repository.CourseScheduleRepository
+	sessionRepo   repository.CourseSessionRepository
+	courseRepo    repository.CourseRepository
+	teacherRepo   repository.TeacherRepository
+	classroomRepo repository.ClassroomRepository
 }
 
 func NewScheduleService(
@@ -23,12 +25,16 @@ func NewScheduleService(
 	scheduleRepo repository.CourseScheduleRepository,
 	sessionRepo repository.CourseSessionRepository,
 	courseRepo repository.CourseRepository,
+	teacherRepo repository.TeacherRepository,
+	classroomRepo repository.ClassroomRepository,
 ) *ScheduleService {
 	return &ScheduleService{
-		timeSlotRepo: timeSlotRepo,
-		scheduleRepo: scheduleRepo,
-		sessionRepo:  sessionRepo,
-		courseRepo:   courseRepo,
+		timeSlotRepo:  timeSlotRepo,
+		scheduleRepo:  scheduleRepo,
+		sessionRepo:   sessionRepo,
+		courseRepo:    courseRepo,
+		teacherRepo:   teacherRepo,
+		classroomRepo: classroomRepo,
 	}
 }
 
@@ -56,25 +62,127 @@ func (s *ScheduleService) ListTimeSlots(ctx context.Context, schoolID string) ([
 
 // Schedule Rule Management
 
-func (s *ScheduleService) CreateSchedule(ctx context.Context, schoolID, courseID, classID, teacherID, slotID string, dayOfWeek int, location string, startDate, endDate time.Time) (*domain.CourseSchedule, error) {
+func (s *ScheduleService) CreateSchedule(ctx context.Context, schoolID, courseID, classID, teacherID, slotID string, dayOfWeek int, location string, classroomID *string, startDate, endDate time.Time) (*domain.CourseSchedule, error) {
+	if !startDate.Before(endDate) {
+		return nil, fmt.Errorf("start_date must be before end_date")
+	}
+
+	// Validate slot exists and get times
+	slot, err := s.timeSlotRepo.FindByID(ctx, slotID)
+	if err != nil {
+		return nil, err
+	}
+	if slot == nil {
+		return nil, fmt.Errorf("time slot not found")
+	}
+
+	// Validate classroom if provided
+	if classroomID != nil && *classroomID != "" {
+		// Check existence
+		classroom, err := s.classroomRepo.GetByID(ctx, *classroomID)
+		if err != nil {
+			return nil, fmt.Errorf("classroom not found: %v", err)
+		}
+		location = classroom.Location
+
+		// Check conflict
+		existingSchedules, err := s.scheduleRepo.ListByClassroom(ctx, *classroomID)
+		if err != nil {
+			return nil, err
+		}
+		for _, sch := range existingSchedules {
+			if sch.DayOfWeek == dayOfWeek && sch.SlotID == slotID {
+				// Check date overlap
+				// Overlap if (StartA <= EndB) and (EndA >= StartB)
+				// Here we check if the new schedule overlaps with existing one
+				if !sch.StartDate.After(endDate) && !sch.EndDate.Before(startDate) {
+					return nil, fmt.Errorf("classroom is already booked for this slot")
+				}
+			}
+		}
+	}
+
+	// Validate teacher exists and resolve ID if necessary
+	if teacherID != "" {
+		// Try as Profile ID first
+		teacher, err := s.teacherRepo.GetByID(ctx, teacherID)
+		if err != nil || teacher == nil {
+			// Try as Account ID
+			teacher, err = s.teacherRepo.GetByAccountID(ctx, teacherID)
+			if err != nil {
+				return nil, fmt.Errorf("teacher not found (checked ID and AccountID): %v", err)
+			}
+			if teacher == nil {
+				return nil, fmt.Errorf("teacher not found")
+			}
+			// Use the resolved Profile ID
+			teacherID = teacher.ID
+		}
+	}
+
 	schedule := &domain.CourseSchedule{
-		ID:        uuid.New().String(),
-		SchoolID:  schoolID,
-		CourseID:  courseID,
-		ClassID:   classID,
-		TeacherID: teacherID,
-		SlotID:    slotID,
-		DayOfWeek: dayOfWeek,
-		Location:  location,
-		StartDate: startDate,
-		EndDate:   endDate,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		ID:          uuid.New().String(),
+		SchoolID:    schoolID,
+		CourseID:    courseID,
+		ClassID:     classID,
+		TeacherID:   teacherID,
+		SlotID:      slotID,
+		ClassroomID: classroomID,
+		DayOfWeek:   dayOfWeek,
+		Location:    location,
+		StartDate:   startDate,
+		EndDate:     endDate,
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
 	}
 	if err := s.scheduleRepo.Create(ctx, schedule); err != nil {
 		return nil, err
 	}
+
+	// Generate sessions for this schedule
+	startH, startM, _ := parseTime(slot.StartTime)
+	endH, endM, _ := parseTime(slot.EndTime)
+
+	for d := startDate; d.Before(endDate) || d.Equal(endDate); d = d.AddDate(0, 0, 1) {
+		weekday := int(d.Weekday())
+		if weekday == 0 {
+			weekday = 7
+		}
+		if weekday != dayOfWeek {
+			continue
+		}
+
+		startsAt := time.Date(d.Year(), d.Month(), d.Day(), startH, startM, 0, 0, d.Location())
+		endsAt := time.Date(d.Year(), d.Month(), d.Day(), endH, endM, 0, 0, d.Location())
+
+		session := &domain.CourseSession{
+			ID:        uuid.New().String(),
+			CourseID:  courseID,
+			ClassID:   classID,
+			TeacherID: teacherID,
+			SlotID:    slotID,
+			StartsAt:  startsAt,
+			EndsAt:    endsAt,
+			Location:  location,
+			Source:    "system",
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		}
+		// Best effort creation, but log error if possible (we don't have logger here easily)
+		// At least we are using the correct TeacherID now.
+		if err := s.sessionRepo.Create(ctx, session); err != nil {
+			// If we fail to create a session, we should probably know.
+			// But failing the whole request might be too harsh if it's a duplicate?
+			// For now, let's return error to be safe and debuggable.
+			return nil, fmt.Errorf("failed to create session for %s: %v", startsAt, err)
+		}
+	}
+
 	return schedule, nil
+}
+
+func (s *ScheduleService) DeleteSchedule(ctx context.Context, id string) error {
+	return s.scheduleRepo.Delete(ctx, id)
 }
 
 func (s *ScheduleService) ListSchedules(ctx context.Context, schoolID string, courseID string) ([]domain.CourseScheduleDetail, error) {
@@ -104,6 +212,10 @@ func (s *ScheduleService) GetScheduleStats(ctx context.Context, schoolID string)
 // Session Generation
 
 func (s *ScheduleService) GenerateSessions(ctx context.Context, schoolID string, start, end time.Time) error {
+	if !start.Before(end) {
+		return fmt.Errorf("start time must be before end time")
+	}
+
 	// 1. List all schedules for the school
 	schedules, err := s.scheduleRepo.ListBySchool(ctx, schoolID)
 	if err != nil {

@@ -114,6 +114,8 @@ func (s *AccountStore) ListByRole(
 
 	joinedStudents := false
 	joinedClasses := false
+	joinedTeachers := false
+
 	joinStudents := func() {
 		if !joinedStudents {
 			base = base.Joins("LEFT JOIN students ON students.account_id = accounts.id")
@@ -127,6 +129,12 @@ func (s *AccountStore) ListByRole(
 			joinedClasses = true
 		}
 	}
+	joinTeachers := func() {
+		if !joinedTeachers {
+			base = base.Joins("LEFT JOIN teachers ON teachers.account_id = accounts.id")
+			joinedTeachers = true
+		}
+	}
 
 	if classID != "" {
 		joinStudents()
@@ -137,9 +145,17 @@ func (s *AccountStore) ListByRole(
 		base = base.Where("classes.department_id = ?", departmentID)
 	}
 	if courseID != "" {
-		joinStudents()
-		base = base.Joins("JOIN teaching_assignments ON teaching_assignments.class_id = students.class_id").
-			Where("teaching_assignments.course_id = ?", courseID)
+		if role == domain.RoleTeacher {
+			joinTeachers()
+			base = base.Where(
+				"teachers.id IN (?)",
+				s.db.Table("teaching_assignments").Select("teacher_id").Where("course_id = ? AND teacher_id IS NOT NULL", courseID),
+			)
+		} else {
+			joinStudents()
+			base = base.Joins("JOIN teaching_assignments ON teaching_assignments.class_id = students.class_id").
+				Where("teaching_assignments.course_id = ?", courseID)
+		}
 	}
 
 	if onlyClassless {

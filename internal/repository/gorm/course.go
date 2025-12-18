@@ -99,6 +99,7 @@ func (s *CourseStore) ListAssignments(ctx context.Context, schoolID string, depa
 
 	db := s.db.WithContext(ctx).Table("courses c").
 		Select(`
+			ta.id as assignment_id,
 			c.id as course_id, 
 			c.name as course_name, 
 			c.description, 

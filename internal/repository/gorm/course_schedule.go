@@ -44,12 +44,13 @@ func (s *CourseScheduleStore) ListDetailsBySchool(ctx context.Context, schoolID 
 	var details []domain.CourseScheduleDetail
 	query := s.db.WithContext(ctx).
 		Table("course_schedules").
-		Select("course_schedules.*, courses.name as course_name, classes.name as class_name, accounts.display_name as teacher_name, time_slots.name as slot_name").
+		Select("course_schedules.*, courses.name as course_name, classes.name as class_name, accounts.display_name as teacher_name, time_slots.name as slot_name, classrooms.location as classroom_loc").
 		Joins("LEFT JOIN courses ON course_schedules.course_id = courses.id").
 		Joins("LEFT JOIN classes ON course_schedules.class_id = classes.id").
 		Joins("LEFT JOIN teachers ON course_schedules.teacher_id = teachers.id").
 		Joins("LEFT JOIN accounts ON teachers.account_id = accounts.id").
 		Joins("LEFT JOIN time_slots ON course_schedules.slot_id = time_slots.id").
+		Joins("LEFT JOIN classrooms ON course_schedules.classroom_id = classrooms.id").
 		Where("course_schedules.school_id = ?", schoolID)
 
 	if courseID != "" {
@@ -58,6 +59,12 @@ func (s *CourseScheduleStore) ListDetailsBySchool(ctx context.Context, schoolID 
 
 	err := query.Scan(&details).Error
 	return details, err
+}
+
+func (s *CourseScheduleStore) ListByClassroom(ctx context.Context, classroomID string) ([]domain.CourseSchedule, error) {
+	var schedules []domain.CourseSchedule
+	err := s.db.WithContext(ctx).Where("classroom_id = ?", classroomID).Find(&schedules).Error
+	return schedules, err
 }
 
 func (s *CourseScheduleStore) GetStats(ctx context.Context, schoolID string) (*domain.ScheduleStats, error) {

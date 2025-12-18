@@ -226,6 +226,7 @@ type ListAccountsOptions struct {
 // AdminAccountSummary represents account information for admin UI.
 type AdminAccountSummary struct {
 	ID           string      `json:"id"`
+	ProfileID    string      `json:"profile_id,omitempty"`
 	Role         domain.Role `json:"role"`
 	Identifier   string      `json:"identifier"`
 	Name         string      `json:"name"`
@@ -302,6 +303,7 @@ func (s *AdminService) ListAccounts(ctx context.Context, opts ListAccountsOption
 				return nil, 0, perr
 			}
 			if profile != nil {
+				summary.ProfileID = profile.ID
 				summary.Email = profile.Email
 				summary.Phone = profile.Phone
 			}
@@ -311,6 +313,7 @@ func (s *AdminService) ListAccounts(ctx context.Context, opts ListAccountsOption
 				return nil, 0, perr
 			}
 			if profile != nil {
+				summary.ProfileID = profile.ID
 				summary.Email = profile.Email
 				summary.Phone = profile.Phone
 				if profile.ClassID != nil {

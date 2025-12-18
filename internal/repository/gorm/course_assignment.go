@@ -42,38 +42,3 @@ func (s *CourseStudentStore) DeleteByCourseAndStudent(ctx context.Context, cours
 	}
 	return s.db.WithContext(ctx).Where("course_id = ? AND student_id IN ?", courseID, studentIDs).Delete(&domain.CourseStudent{}).Error
 }
-
-// CourseTeacherStore implements repository.CourseTeacherRepository.
-type CourseTeacherStore struct {
-	db *gorm.DB
-}
-
-// NewCourseTeacherStore constructs CourseTeacherStore.
-func NewCourseTeacherStore(db *gorm.DB) *CourseTeacherStore {
-	return &CourseTeacherStore{db: db}
-}
-
-// BatchCreate assigns multiple teachers to a course.
-func (s *CourseTeacherStore) BatchCreate(ctx context.Context, assignments []domain.CourseTeacher) error {
-	if len(assignments) == 0 {
-		return nil
-	}
-	return s.db.WithContext(ctx).Create(&assignments).Error
-}
-
-// ListByCourseID retrieves all teachers assigned to a course.
-func (s *CourseTeacherStore) ListByCourseID(ctx context.Context, courseID string) ([]domain.CourseTeacher, error) {
-	var assignments []domain.CourseTeacher
-	if err := s.db.WithContext(ctx).Where("course_id = ?", courseID).Find(&assignments).Error; err != nil {
-		return nil, err
-	}
-	return assignments, nil
-}
-
-// DeleteByCourseAndTeacher removes teachers from a course.
-func (s *CourseTeacherStore) DeleteByCourseAndTeacher(ctx context.Context, courseID string, teacherIDs []string) error {
-	if len(teacherIDs) == 0 {
-		return nil
-	}
-	return s.db.WithContext(ctx).Where("course_id = ? AND teacher_id IN ?", courseID, teacherIDs).Delete(&domain.CourseTeacher{}).Error
-}

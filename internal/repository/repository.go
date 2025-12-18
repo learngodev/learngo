@@ -100,19 +100,14 @@ type CourseStudentRepository interface {
 	DeleteByCourseAndStudent(ctx context.Context, courseID string, studentIDs []string) error
 }
 
-// CourseTeacherRepository manages teacher assignments to courses.
-type CourseTeacherRepository interface {
-	BatchCreate(ctx context.Context, assignments []domain.CourseTeacher) error
-	ListByCourseID(ctx context.Context, courseID string) ([]domain.CourseTeacher, error)
-	DeleteByCourseAndTeacher(ctx context.Context, courseID string, teacherIDs []string) error
-}
-
 // TeachingAssignmentRepository manages course assignments.
 type TeachingAssignmentRepository interface {
 	Create(ctx context.Context, assignment *domain.TeachingAssignment) error
 	BatchCreate(ctx context.Context, assignments []domain.TeachingAssignment) error
 	List(ctx context.Context, schoolID string, courseID, teacherID, classID string, page, size int) ([]domain.TeachingAssignment, int64, error)
 	ListDetails(ctx context.Context, schoolID string, courseID, teacherID, classID string, page, size int) ([]domain.TeachingAssignmentDetail, int64, error)
+	GetByID(ctx context.Context, id string) (*domain.TeachingAssignment, error)
+	Update(ctx context.Context, assignment *domain.TeachingAssignment) error
 	Delete(ctx context.Context, id string) error
 	BatchDelete(ctx context.Context, ids []string) error
 }
@@ -126,6 +121,16 @@ type CourseScheduleRepository interface {
 	ListBySchool(ctx context.Context, schoolID string) ([]domain.CourseSchedule, error)
 	ListDetailsBySchool(ctx context.Context, schoolID string, courseID string) ([]domain.CourseScheduleDetail, error)
 	GetStats(ctx context.Context, schoolID string) (*domain.ScheduleStats, error)
+	ListByClassroom(ctx context.Context, classroomID string) ([]domain.CourseSchedule, error)
+}
+
+// ClassroomRepository manages classroom persistence.
+type ClassroomRepository interface {
+	Create(ctx context.Context, classroom *domain.Classroom) error
+	GetByID(ctx context.Context, id string) (*domain.Classroom, error)
+	List(ctx context.Context, schoolID string, page, size int) ([]domain.Classroom, int64, error)
+	Update(ctx context.Context, classroom *domain.Classroom) error
+	Delete(ctx context.Context, id string) error
 }
 
 // CourseSessionRepository retrieves scheduled lessons.

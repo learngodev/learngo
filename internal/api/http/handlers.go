@@ -43,12 +43,13 @@ type Handler struct {
 	school        *service.SchoolService
 	courseService *service.CourseService
 	schedule      *service.ScheduleService
+	classroom     *service.ClassroomService
 	streamHub     *realtime.Hub
 	validate      *validator.Validate
 }
 
 // NewHandler constructs a Handler instance.
-func NewHandler(auth *service.AuthService, admin *service.AdminService, assignments *service.AssignmentService, teacher *service.TeacherPortalService, student *service.StudentPortalService, conversations *service.ConversationService, notes *service.NoteService, noteComments *service.NoteCommentService, oss *service.AdminOssService, system *service.AdminSystemService, ai *service.AIAssistantService, aiGrading *service.AIGradingService, school *service.SchoolService, courseService *service.CourseService, schedule *service.ScheduleService, streamHub *realtime.Hub) *Handler {
+func NewHandler(auth *service.AuthService, admin *service.AdminService, assignments *service.AssignmentService, teacher *service.TeacherPortalService, student *service.StudentPortalService, conversations *service.ConversationService, notes *service.NoteService, noteComments *service.NoteCommentService, oss *service.AdminOssService, system *service.AdminSystemService, ai *service.AIAssistantService, aiGrading *service.AIGradingService, school *service.SchoolService, courseService *service.CourseService, schedule *service.ScheduleService, classroom *service.ClassroomService, streamHub *realtime.Hub) *Handler {
 	return &Handler{
 		auth:          auth,
 		admin:         admin,
@@ -65,6 +66,7 @@ func NewHandler(auth *service.AuthService, admin *service.AdminService, assignme
 		school:        school,
 		courseService: courseService,
 		schedule:      schedule,
+		classroom:     classroom,
 		streamHub:     streamHub,
 		validate:      validator.New(),
 	}
@@ -126,8 +128,14 @@ func (h *Handler) RegisterRoutes(r *gin.Engine, adminGuard gin.HandlerFunc, teac
 		admin.PATCH("/time-slots/:id", h.UpdateTimeSlot)
 		admin.DELETE("/time-slots/:id", h.DeleteTimeSlot)
 
+		admin.POST("/classrooms", h.CreateClassroom)
+		admin.GET("/classrooms", h.ListClassrooms)
+		admin.PATCH("/classrooms/:id", h.UpdateClassroom)
+		admin.DELETE("/classrooms/:id", h.DeleteClassroom)
+
 		admin.POST("/schedules/rules", h.CreateSchedule)
 		admin.GET("/schedules/rules", h.ListSchedules)
+		admin.DELETE("/schedules/rules/:id", h.DeleteSchedule)
 		admin.GET("/schedules/stats", h.GetScheduleStats)
 		admin.POST("/schedules/generate", h.GenerateSessions)
 		admin.GET("/schedules/slots", h.ListTimeSlots)
@@ -140,10 +148,10 @@ func (h *Handler) RegisterRoutes(r *gin.Engine, adminGuard gin.HandlerFunc, teac
 		admin.POST("/courses/assign", h.AssignCourse)
 		admin.POST("/courses/assign/batch", h.BatchAssignCourse)
 		admin.GET("/courses/assignments", h.ListAssignments)
+		admin.PATCH("/courses/assignments/:id", h.UpdateTeachingAssignment)
 		admin.DELETE("/courses/assignments/:id", h.RemoveAssignment)
 		admin.POST("/courses/assignments/batch-remove", h.BatchRemoveAssignments)
 		admin.POST("/courses/:id/assign/students", h.AssignStudents)
-		admin.POST("/courses/:id/assign/teachers", h.AssignTeachers)
 
 		assignments := api.Group("/assignments", teacherGuard)
 		assignments.POST("", h.CreateAssignment)

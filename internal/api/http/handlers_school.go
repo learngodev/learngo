@@ -148,17 +148,18 @@ func (h *Handler) UpdateTimeSlot(c *gin.Context) {
 		return
 	}
 
-	// Ideally we should check if the slot belongs to the school of the admin
-	// But for brevity, skipping strict ownership check here (Service/Repo should handle it or we trust ID)
-
-	slot := &domain.TimeSlot{
-		ID:        id,
-		Name:      req.Name,
-		StartTime: req.StartTime,
-		EndTime:   req.EndTime,
-		SortOrder: req.SortOrder,
-		UpdatedAt: time.Now(),
+	// Fetch existing slot to ensure it exists and preserve SchoolID
+	slot, err := h.school.GetTimeSlot(c.Request.Context(), id)
+	if err != nil {
+		response.Error(c, http.StatusNotFound, "time_slot_not_found", err.Error())
+		return
 	}
+
+	slot.Name = req.Name
+	slot.StartTime = req.StartTime
+	slot.EndTime = req.EndTime
+	slot.SortOrder = req.SortOrder
+	slot.UpdatedAt = time.Now()
 
 	if err := h.school.UpdateTimeSlot(c.Request.Context(), slot); err != nil {
 		response.Error(c, http.StatusInternalServerError, "failed_to_update_time_slot", err.Error())

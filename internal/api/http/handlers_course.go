@@ -26,6 +26,11 @@ type assignCourseRequest struct {
 	ClassID   string `json:"class_id" binding:"required"`
 }
 
+type updateTeachingAssignmentRequest struct {
+	TeacherID string `json:"teacher_id" binding:"required"`
+	ClassID   string `json:"class_id" binding:"required"`
+}
+
 func (h *Handler) CreateCourse(c *gin.Context) {
 	var req createCourseRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -107,7 +112,6 @@ type classAssignmentOverview struct {
 	ID            string   `json:"id"`
 	ClassID       string   `json:"class_id"`
 	ClassName     string   `json:"class_name"`
-	TeacherCount  int      `json:"teacher_count"`
 	StudentCount  int64    `json:"student_count"`
 	AssignmentIDs []string `json:"assignment_ids"`
 	TeacherNames  []string `json:"teacher_names"`
@@ -149,7 +153,6 @@ func (h *Handler) ListAssignments(c *gin.Context) {
 			order = append(order, a.ClassID)
 		}
 		entry := grouped[a.ClassID]
-		entry.TeacherCount++
 		entry.AssignmentIDs = append(entry.AssignmentIDs, a.ID)
 		if a.TeacherName != "" {
 			entry.TeacherNames = append(entry.TeacherNames, a.TeacherName)
@@ -192,6 +195,10 @@ func (h *Handler) AssignCourse(c *gin.Context) {
 
 	assignment, err := h.courseService.AssignCourse(c.Request.Context(), schoolID, req.CourseID, req.TeacherID, req.ClassID)
 	if err != nil {
+		if err.Error() == "teacher_not_found" || err.Error() == "course_not_found" {
+			response.Error(c, http.StatusBadRequest, err.Error(), nil)
+			return
+		}
 		response.Error(c, http.StatusInternalServerError, "failed_to_assign_course", err.Error())
 		return
 	}
@@ -199,9 +206,25 @@ func (h *Handler) AssignCourse(c *gin.Context) {
 	response.Success(c, http.StatusOK, assignment)
 }
 
+func (h *Handler) UpdateTeachingAssignment(c *gin.Context) {
+	id := c.Param("id")
+	var req updateTeachingAssignmentRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+
+	if err := h.courseService.UpdateAssignment(c.Request.Context(), id, req.TeacherID, req.ClassID); err != nil {
+		response.Error(c, http.StatusInternalServerError, "failed_to_update_assignment", err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, nil)
+}
+
 type batchAssignCourseRequest struct {
 	CourseID     string   `json:"course_id" binding:"required"`
-	TeacherID    string   `json:"teacher_id" binding:"required"`
+	TeacherID    string   `json:"teacher_id"` // Optional
 	ClassIDs     []string `json:"class_ids"`
 	DepartmentID string   `json:"department_id"` // If provided, assign all classes in this department
 }
@@ -275,13 +298,8 @@ func (h *Handler) RemoveAssignment(c *gin.Context) {
 }
 
 type assignStudentsRequest struct {
-	StudentIDs   []string `json:"student_ids"`
-	ClassID      string   `json:"class_id"`
-	DepartmentID string   `json:"department_id"`
-}
-
-type assignTeachersRequest struct {
-	TeacherIDs []string `json:"teacher_ids"`
+	ClassID      string `json:"class_id"`
+	DepartmentID string `json:"department_id"`
 }
 
 func (h *Handler) AssignStudents(c *gin.Context) {
@@ -295,9 +313,7 @@ func (h *Handler) AssignStudents(c *gin.Context) {
 	ctx := c.Request.Context()
 	var err error
 
-	if len(req.StudentIDs) > 0 {
-		err = h.courseService.AssignStudents(ctx, courseID, req.StudentIDs)
-	} else if req.ClassID != "" {
+	if req.ClassID != "" {
 		err = h.courseService.AssignStudentsByClass(ctx, courseID, req.ClassID)
 	} else if req.DepartmentID != "" {
 		err = h.courseService.AssignStudentsByDepartment(ctx, courseID, req.DepartmentID)
@@ -314,33 +330,6 @@ func (h *Handler) AssignStudents(c *gin.Context) {
 	response.Success(c, http.StatusOK, nil)
 }
 
-func (h *Handler) AssignTeachers(c *gin.Context) {
-	courseID := c.Param("id")
-	var req assignTeachersRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid_request", err.Error())
-		return
-	}
-
-	ctx := c.Request.Context()
-	var err error
-
-	if len(req.TeacherIDs) > 0 {
-		err = h.courseService.AssignTeachers(ctx, courseID, req.TeacherIDs)
-	} else {
-		response.Error(c, http.StatusBadRequest, "missing_assignment_target", nil)
-		return
-	}
-
-	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "failed_to_assign_teachers", err.Error())
-		return
-	}
-
-	response.Success(c, http.StatusOK, nil)
-}
-
-// Helper to get schoolID (duplicated logic from handlers_school.go, should be refactored but for now inline)
 func (h *Handler) getSchoolID(c *gin.Context) string {
 	// First try query param
 	if sid := c.Query("school_id"); sid != "" {

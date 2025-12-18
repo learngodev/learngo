@@ -88,6 +88,9 @@ func (s *StudentStore) CountByClassIDs(ctx context.Context, classIDs []string) (
 }
 
 func (s *StudentStore) UpdateClassID(ctx context.Context, studentID string, classID string) error {
+	if classID == "" {
+		return s.db.WithContext(ctx).Model(&domain.Student{}).Where("id = ?", studentID).Update("class_id", nil).Error
+	}
 	return s.db.WithContext(ctx).Model(&domain.Student{}).Where("id = ?", studentID).Update("class_id", classID).Error
 }
 
