@@ -10,12 +10,12 @@ import (
 )
 
 type CreateClassroomRequest struct {
-	SchoolID string `json:"school_id" validate:"required"`
-	Location string `json:"location" validate:"required"`
+	SchoolID string `json:"school_id" binding:"required"`
+	Location string `json:"location" binding:"required"`
 }
 
 type UpdateClassroomRequest struct {
-	Location string `json:"location" validate:"required"`
+	Location string `json:"location" binding:"required"`
 }
 
 func (h *Handler) CreateClassroom(c *gin.Context) {

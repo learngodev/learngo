@@ -156,7 +156,7 @@ type CourseSchedule struct {
 	SchoolID    string    `gorm:"size:36;index" json:"school_id"`
 	CourseID    string    `gorm:"size:36;index" json:"course_id"`
 	ClassID     string    `gorm:"size:36;index" json:"class_id"`
-	TeacherID   string    `gorm:"size:36;index" json:"teacher_id"`
+	TeacherID   *string   `gorm:"size:36;index" json:"teacher_id"`
 	SlotID      string    `gorm:"size:36;index" json:"slot_id"`
 	ClassroomID *string   `gorm:"size:36;index" json:"classroom_id"`
 	DayOfWeek   int       `gorm:"index" json:"day_of_week"` // 1=Monday, 7=Sunday
@@ -196,25 +196,6 @@ type Course struct {
 	UpdatedAt   time.Time
 }
 
-// TeachingAssignment links a course, a teacher, and a class.
-type TeachingAssignment struct {
-	ID        string  `gorm:"primaryKey;size:36"`
-	SchoolID  string  `gorm:"size:36;index"`
-	CourseID  string  `gorm:"size:36;index"`
-	TeacherID *string `gorm:"size:36;index"`
-	ClassID   string  `gorm:"size:36;index"`
-	CreatedAt time.Time
-}
-
-// TeachingAssignmentDetail extends TeachingAssignment with related entity names.
-type TeachingAssignmentDetail struct {
-	TeachingAssignment
-	ClassName    string `json:"class_name"`
-	TeacherName  string `json:"teacher_name"`
-	CourseName   string `json:"course_name"`
-	StudentCount int64  `json:"student_count"`
-}
-
 // CourseAssignmentInfo represents enriched course assignment data.
 type CourseAssignmentInfo struct {
 	AssignmentID string `json:"assignment_id"`
@@ -230,11 +211,11 @@ type CourseAssignmentInfo struct {
 
 // CourseSession is a scheduled lesson.
 type CourseSession struct {
-	ID        string `gorm:"primaryKey;size:36"`
-	CourseID  string `gorm:"size:36;index"`
-	ClassID   string `gorm:"size:36;index"`
-	TeacherID string `gorm:"size:36;index"`
-	SlotID    string `gorm:"size:36;index"`
+	ID        string  `gorm:"primaryKey;size:36"`
+	CourseID  string  `gorm:"size:36;index"`
+	ClassID   string  `gorm:"size:36;index"`
+	TeacherID *string `gorm:"size:36;index"`
+	SlotID    string  `gorm:"size:36;index"`
 	StartsAt  time.Time
 	EndsAt    time.Time
 	Location  string `gorm:"size:128"`

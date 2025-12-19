@@ -67,6 +67,18 @@ func (s *CourseScheduleStore) ListByClassroom(ctx context.Context, classroomID s
 	return schedules, err
 }
 
+func (s *CourseScheduleStore) ListByTeacher(ctx context.Context, teacherID string) ([]domain.CourseSchedule, error) {
+	var schedules []domain.CourseSchedule
+	err := s.db.WithContext(ctx).Where("teacher_id = ?", teacherID).Find(&schedules).Error
+	return schedules, err
+}
+
+func (s *CourseScheduleStore) ListByClass(ctx context.Context, classID string) ([]domain.CourseSchedule, error) {
+	var schedules []domain.CourseSchedule
+	err := s.db.WithContext(ctx).Where("class_id = ?", classID).Find(&schedules).Error
+	return schedules, err
+}
+
 func (s *CourseScheduleStore) GetStats(ctx context.Context, schoolID string) (*domain.ScheduleStats, error) {
 	var stats domain.ScheduleStats
 

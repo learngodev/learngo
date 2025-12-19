@@ -92,14 +92,12 @@ func (s *CourseStore) ListAssignments(ctx context.Context, schoolID string, depa
 	// If we filter by class, we definitely look at assignments.
 	// If we don't filter, we might want to list all assignments.
 
-	// Let's construct a query that selects from teaching_assignments primarily, joined with others.
-	// But wait, if a course is not assigned, it won't be in teaching_assignments.
-	// If the user wants to see "Total Courses", they expect to see unassigned ones too.
-	// So we should select from courses and LEFT JOIN assignments.
+	// Let's construct a query that selects from course_schedules primarily, joined with others.
+	// We group by course, class, and teacher to avoid duplicates from multiple schedule slots.
 
 	db := s.db.WithContext(ctx).Table("courses c").
 		Select(`
-			ta.id as assignment_id,
+			MIN(cs.id) as assignment_id,
 			c.id as course_id, 
 			c.name as course_name, 
 			c.description, 
@@ -109,11 +107,12 @@ func (s *CourseStore) ListAssignments(ctx context.Context, schoolID string, depa
 			cl.name as class_name,
 			(SELECT count(*) FROM students s WHERE s.class_id = cl.id) as student_count
 		`).
-		Joins("LEFT JOIN teaching_assignments ta ON c.id = ta.course_id").
-		Joins("LEFT JOIN teachers t ON ta.teacher_id = t.id").
+		Joins("LEFT JOIN course_schedules cs ON c.id = cs.course_id").
+		Joins("LEFT JOIN teachers t ON cs.teacher_id = t.id").
 		Joins("LEFT JOIN accounts a ON t.account_id = a.id").
-		Joins("LEFT JOIN classes cl ON ta.class_id = cl.id").
-		Where("c.school_id = ?", schoolID)
+		Joins("LEFT JOIN classes cl ON cs.class_id = cl.id").
+		Where("c.school_id = ?", schoolID).
+		Group("c.id, c.name, c.description, t.id, a.display_name, cl.id, cl.name")
 
 	if departmentID != "" {
 		db = db.Where("cl.department_id = ?", departmentID)

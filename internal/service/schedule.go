@@ -102,7 +102,7 @@ func (s *ScheduleService) CreateSchedule(ctx context.Context, schoolID, courseID
 		}
 	}
 
-	// Validate teacher exists and resolve ID if necessary
+	var tid *string
 	if teacherID != "" {
 		// Try as Profile ID first
 		teacher, err := s.teacherRepo.GetByID(ctx, teacherID)
@@ -118,6 +118,35 @@ func (s *ScheduleService) CreateSchedule(ctx context.Context, schoolID, courseID
 			// Use the resolved Profile ID
 			teacherID = teacher.ID
 		}
+		tid = &teacherID
+
+		// Check Teacher Conflict
+		existingSchedules, err := s.scheduleRepo.ListByTeacher(ctx, teacherID)
+		if err != nil {
+			return nil, err
+		}
+		for _, sch := range existingSchedules {
+			if sch.DayOfWeek == dayOfWeek && sch.SlotID == slotID {
+				if !sch.StartDate.After(endDate) && !sch.EndDate.Before(startDate) {
+					return nil, fmt.Errorf("teacher is already booked for this slot")
+				}
+			}
+		}
+	}
+
+	// Check Class Conflict
+	if classID != "" {
+		existingSchedules, err := s.scheduleRepo.ListByClass(ctx, classID)
+		if err != nil {
+			return nil, err
+		}
+		for _, sch := range existingSchedules {
+			if sch.DayOfWeek == dayOfWeek && sch.SlotID == slotID {
+				if !sch.StartDate.After(endDate) && !sch.EndDate.Before(startDate) {
+					return nil, fmt.Errorf("class is already booked for this slot")
+				}
+			}
+		}
 	}
 
 	schedule := &domain.CourseSchedule{
@@ -125,7 +154,7 @@ func (s *ScheduleService) CreateSchedule(ctx context.Context, schoolID, courseID
 		SchoolID:    schoolID,
 		CourseID:    courseID,
 		ClassID:     classID,
-		TeacherID:   teacherID,
+		TeacherID:   tid,
 		SlotID:      slotID,
 		ClassroomID: classroomID,
 		DayOfWeek:   dayOfWeek,
@@ -159,7 +188,7 @@ func (s *ScheduleService) CreateSchedule(ctx context.Context, schoolID, courseID
 			ID:        uuid.New().String(),
 			CourseID:  courseID,
 			ClassID:   classID,
-			TeacherID: teacherID,
+			TeacherID: tid,
 			SlotID:    slotID,
 			StartsAt:  startsAt,
 			EndsAt:    endsAt,

@@ -145,12 +145,7 @@ func (h *Handler) RegisterRoutes(r *gin.Engine, adminGuard gin.HandlerFunc, teac
 		admin.POST("/courses", h.CreateCourse)
 		admin.PATCH("/courses/:id", h.UpdateCourse)
 		admin.DELETE("/courses/:id", h.DeleteCourse)
-		admin.POST("/courses/assign", h.AssignCourse)
-		admin.POST("/courses/assign/batch", h.BatchAssignCourse)
 		admin.GET("/courses/assignments", h.ListAssignments)
-		admin.PATCH("/courses/assignments/:id", h.UpdateTeachingAssignment)
-		admin.DELETE("/courses/assignments/:id", h.RemoveAssignment)
-		admin.POST("/courses/assignments/batch-remove", h.BatchRemoveAssignments)
 		admin.POST("/courses/:id/assign/students", h.AssignStudents)
 
 		assignments := api.Group("/assignments", teacherGuard)

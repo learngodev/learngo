@@ -333,12 +333,19 @@ func (s *StudentPortalService) buildScheduleItems(ctx context.Context, sessions 
 
 	items := make([]StudentScheduleItem, 0, len(sessions))
 	for _, session := range sessions {
+		teacherID := ""
+		teacherName := ""
+		if session.TeacherID != nil {
+			teacherID = *session.TeacherID
+			teacherName = teacherNames[teacherID]
+		}
+
 		items = append(items, StudentScheduleItem{
 			SessionID:   session.ID,
 			CourseID:    session.CourseID,
 			CourseName:  courseNames[session.CourseID],
-			TeacherID:   session.TeacherID,
-			TeacherName: teacherNames[session.TeacherID],
+			TeacherID:   teacherID,
+			TeacherName: teacherName,
 			StartsAt:    session.StartsAt,
 			EndsAt:      session.EndsAt,
 			Day:         session.StartsAt.Format("2006-01-02"),
@@ -532,7 +539,9 @@ func collectCourseIDsFromSessions(sessions []domain.CourseSession) []string {
 func collectTeacherIDsFromSessions(sessions []domain.CourseSession) []string {
 	ids := make([]string, 0, len(sessions))
 	for _, session := range sessions {
-		ids = append(ids, session.TeacherID)
+		if session.TeacherID != nil {
+			ids = append(ids, *session.TeacherID)
+		}
 	}
 	return ids
 }

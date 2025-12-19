@@ -100,18 +100,6 @@ type CourseStudentRepository interface {
 	DeleteByCourseAndStudent(ctx context.Context, courseID string, studentIDs []string) error
 }
 
-// TeachingAssignmentRepository manages course assignments.
-type TeachingAssignmentRepository interface {
-	Create(ctx context.Context, assignment *domain.TeachingAssignment) error
-	BatchCreate(ctx context.Context, assignments []domain.TeachingAssignment) error
-	List(ctx context.Context, schoolID string, courseID, teacherID, classID string, page, size int) ([]domain.TeachingAssignment, int64, error)
-	ListDetails(ctx context.Context, schoolID string, courseID, teacherID, classID string, page, size int) ([]domain.TeachingAssignmentDetail, int64, error)
-	GetByID(ctx context.Context, id string) (*domain.TeachingAssignment, error)
-	Update(ctx context.Context, assignment *domain.TeachingAssignment) error
-	Delete(ctx context.Context, id string) error
-	BatchDelete(ctx context.Context, ids []string) error
-}
-
 // CourseScheduleRepository manages recurring schedule rules.
 type CourseScheduleRepository interface {
 	Create(ctx context.Context, schedule *domain.CourseSchedule) error
@@ -122,6 +110,8 @@ type CourseScheduleRepository interface {
 	ListDetailsBySchool(ctx context.Context, schoolID string, courseID string) ([]domain.CourseScheduleDetail, error)
 	GetStats(ctx context.Context, schoolID string) (*domain.ScheduleStats, error)
 	ListByClassroom(ctx context.Context, classroomID string) ([]domain.CourseSchedule, error)
+	ListByTeacher(ctx context.Context, teacherID string) ([]domain.CourseSchedule, error)
+	ListByClass(ctx context.Context, classID string) ([]domain.CourseSchedule, error)
 }
 
 // ClassroomRepository manages classroom persistence.

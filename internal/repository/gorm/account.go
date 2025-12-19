@@ -149,12 +149,12 @@ func (s *AccountStore) ListByRole(
 			joinTeachers()
 			base = base.Where(
 				"teachers.id IN (?)",
-				s.db.Table("teaching_assignments").Select("teacher_id").Where("course_id = ? AND teacher_id IS NOT NULL", courseID),
+				s.db.Table("course_schedules").Select("teacher_id").Where("course_id = ? AND teacher_id IS NOT NULL", courseID),
 			)
 		} else {
 			joinStudents()
-			base = base.Joins("JOIN teaching_assignments ON teaching_assignments.class_id = students.class_id").
-				Where("teaching_assignments.course_id = ?", courseID)
+			base = base.Joins("JOIN course_schedules ON course_schedules.class_id = students.class_id").
+				Where("course_schedules.course_id = ?", courseID)
 		}
 	}
 

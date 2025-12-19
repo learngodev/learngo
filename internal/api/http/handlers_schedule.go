@@ -11,16 +11,16 @@ import (
 
 // CreateScheduleRequest defines payload for creating a schedule rule.
 type CreateScheduleRequest struct {
-	SchoolID    string    `json:"school_id" validate:"required"`
-	CourseID    string    `json:"course_id" validate:"required"`
-	ClassID     string    `json:"class_id" validate:"required"`
-	TeacherID   string    `json:"teacher_id"`
-	SlotID      string    `json:"slot_id" validate:"required"`
-	DayOfWeek   int       `json:"day_of_week" validate:"required,min=1,max=7"`
+	SchoolID    string    `json:"school_id" binding:"required"`
+	CourseID    string    `json:"course_id" binding:"required"`
+	ClassID     string    `json:"class_id" binding:"required"`
+	TeacherID   *string   `json:"teacher_id"`
+	SlotID      string    `json:"slot_id" binding:"required"`
+	DayOfWeek   int       `json:"day_of_week" binding:"required,min=1,max=7"`
 	Location    string    `json:"location"`
 	ClassroomID *string   `json:"classroom_id"`
-	StartDate   time.Time `json:"start_date" validate:"required"`
-	EndDate     time.Time `json:"end_date" validate:"required"`
+	StartDate   time.Time `json:"start_date" binding:"required"`
+	EndDate     time.Time `json:"end_date" binding:"required"`
 }
 
 func (h *Handler) CreateSchedule(c *gin.Context) {
@@ -30,7 +30,12 @@ func (h *Handler) CreateSchedule(c *gin.Context) {
 		return
 	}
 
-	schedule, err := h.schedule.CreateSchedule(c.Request.Context(), req.SchoolID, req.CourseID, req.ClassID, req.TeacherID, req.SlotID, req.DayOfWeek, req.Location, req.ClassroomID, req.StartDate, req.EndDate)
+	teacherID := ""
+	if req.TeacherID != nil {
+		teacherID = *req.TeacherID
+	}
+
+	schedule, err := h.schedule.CreateSchedule(c.Request.Context(), req.SchoolID, req.CourseID, req.ClassID, teacherID, req.SlotID, req.DayOfWeek, req.Location, req.ClassroomID, req.StartDate, req.EndDate)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, "Failed to create schedule", err.Error())
 		return
@@ -85,9 +90,9 @@ func (h *Handler) GetScheduleStats(c *gin.Context) {
 
 // GenerateSessionsRequest defines payload for generating sessions.
 type GenerateSessionsRequest struct {
-	SchoolID string    `json:"school_id" validate:"required"`
-	Start    time.Time `json:"start" validate:"required"`
-	End      time.Time `json:"end" validate:"required"`
+	SchoolID string    `json:"school_id" binding:"required"`
+	Start    time.Time `json:"start" binding:"required"`
+	End      time.Time `json:"end" binding:"required"`
 }
 
 func (h *Handler) GenerateSessions(c *gin.Context) {
@@ -106,8 +111,8 @@ func (h *Handler) GenerateSessions(c *gin.Context) {
 
 // UpdateSessionRequest defines payload for updating a session (teacher adjustment).
 type UpdateSessionRequest struct {
-	SlotID   string    `json:"slot_id" validate:"required"`
-	Date     time.Time `json:"date" validate:"required"`
+	SlotID   string    `json:"slot_id" binding:"required"`
+	Date     time.Time `json:"date" binding:"required"`
 	Location string    `json:"location"`
 }
 

@@ -68,7 +68,6 @@ func New() (*Application, error) {
 	departmentRepo := gormrepo.NewDepartmentStore(db)
 	classRepo := gormrepo.NewClassStore(db)
 	courseRepo := gormrepo.NewCourseStore(db)
-	teachingAssignmentRepo := gormrepo.NewTeachingAssignmentStore(db)
 	courseSlotRepo := gormrepo.NewCourseSlotStore(db)
 	courseSessionRepo := gormrepo.NewCourseSessionStore(db)
 	teacherStudentRepo := gormrepo.NewTeacherStudentStore(db)
@@ -124,7 +123,7 @@ func New() (*Application, error) {
 	apigrpc.RegisterConversationServiceServer(grpcServer, grpcserver.NewConversationServer(conversationService, streamHub))
 
 	schoolService := service.NewSchoolService(schoolRepo, timeSlotRepo)
-	courseService := service.NewCourseService(courseRepo, teachingAssignmentRepo, courseStudentRepo, studentRepo, teacherRepo)
+	courseService := service.NewCourseService(courseRepo, courseStudentRepo, studentRepo, teacherRepo)
 	scheduleService := service.NewScheduleService(timeSlotRepo, courseScheduleRepo, courseSessionRepo, courseRepo, teacherRepo, classroomRepo)
 	classroomService := service.NewClassroomService(classroomRepo)
 
@@ -175,7 +174,6 @@ func migrate(db *gorm.DB) error {
 		&domain.Class{},
 		&domain.Course{},
 		&domain.CourseStudent{},
-		&domain.TeachingAssignment{},
 		&domain.CourseSlot{},
 		&domain.CourseSchedule{},
 		&domain.CourseSession{},
