@@ -259,6 +259,18 @@ func (s *CourseSessionStore) Create(ctx context.Context, session *domain.CourseS
 	return s.db.WithContext(ctx).Create(session).Error
 }
 
+func (s *CourseSessionStore) Exists(ctx context.Context, courseID, classID string, teacherID *string, slotID string, startsAt time.Time) (bool, error) {
+	var count int64
+	err := s.db.WithContext(ctx).Model(&domain.CourseSession{}).
+		Where("course_id = ? AND class_id = ? AND teacher_id = ? AND slot_id = ? AND starts_at = ?",
+			courseID, classID, teacherID, slotID, startsAt).
+		Count(&count).Error
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
 func (s *CourseSessionStore) Update(ctx context.Context, session *domain.CourseSession) error {
 	return s.db.WithContext(ctx).Save(session).Error
 }

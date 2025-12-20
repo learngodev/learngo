@@ -132,6 +132,7 @@ type CourseSessionRepository interface {
 	GetByID(ctx context.Context, id string) (*domain.CourseSession, error)
 	ListByClassBetween(ctx context.Context, classID string, start, end time.Time) ([]domain.CourseSession, error)
 	ListByTeacherBetween(ctx context.Context, teacherID string, start, end time.Time) ([]domain.CourseSession, error)
+	Exists(ctx context.Context, courseID, classID string, teacherID *string, slotID string, startsAt time.Time) (bool, error)
 }
 
 // TeacherStudentRepository manages relationships between teachers and students.

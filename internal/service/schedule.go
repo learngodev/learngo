@@ -262,18 +262,16 @@ func (s *ScheduleService) GenerateSessions(ctx context.Context, schoolID string,
 	}
 
 	// 3. Iterate through days in range
+	// Use a fixed timezone (CST) for day calculation to ensure consistency with user expectations
+	loc := time.FixedZone("CST", 8*3600)
+
 	for d := start; d.Before(end) || d.Equal(end); d = d.AddDate(0, 0, 1) {
-		weekday := int(d.Weekday())
+		dInLoc := d.In(loc)
+		weekday := int(dInLoc.Weekday())
 		if weekday == 0 {
 			weekday = 7
-		} // Convert Sunday=0 to 7 if needed, or match domain logic.
-		// Go's time.Weekday: Sunday=0, Monday=1...Saturday=6.
-		// My DB schema comment said 1=Monday, 7=Sunday.
-		// So if d.Weekday() == 0 (Sunday), use 7.
-		dbWeekday := weekday
-		if dbWeekday == 0 {
-			dbWeekday = 7
 		}
+		dbWeekday := weekday
 
 		for _, sched := range schedules {
 			if sched.DayOfWeek != dbWeekday {
@@ -292,13 +290,18 @@ func (s *ScheduleService) GenerateSessions(ctx context.Context, schoolID string,
 			startH, startM, _ := parseTime(slot.StartTime)
 			endH, endM, _ := parseTime(slot.EndTime)
 
-			startsAt := time.Date(d.Year(), d.Month(), d.Day(), startH, startM, 0, 0, d.Location())
-			endsAt := time.Date(d.Year(), d.Month(), d.Day(), endH, endM, 0, 0, d.Location())
+			// Create session in the target timezone, then convert to UTC for storage
+			startsAt := time.Date(dInLoc.Year(), dInLoc.Month(), dInLoc.Day(), startH, startM, 0, 0, loc).UTC()
+			endsAt := time.Date(dInLoc.Year(), dInLoc.Month(), dInLoc.Day(), endH, endM, 0, 0, loc).UTC()
 
 			// Check if session already exists (to avoid duplicates)
-			// Ideally repo has FindByScheduleAndDate or similar.
-			// For now, let's assume we just create. Or we can rely on unique constraints if we had them.
-			// A better approach is to list existing sessions for this range and skip.
+			exists, err := s.sessionRepo.Exists(ctx, sched.CourseID, sched.ClassID, sched.TeacherID, sched.SlotID, startsAt)
+			if err != nil {
+				return err
+			}
+			if exists {
+				continue
+			}
 
 			session := &domain.CourseSession{
 				ID:        uuid.New().String(),

@@ -20,17 +20,6 @@ type updateCourseRequest struct {
 	Description string `json:"description"`
 }
 
-type assignCourseRequest struct {
-	CourseID  string `json:"course_id" binding:"required"`
-	TeacherID string `json:"teacher_id" binding:"required"`
-	ClassID   string `json:"class_id" binding:"required"`
-}
-
-type updateTeachingAssignmentRequest struct {
-	TeacherID string `json:"teacher_id" binding:"required"`
-	ClassID   string `json:"class_id" binding:"required"`
-}
-
 func (h *Handler) CreateCourse(c *gin.Context) {
 	var req createCourseRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -106,15 +95,6 @@ func (h *Handler) UpdateCourse(c *gin.Context) {
 	}
 
 	response.Success(c, http.StatusOK, nil)
-}
-
-type classAssignmentOverview struct {
-	ID            string   `json:"id"`
-	ClassID       string   `json:"class_id"`
-	ClassName     string   `json:"class_name"`
-	StudentCount  int64    `json:"student_count"`
-	AssignmentIDs []string `json:"assignment_ids"`
-	TeacherNames  []string `json:"teacher_names"`
 }
 
 func (h *Handler) ListAssignments(c *gin.Context) {

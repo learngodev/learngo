@@ -2767,6 +2767,18 @@ func (h *Handler) ListStudentSchedule(c *gin.Context) {
 		return
 	}
 
+	// If no sessions found, try to generate them for the requested range
+	if len(items) == 0 {
+		schoolID, err := h.student.GetSchoolID(c.Request.Context(), accountID)
+		if err == nil && schoolID != "" {
+			// Generate sessions (ignoring error to avoid blocking response)
+			if err := h.schedule.GenerateSessions(c.Request.Context(), schoolID, start, end); err == nil {
+				// Fetch again
+				items, _ = h.student.ListSchedule(c.Request.Context(), accountID, start, end)
+			}
+		}
+	}
+
 	payload := make([]gin.H, 0, len(items))
 	for _, item := range items {
 		payload = append(payload, gin.H{
@@ -3146,6 +3158,18 @@ func (h *Handler) ListTeacherSchedule(c *gin.Context) {
 			response.Error(c, http.StatusInternalServerError, "unable to fetch schedule", err.Error())
 		}
 		return
+	}
+
+	// If no sessions found, try to generate them for the requested range
+	if len(items) == 0 {
+		schoolID, err := h.teacher.GetSchoolID(c.Request.Context(), accountID)
+		if err == nil && schoolID != "" {
+			// Generate sessions (ignoring error to avoid blocking response)
+			if err := h.schedule.GenerateSessions(c.Request.Context(), schoolID, start, end); err == nil {
+				// Fetch again
+				items, _ = h.teacher.ListSchedule(c.Request.Context(), accountID, start, end)
+			}
+		}
 	}
 
 	sessions := make([]gin.H, 0, len(items))
@@ -3689,7 +3713,6 @@ func parseBool(raw string, defaultVal bool) bool {
 }
 
 func parseScheduleRange(fromRaw, toRaw string) (time.Time, time.Time, error) {
-	loc := time.Now().Location()
 	var start time.Time
 	var err error
 	if fromRaw == "" {
@@ -3700,7 +3723,6 @@ func parseScheduleRange(fromRaw, toRaw string) (time.Time, time.Time, error) {
 			return time.Time{}, time.Time{}, err
 		}
 	}
-	start = time.Date(start.Year(), start.Month(), start.Day(), 0, 0, 0, 0, loc)
 
 	var end time.Time
 	if toRaw == "" {

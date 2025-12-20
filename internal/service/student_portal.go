@@ -36,6 +36,18 @@ type StudentPortalService struct {
 	reminders   repository.StudentReminderRepository
 }
 
+// GetSchoolID retrieves the school ID for a given account.
+func (s *StudentPortalService) GetSchoolID(ctx context.Context, accountID string) (string, error) {
+	account, err := s.accounts.FindByID(ctx, accountID)
+	if err != nil {
+		return "", err
+	}
+	if account == nil {
+		return "", errors.New("account not found")
+	}
+	return account.SchoolID, nil
+}
+
 // NewStudentPortalService constructs StudentPortalService.
 func NewStudentPortalService(
 	students repository.StudentRepository,

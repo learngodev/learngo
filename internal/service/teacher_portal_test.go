@@ -357,6 +357,14 @@ func (f *fakeCourseRepo) ListAssignments(ctx context.Context, schoolID string, c
 	return nil, 0, nil
 }
 
+func (f *fakeCourseRepo) ListWithFilters(ctx context.Context, schoolID string, departmentID, classID string, page, size int) ([]domain.Course, int64, error) {
+	return nil, 0, nil
+}
+
+func (f *fakeCourseRepo) ListAssignmentsByCourseIDs(ctx context.Context, courseIDs []string) ([]domain.CourseAssignmentInfo, error) {
+	return nil, nil
+}
+
 type fakeClassRepo struct {
 	classes map[string]string
 }
