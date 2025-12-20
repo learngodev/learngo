@@ -26,7 +26,12 @@ func (s *StudentStore) Create(ctx context.Context, student *domain.Student) erro
 
 func (s *StudentStore) GetByNumber(ctx context.Context, schoolID, number string) (*domain.Student, error) {
 	var student domain.Student
-	if err := s.db.WithContext(ctx).Where("school_id = ? AND number = ?", schoolID, number).First(&student).Error; err != nil {
+	if err := s.db.WithContext(ctx).
+		Table("students").
+		Select("students.*, accounts.display_name as name").
+		Joins("LEFT JOIN accounts ON accounts.id = students.account_id").
+		Where("students.school_id = ? AND students.number = ?", schoolID, number).
+		First(&student).Error; err != nil {
 		return nil, err
 	}
 	return &student, nil
@@ -34,7 +39,12 @@ func (s *StudentStore) GetByNumber(ctx context.Context, schoolID, number string)
 
 func (s *StudentStore) GetByID(ctx context.Context, id string) (*domain.Student, error) {
 	var student domain.Student
-	if err := s.db.WithContext(ctx).First(&student, "id = ?", id).Error; err != nil {
+	if err := s.db.WithContext(ctx).
+		Table("students").
+		Select("students.*, accounts.display_name as name").
+		Joins("LEFT JOIN accounts ON accounts.id = students.account_id").
+		Where("students.id = ?", id).
+		First(&student).Error; err != nil {
 		return nil, err
 	}
 	return &student, nil
@@ -42,7 +52,12 @@ func (s *StudentStore) GetByID(ctx context.Context, id string) (*domain.Student,
 
 func (s *StudentStore) GetByAccountID(ctx context.Context, accountID string) (*domain.Student, error) {
 	var student domain.Student
-	if err := s.db.WithContext(ctx).Where("account_id = ?", accountID).First(&student).Error; err != nil {
+	if err := s.db.WithContext(ctx).
+		Table("students").
+		Select("students.*, accounts.display_name as name").
+		Joins("LEFT JOIN accounts ON accounts.id = students.account_id").
+		Where("students.account_id = ?", accountID).
+		First(&student).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}
@@ -56,7 +71,12 @@ func (s *StudentStore) ListByIDs(ctx context.Context, ids []string) ([]domain.St
 		return []domain.Student{}, nil
 	}
 	var students []domain.Student
-	if err := s.db.WithContext(ctx).Where("id IN ?", ids).Find(&students).Error; err != nil {
+	if err := s.db.WithContext(ctx).
+		Table("students").
+		Select("students.*, accounts.display_name as name").
+		Joins("LEFT JOIN accounts ON accounts.id = students.account_id").
+		Where("students.id IN ?", ids).
+		Find(&students).Error; err != nil {
 		return nil, err
 	}
 	return students, nil
@@ -96,7 +116,12 @@ func (s *StudentStore) UpdateClassID(ctx context.Context, studentID string, clas
 
 func (s *StudentStore) ListByClassID(ctx context.Context, classID string) ([]domain.Student, error) {
 	var students []domain.Student
-	if err := s.db.WithContext(ctx).Where("class_id = ?", classID).Find(&students).Error; err != nil {
+	if err := s.db.WithContext(ctx).
+		Table("students").
+		Select("students.*, accounts.display_name as name").
+		Joins("LEFT JOIN accounts ON accounts.id = students.account_id").
+		Where("students.class_id = ?", classID).
+		Find(&students).Error; err != nil {
 		return nil, err
 	}
 	return students, nil

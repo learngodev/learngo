@@ -51,64 +51,67 @@ type PasswordResetToken struct {
 
 // School represents a tenant scope.
 type School struct {
-	ID        string `gorm:"primaryKey;size:36"`
-	Name      string `gorm:"size:128;unique"`
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID        string    `gorm:"primaryKey;size:36" json:"id"`
+	Name      string    `gorm:"size:128;unique" json:"name"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // Department groups classes by subject or grade.
 type Department struct {
-	ID        string `gorm:"primaryKey;size:36"`
-	SchoolID  string `gorm:"size:36;index"`
-	Name      string `gorm:"size:128"`
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID        string    `gorm:"primaryKey;size:36" json:"id"`
+	SchoolID  string    `gorm:"size:36;index" json:"school_id"`
+	Name      string    `gorm:"size:128" json:"name"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 
 	// Virtual fields for counts
-	TeacherCount int64 `gorm:"->;<-:false"`
-	StudentCount int64 `gorm:"->;<-:false"`
+	TeacherCount int64 `gorm:"->;<-:false" json:"teacher_count"`
+	StudentCount int64 `gorm:"->;<-:false" json:"student_count"`
 }
 
 // Class is a teaching class under a department.
 type Class struct {
-	ID           string  `gorm:"primaryKey;size:36"`
-	SchoolID     string  `gorm:"size:36;index"`
-	DepartmentID string  `gorm:"size:36;index"`
-	Name         string  `gorm:"size:128"`
-	HomeroomID   *string `gorm:"size:36"`
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	ID           string    `gorm:"primaryKey;size:36" json:"id"`
+	SchoolID     string    `gorm:"size:36;index" json:"school_id"`
+	DepartmentID string    `gorm:"size:36;index" json:"department_id"`
+	Name         string    `gorm:"size:128" json:"name"`
+	HomeroomID   *string   `gorm:"size:36" json:"homeroom_id"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 
 	// Virtual fields for counts
-	StudentCount int64 `gorm:"->;<-:false"`
-	TeacherCount int64 `gorm:"->;<-:false"`
+	StudentCount int64 `gorm:"->;<-:false" json:"student_count"`
+	TeacherCount int64 `gorm:"->;<-:false" json:"teacher_count"`
 }
 
 // Teacher profile.
 type Teacher struct {
-	ID           string  `gorm:"primaryKey;size:36"`
-	SchoolID     string  `gorm:"size:36;index"`
-	AccountID    string  `gorm:"size:36;uniqueIndex"`
-	Number       string  `gorm:"size:64;uniqueIndex"`
-	DepartmentID *string `gorm:"size:36;index"`
-	Email        string  `gorm:"size:128"`
-	Phone        string  `gorm:"size:32"`
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	ID           string    `gorm:"primaryKey;size:36" json:"id"`
+	SchoolID     string    `gorm:"size:36;index" json:"school_id"`
+	AccountID    string    `gorm:"size:36;uniqueIndex" json:"account_id"`
+	Number       string    `gorm:"size:64;uniqueIndex" json:"number"`
+	DepartmentID *string   `gorm:"size:36;index" json:"department_id"`
+	Email        string    `gorm:"size:128" json:"email"`
+	Phone        string    `gorm:"size:32" json:"phone"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 // Student profile.
 type Student struct {
-	ID        string  `gorm:"primaryKey;size:36"`
-	SchoolID  string  `gorm:"size:36;index"`
-	AccountID string  `gorm:"size:36;uniqueIndex"`
-	Number    string  `gorm:"size:64;uniqueIndex"`
-	ClassID   *string `gorm:"size:36;index"`
-	Email     string  `gorm:"size:128"`
-	Phone     string  `gorm:"size:32"`
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID        string    `gorm:"primaryKey;size:36" json:"id"`
+	SchoolID  string    `gorm:"size:36;index" json:"school_id"`
+	AccountID string    `gorm:"size:36;uniqueIndex" json:"account_id"`
+	Number    string    `gorm:"size:64;uniqueIndex" json:"number"`
+	ClassID   *string   `gorm:"size:36;index" json:"class_id"`
+	Email     string    `gorm:"size:128" json:"email"`
+	Phone     string    `gorm:"size:32" json:"phone"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+
+	// Virtual fields
+	Name string `gorm:"->;<-:false" json:"name"`
 }
 
 // StudentReminderPriority marks reminder urgency.

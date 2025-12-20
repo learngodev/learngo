@@ -27,6 +27,7 @@ type TeacherPortalService struct {
 	classes     repository.ClassRepository
 	slots       repository.CourseSlotRepository
 	accounts    repository.AccountRepository
+	schedules   repository.CourseScheduleRepository
 }
 
 // GetSchoolID retrieves the school ID for a given account.
@@ -52,6 +53,7 @@ func NewTeacherPortalService(
 	classes repository.ClassRepository,
 	slots repository.CourseSlotRepository,
 	accounts repository.AccountRepository,
+	schedules repository.CourseScheduleRepository,
 ) *TeacherPortalService {
 	return &TeacherPortalService{
 		teachers:    teachers,
@@ -63,7 +65,76 @@ func NewTeacherPortalService(
 		classes:     classes,
 		slots:       slots,
 		accounts:    accounts,
+		schedules:   schedules,
 	}
+}
+
+func (s *TeacherPortalService) GetAssignedCourses(ctx context.Context, accountID string) ([]domain.Course, error) {
+	teacher, err := s.teachers.GetByAccountID(ctx, accountID)
+	if err != nil {
+		return nil, err
+	}
+	if teacher == nil {
+		return nil, ErrTeacherProfileNotFound
+	}
+
+	schedules, err := s.schedules.ListByTeacher(ctx, teacher.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	courseIDs := make(map[string]bool)
+	for _, sch := range schedules {
+		courseIDs[sch.CourseID] = true
+	}
+
+	var ids []string
+	for id := range courseIDs {
+		ids = append(ids, id)
+	}
+
+	if len(ids) == 0 {
+		return []domain.Course{}, nil
+	}
+
+	return s.courses.ListByIDs(ctx, ids)
+}
+
+func (s *TeacherPortalService) GetCourseClasses(ctx context.Context, accountID, courseID string) ([]domain.Class, error) {
+	teacher, err := s.teachers.GetByAccountID(ctx, accountID)
+	if err != nil {
+		return nil, err
+	}
+	if teacher == nil {
+		return nil, ErrTeacherProfileNotFound
+	}
+
+	schedules, err := s.schedules.ListByTeacher(ctx, teacher.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	classIDs := make(map[string]bool)
+	for _, sch := range schedules {
+		if sch.CourseID == courseID {
+			classIDs[sch.ClassID] = true
+		}
+	}
+
+	var ids []string
+	for id := range classIDs {
+		ids = append(ids, id)
+	}
+
+	if len(ids) == 0 {
+		return []domain.Class{}, nil
+	}
+
+	return s.classes.ListByIDs(ctx, ids)
+}
+
+func (s *TeacherPortalService) GetClassStudents(ctx context.Context, classID string) ([]domain.Student, error) {
+	return s.students.ListByClassID(ctx, classID)
 }
 
 // TeacherScheduleItem represents a planned lesson for a teacher.

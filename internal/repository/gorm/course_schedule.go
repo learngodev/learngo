@@ -40,6 +40,12 @@ func (s *CourseScheduleStore) ListBySchool(ctx context.Context, schoolID string)
 	return schedules, err
 }
 
+func (s *CourseScheduleStore) ListByTeacherID(ctx context.Context, teacherID string) ([]domain.CourseSchedule, error) {
+	var schedules []domain.CourseSchedule
+	err := s.db.WithContext(ctx).Where("teacher_id = ?", teacherID).Find(&schedules).Error
+	return schedules, err
+}
+
 func (s *CourseScheduleStore) ListDetailsBySchool(ctx context.Context, schoolID string, courseID string) ([]domain.CourseScheduleDetail, error) {
 	var details []domain.CourseScheduleDetail
 	query := s.db.WithContext(ctx).

@@ -177,6 +177,9 @@ func (h *Handler) RegisterRoutes(r *gin.Engine, adminGuard gin.HandlerFunc, teac
 		student.POST("/reminders/complete_all", h.UpdateAllStudentRemindersCompletion)
 
 		teacher := api.Group("/teacher", teacherGuard)
+		teacher.GET("/courses", h.ListTeacherCourses)
+		teacher.GET("/courses/:id/classes", h.ListTeacherCourseClasses)
+		teacher.GET("/classes/:id/students", h.ListTeacherClassStudents)
 		teacher.GET("/schedule", h.ListTeacherSchedule)
 		teacher.GET("/time-slots", h.ListTimeSlots)
 		teacher.GET("/assignments", h.ListTeacherAssignments)
@@ -2501,7 +2504,7 @@ func (h *Handler) ListClasses(c *gin.Context) {
 
 type createAssignmentRequest struct {
 	CourseID      string                          `json:"course_id" validate:"required"`
-	TeacherID     string                          `json:"teacher_id" validate:"required"`
+	TeacherID     string                          `json:"teacher_id"`
 	ClassID       string                          `json:"class_id" validate:"required"`
 	Type          string                          `json:"type" validate:"required,oneof=homework exam"`
 	Title         string                          `json:"title" validate:"required"`
@@ -2536,6 +2539,13 @@ func (h *Handler) CreateAssignment(c *gin.Context) {
 	startAt := convertToTime(req.StartAt)
 	dueAt := convertToTime(req.DueAt)
 
+	accountID := c.GetString(middleware.ContextAccountID)
+	teacherID, err := h.teacher.GetTeacherID(c.Request.Context(), accountID)
+	if err != nil {
+		response.Error(c, http.StatusForbidden, "teacher profile not found", err.Error())
+		return
+	}
+
 	questions := make([]service.QuestionInput, 0, len(req.Questions))
 	for _, q := range req.Questions {
 		questions = append(questions, service.QuestionInput{
@@ -2550,7 +2560,7 @@ func (h *Handler) CreateAssignment(c *gin.Context) {
 
 	assignment, err := h.assignments.CreateAssignment(c.Request.Context(), service.CreateAssignmentInput{
 		CourseID:      req.CourseID,
-		TeacherID:     req.TeacherID,
+		TeacherID:     teacherID,
 		ClassID:       req.ClassID,
 		Type:          service.ToAssignmentType(req.Type),
 		Title:         req.Title,
@@ -3257,6 +3267,7 @@ func (h *Handler) buildTeacherAssignmentPayloads(items []service.TeacherAssignme
 			"class_name":          item.ClassName,
 			"type":                string(item.Type),
 			"allow_resubmit":      item.AllowResubmit,
+			"class_student_count": item.ClassStudentCount,
 			"submission_count":    item.SubmissionCount,
 			"submitted_count":     item.SubmittedCount,
 			"graded_count":        item.GradedCount,
@@ -4747,4 +4758,35 @@ func (h *Handler) ListSchools(c *gin.Context) {
 	}
 
 	response.Success(c, http.StatusOK, gin.H{"schools": items})
+}
+
+func (h *Handler) ListTeacherCourses(c *gin.Context) {
+	accountID := getAccountID(c)
+	courses, err := h.teacher.GetAssignedCourses(c.Request.Context(), accountID)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "failed to list courses", err.Error())
+		return
+	}
+	response.Success(c, http.StatusOK, gin.H{"courses": courses})
+}
+
+func (h *Handler) ListTeacherCourseClasses(c *gin.Context) {
+	accountID := getAccountID(c)
+	courseID := c.Param("id")
+	classes, err := h.teacher.GetCourseClasses(c.Request.Context(), accountID, courseID)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "failed to list classes", err.Error())
+		return
+	}
+	response.Success(c, http.StatusOK, gin.H{"classes": classes})
+}
+
+func (h *Handler) ListTeacherClassStudents(c *gin.Context) {
+	classID := c.Param("id")
+	students, err := h.teacher.GetClassStudents(c.Request.Context(), classID)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "failed to list students", err.Error())
+		return
+	}
+	response.Success(c, http.StatusOK, gin.H{"students": students})
 }

@@ -101,7 +101,7 @@ func New() (*Application, error) {
 	authService := service.NewAuthService(accountRepo, passwordResetRepo, cfg)
 	adminService := service.NewAdminService(accountRepo, teacherRepo, studentRepo, departmentRepo, classRepo, teacherStudentRepo)
 	assignmentService := service.NewAssignmentService(assignmentRepo, submissionRepo, submissionCommentRepo)
-	teacherPortalService := service.NewTeacherPortalService(teacherRepo, assignmentRepo, submissionRepo, studentRepo, courseSessionRepo, courseRepo, classRepo, courseSlotRepo, accountRepo)
+	teacherPortalService := service.NewTeacherPortalService(teacherRepo, assignmentRepo, submissionRepo, studentRepo, courseSessionRepo, courseRepo, classRepo, courseSlotRepo, accountRepo, courseScheduleRepo)
 	studentPortalService := service.NewStudentPortalService(studentRepo, assignmentRepo, submissionRepo, courseRepo, courseSlotRepo, courseSessionRepo, teacherRepo, accountRepo, studentReminderRepo)
 	conversationService := service.NewConversationService(conversationRepo, messageRepo, receiptRepo, accountRepo)
 	noteService := service.NewNoteService(noteRepo, accountRepo)
