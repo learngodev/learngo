@@ -2488,6 +2488,7 @@ func (h *Handler) ListClasses(c *gin.Context) {
 			"created_at":    class.CreatedAt,
 			"updated_at":    class.UpdatedAt,
 			"student_count": class.StudentCount,
+			"teacher_count": class.TeacherCount,
 		}
 		if class.HomeroomID != nil {
 			payload["homeroom_id"] = class.HomeroomID

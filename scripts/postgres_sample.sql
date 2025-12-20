@@ -321,8 +321,8 @@ VALUES
     ('33333333-3333-3333-3333-333333333333', '11111111-1111-1111-1111-111111111111', '22222222-2222-2222-2222-222222222222', '信工 2025 级 1 班', NULL),
     ('33333333-3333-3333-3333-333333333334', '11111111-1111-1111-1111-111111111111', '22222222-2222-2222-2222-222222222222', '信工 2025 级 2 班', NULL);
 
-INSERT INTO teachers (id, school_id, account_id, number, email, phone)
-VALUES ('44444444-4444-4444-4444-444444444444', '11111111-1111-1111-1111-111111111111', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'tch-1001', 'teacher@example.com', '13800001111');
+INSERT INTO teachers (id, school_id, account_id, number, department_id, email, phone)
+VALUES ('44444444-4444-4444-4444-444444444444', '11111111-1111-1111-1111-111111111111', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'tch-1001', '22222222-2222-2222-2222-222222222222', 'teacher@example.com', '13800001111');
 
 INSERT INTO students (id, school_id, account_id, number, class_id, email, phone)
 VALUES ('55555555-5555-5555-5555-555555555555', '11111111-1111-1111-1111-111111111111', 'cccccccc-cccc-cccc-cccc-cccccccccccc', 'stu-2025001', '33333333-3333-3333-3333-333333333333', 'student@example.com', '13900002222');

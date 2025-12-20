@@ -80,7 +80,7 @@ func (h *Handler) ListCourses(c *gin.Context) {
 	// So I will update `ListCourses` to return the enriched info.
 	// I will update the frontend to handle the new structure.
 
-	courses, total, err := h.courseService.ListCourseAssignments(c.Request.Context(), schoolID, departmentID, classID, page, size)
+	courses, total, err := h.courseService.ListCoursesWithDetails(c.Request.Context(), schoolID, departmentID, classID, page, size)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, "failed_to_list_courses", err.Error())
 		return
@@ -124,14 +124,14 @@ func (h *Handler) ListAssignments(c *gin.Context) {
 		return
 	}
 
-	// courseID := c.Query("course_id") // Not used in ListCourseAssignments currently but could be added
+	courseID := c.Query("course_id")
 	departmentID := c.Query("department_id")
 	classID := c.Query("class_id")
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	size, _ := strconv.Atoi(c.DefaultQuery("size", "20"))
 
 	// Use ListCourseAssignments which now queries course_schedules
-	assignments, total, err := h.courseService.ListCourseAssignments(c.Request.Context(), schoolID, departmentID, classID, page, size)
+	assignments, total, err := h.courseService.ListCourseAssignments(c.Request.Context(), schoolID, courseID, departmentID, classID, true, page, size)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, "failed_to_list_assignments", err.Error())
 		return

@@ -137,12 +137,23 @@ func (s *AccountStore) ListByRole(
 	}
 
 	if classID != "" {
-		joinStudents()
-		base = base.Where("students.class_id = ?", classID)
+		if role == domain.RoleTeacher {
+			joinTeachers()
+			base = base.Joins("JOIN course_schedules ON course_schedules.teacher_id = teachers.id").
+				Where("course_schedules.class_id = ?", classID)
+		} else {
+			joinStudents()
+			base = base.Where("students.class_id = ?", classID)
+		}
 	}
 	if departmentID != "" {
-		joinClasses()
-		base = base.Where("classes.department_id = ?", departmentID)
+		if role == domain.RoleTeacher {
+			joinTeachers()
+			base = base.Where("teachers.department_id = ?", departmentID)
+		} else {
+			joinClasses()
+			base = base.Where("classes.department_id = ?", departmentID)
+		}
 	}
 	if courseID != "" {
 		if role == domain.RoleTeacher {

@@ -90,7 +90,9 @@ type CourseRepository interface {
 	Update(ctx context.Context, course *domain.Course) error
 	Delete(ctx context.Context, id string) error
 	ListByIDs(ctx context.Context, ids []string) ([]domain.Course, error)
-	ListAssignments(ctx context.Context, schoolID string, departmentID, classID string, page, size int) ([]domain.CourseAssignmentInfo, int64, error)
+	ListAssignments(ctx context.Context, schoolID string, courseID, departmentID, classID string, onlyAssigned bool, page, size int) ([]domain.CourseAssignmentInfo, int64, error)
+	ListWithFilters(ctx context.Context, schoolID string, departmentID, classID string, page, size int) ([]domain.Course, int64, error)
+	ListAssignmentsByCourseIDs(ctx context.Context, courseIDs []string) ([]domain.CourseAssignmentInfo, error)
 }
 
 // CourseStudentRepository manages student enrollments in courses.

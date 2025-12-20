@@ -82,18 +82,20 @@ type Class struct {
 
 	// Virtual fields for counts
 	StudentCount int64 `gorm:"->;<-:false"`
+	TeacherCount int64 `gorm:"->;<-:false"`
 }
 
 // Teacher profile.
 type Teacher struct {
-	ID        string `gorm:"primaryKey;size:36"`
-	SchoolID  string `gorm:"size:36;index"`
-	AccountID string `gorm:"size:36;uniqueIndex"`
-	Number    string `gorm:"size:64;uniqueIndex"`
-	Email     string `gorm:"size:128"`
-	Phone     string `gorm:"size:32"`
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID           string  `gorm:"primaryKey;size:36"`
+	SchoolID     string  `gorm:"size:36;index"`
+	AccountID    string  `gorm:"size:36;uniqueIndex"`
+	Number       string  `gorm:"size:64;uniqueIndex"`
+	DepartmentID *string `gorm:"size:36;index"`
+	Email        string  `gorm:"size:128"`
+	Phone        string  `gorm:"size:32"`
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }
 
 // Student profile.
@@ -188,12 +190,12 @@ type ScheduleStats struct {
 
 // Course represents a subject taught by a teacher.
 type Course struct {
-	ID          string `gorm:"primaryKey;size:36"`
-	SchoolID    string `gorm:"size:36;index"`
-	Name        string `gorm:"size:128"`
-	Description string `gorm:"size:512"`
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID          string    `gorm:"primaryKey;size:36" json:"id"`
+	SchoolID    string    `gorm:"size:36;index" json:"school_id"`
+	Name        string    `gorm:"size:128" json:"name"`
+	Description string    `gorm:"size:512" json:"description"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 // CourseAssignmentInfo represents enriched course assignment data.

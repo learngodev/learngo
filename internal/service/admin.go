@@ -336,17 +336,17 @@ func (s *AdminService) ListAccounts(ctx context.Context, opts ListAccountsOption
 		}
 
 		if opts.ClassScope == AccountClassScopeUnassigned && summary.ClassID != "" {
+			// Skip if we asked for unassigned but got one with a class (defensive)
 			continue
 		}
-		if opts.ClassID != "" && summary.ClassID != opts.ClassID {
-			continue
-		}
+		// The repository layer handles filtering by ClassID for both students (membership)
+		// and teachers (schedule assignment). We should not filter by summary.ClassID here
+		// because teachers don't have a ClassID property on their profile.
+
 		if opts.DepartmentScope == AccountDepartmentScopeUnassigned && summary.DepartmentID != "" {
 			continue
 		}
-		if opts.DepartmentID != "" && summary.DepartmentID != opts.DepartmentID {
-			continue
-		}
+		// Similarly, repository handles DepartmentID filtering.
 
 		summaries = append(summaries, summary)
 	}

@@ -353,7 +353,7 @@ func (f *fakeCourseRepo) GetByID(ctx context.Context, id string) (*domain.Course
 }
 func (f *fakeCourseRepo) Update(ctx context.Context, course *domain.Course) error { return nil }
 func (f *fakeCourseRepo) Delete(ctx context.Context, id string) error             { return nil }
-func (f *fakeCourseRepo) ListAssignments(ctx context.Context, schoolID string, departmentID, classID string, page, size int) ([]domain.CourseAssignmentInfo, int64, error) {
+func (f *fakeCourseRepo) ListAssignments(ctx context.Context, schoolID string, courseID, departmentID, classID string, onlyAssigned bool, page, size int) ([]domain.CourseAssignmentInfo, int64, error) {
 	return nil, 0, nil
 }
 

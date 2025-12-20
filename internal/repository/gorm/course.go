@@ -80,7 +80,7 @@ func (s *CourseStore) ListByIDs(ctx context.Context, ids []string) ([]domain.Cou
 }
 
 // ListAssignments returns enriched course assignment data.
-func (s *CourseStore) ListAssignments(ctx context.Context, schoolID string, departmentID, classID string, page, size int) ([]domain.CourseAssignmentInfo, int64, error) {
+func (s *CourseStore) ListAssignments(ctx context.Context, schoolID string, courseID, departmentID, classID string, onlyAssigned bool, page, size int) ([]domain.CourseAssignmentInfo, int64, error) {
 	var results []domain.CourseAssignmentInfo
 	var total int64
 
@@ -114,6 +114,13 @@ func (s *CourseStore) ListAssignments(ctx context.Context, schoolID string, depa
 		Where("c.school_id = ?", schoolID).
 		Group("c.id, c.name, c.description, t.id, a.display_name, cl.id, cl.name")
 
+	if onlyAssigned {
+		db = db.Where("cs.id IS NOT NULL")
+	}
+
+	if courseID != "" {
+		db = db.Where("c.id = ?", courseID)
+	}
 	if departmentID != "" {
 		db = db.Where("cl.department_id = ?", departmentID)
 	}
@@ -136,6 +143,70 @@ func (s *CourseStore) ListAssignments(ctx context.Context, schoolID string, depa
 	}
 
 	return results, total, nil
+}
+
+func (s *CourseStore) ListWithFilters(ctx context.Context, schoolID string, departmentID, classID string, page, size int) ([]domain.Course, int64, error) {
+	var courses []domain.Course
+	var total int64
+
+	db := s.db.WithContext(ctx).Model(&domain.Course{}).
+		Joins("LEFT JOIN course_schedules cs ON courses.id = cs.course_id").
+		Joins("LEFT JOIN classes cl ON cs.class_id = cl.id").
+		Where("courses.school_id = ?", schoolID)
+
+	if departmentID != "" {
+		db = db.Where("cl.department_id = ?", departmentID)
+	}
+	if classID != "" {
+		db = db.Where("cl.id = ?", classID)
+	}
+
+	if err := db.Distinct("courses.id").Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	if size > 0 {
+		offset := (page - 1) * size
+		db = db.Offset(offset).Limit(size)
+	}
+
+	if err := db.Distinct("courses.*").Find(&courses).Error; err != nil {
+		return nil, 0, err
+	}
+
+	return courses, total, nil
+}
+
+func (s *CourseStore) ListAssignmentsByCourseIDs(ctx context.Context, courseIDs []string) ([]domain.CourseAssignmentInfo, error) {
+	var results []domain.CourseAssignmentInfo
+	if len(courseIDs) == 0 {
+		return results, nil
+	}
+
+	db := s.db.WithContext(ctx).Table("courses c").
+		Select(`
+			MIN(cs.id) as assignment_id,
+			c.id as course_id, 
+			c.name as course_name, 
+			c.description, 
+			t.id as teacher_id,
+			a.display_name as teacher_name, 
+			cl.id as class_id,
+			cl.name as class_name,
+			(SELECT count(*) FROM students s WHERE s.class_id = cl.id) as student_count
+		`).
+		Joins("LEFT JOIN course_schedules cs ON c.id = cs.course_id").
+		Joins("LEFT JOIN teachers t ON cs.teacher_id = t.id").
+		Joins("LEFT JOIN accounts a ON t.account_id = a.id").
+		Joins("LEFT JOIN classes cl ON cs.class_id = cl.id").
+		Where("c.id IN ?", courseIDs).
+		Group("c.id, c.name, c.description, t.id, a.display_name, cl.id, cl.name")
+
+	if err := db.Scan(&results).Error; err != nil {
+		return nil, err
+	}
+
+	return results, nil
 }
 
 // CourseSessionStore implements repository.CourseSessionRepository.
