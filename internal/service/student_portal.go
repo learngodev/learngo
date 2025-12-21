@@ -824,3 +824,8 @@ func sanitizeReminderIcon(value string) string {
 	}
 	return "alarm"
 }
+
+// GetStudentProfile exposes currentStudent for external use.
+func (s *StudentPortalService) GetStudentProfile(ctx context.Context, accountID string) (*domain.Student, error) {
+	return s.currentStudent(ctx, accountID)
+}

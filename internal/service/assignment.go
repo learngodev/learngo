@@ -128,6 +128,36 @@ func (s *AssignmentService) Submit(ctx context.Context, input SubmitAssignmentIn
 		return errors.New("assignment and student required")
 	}
 
+	// Calculate progress
+	_, questions, err := s.assignments.Get(ctx, input.AssignmentID)
+	if err != nil {
+		return err
+	}
+
+	questionIDs := make(map[string]bool)
+	for _, q := range questions {
+		questionIDs[q.ID] = true
+	}
+
+	answeredCount := 0
+	seenQuestions := make(map[string]bool)
+	for _, ans := range input.Answers {
+		if questionIDs[ans.QuestionID] && strings.TrimSpace(ans.Answer) != "" {
+			if !seenQuestions[ans.QuestionID] {
+				answeredCount++
+				seenQuestions[ans.QuestionID] = true
+			}
+		}
+	}
+
+	progress := 0
+	if len(questions) > 0 {
+		progress = (answeredCount * 100) / len(questions)
+		if progress > 100 {
+			progress = 100
+		}
+	}
+
 	submission := &domain.AssignmentSubmission{
 		ID:           uuid.NewString(),
 		AssignmentID: input.AssignmentID,
@@ -135,6 +165,7 @@ func (s *AssignmentService) Submit(ctx context.Context, input SubmitAssignmentIn
 		Score:        input.Score,
 		Feedback:     input.Feedback,
 		Status:       input.Status,
+		Progress:     progress,
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
 	}
@@ -142,6 +173,13 @@ func (s *AssignmentService) Submit(ctx context.Context, input SubmitAssignmentIn
 	if input.Status == "submitted" {
 		now := time.Now()
 		submission.SubmittedAt = &now
+	}
+
+	// Check if submission already exists to preserve ID
+	existing, _, err := s.submissions.GetByAssignmentAndStudent(ctx, input.AssignmentID, input.StudentID)
+	if err == nil && existing != nil {
+		submission.ID = existing.ID
+		submission.CreatedAt = existing.CreatedAt
 	}
 
 	items := make([]domain.SubmissionItem, 0, len(input.Answers))

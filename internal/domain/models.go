@@ -293,6 +293,7 @@ type AssignmentSubmission struct {
 	Score        *float64
 	Feedback     string `gorm:"type:text"`
 	Status       string `gorm:"size:32"`
+	Progress     int    `gorm:"default:0"`
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 }

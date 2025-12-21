@@ -3523,7 +3523,7 @@ func (h *Handler) ListTeacherAgenda(c *gin.Context) {
 }
 
 type submitAssignmentRequest struct {
-	StudentID string                   `json:"student_id" validate:"required"`
+	StudentID string                   `json:"student_id"`
 	Status    string                   `json:"status" validate:"required"`
 	Score     *float64                 `json:"score"`
 	Feedback  string                   `json:"feedback"`
@@ -3587,6 +3587,22 @@ func (h *Handler) SubmitAssignment(c *gin.Context) {
 		return
 	}
 
+	accountID := getAccountID(c)
+	if accountID == "" {
+		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		return
+	}
+
+	student, err := h.student.GetStudentProfile(c.Request.Context(), accountID)
+	if err != nil {
+		if errors.Is(err, service.ErrStudentProfileNotFound) {
+			response.Error(c, http.StatusForbidden, "student profile required", nil)
+		} else {
+			response.Error(c, http.StatusInternalServerError, "unable to resolve student profile", err.Error())
+		}
+		return
+	}
+
 	var req submitAssignmentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
@@ -3606,9 +3622,9 @@ func (h *Handler) SubmitAssignment(c *gin.Context) {
 		})
 	}
 
-	err := h.assignments.Submit(c.Request.Context(), service.SubmitAssignmentInput{
+	err = h.assignments.Submit(c.Request.Context(), service.SubmitAssignmentInput{
 		AssignmentID: assignmentID,
-		StudentID:    req.StudentID,
+		StudentID:    student.ID,
 		Answers:      answers,
 		Score:        req.Score,
 		Feedback:     req.Feedback,
@@ -3629,13 +3645,23 @@ func (h *Handler) GetMySubmission(c *gin.Context) {
 		return
 	}
 
-	studentID := getAccountID(c)
-	if studentID == "" {
+	accountID := getAccountID(c)
+	if accountID == "" {
 		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
 		return
 	}
 
-	detail, comments, err := h.assignments.GetSubmissionForStudent(c.Request.Context(), assignmentID, studentID)
+	student, err := h.student.GetStudentProfile(c.Request.Context(), accountID)
+	if err != nil {
+		if errors.Is(err, service.ErrStudentProfileNotFound) {
+			response.Error(c, http.StatusForbidden, "student profile required", nil)
+		} else {
+			response.Error(c, http.StatusInternalServerError, "unable to resolve student profile", err.Error())
+		}
+		return
+	}
+
+	detail, comments, err := h.assignments.GetSubmissionForStudent(c.Request.Context(), assignmentID, student.ID)
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrAssignmentNotFound):
@@ -3648,8 +3674,28 @@ func (h *Handler) GetMySubmission(c *gin.Context) {
 		return
 	}
 
+	assignment, questions, err := h.assignments.GetAssignment(c.Request.Context(), assignmentID)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "unable to load assignment", err.Error())
+		return
+	}
+
+	// Flatten items for the root level as expected by frontend
+	itemsPayload := make([]gin.H, 0, len(detail.Items))
+	for _, item := range detail.Items {
+		itemsPayload = append(itemsPayload, gin.H{
+			"id":            item.ID,
+			"submission_id": item.SubmissionID,
+			"question_id":   item.QuestionID,
+			"answer":        item.Answer,
+			"score":         item.Score,
+		})
+	}
+
 	payload := gin.H{
+		"assignment": assignmentPayload(*assignment, questions),
 		"submission": submissionDetailPayload(*detail),
+		"items":      itemsPayload,
 		"comments":   submissionCommentsPayload(comments),
 	}
 	response.Success(c, http.StatusOK, payload)
