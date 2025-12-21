@@ -463,6 +463,9 @@ func (s *AssignmentService) ReturnSubmission(ctx context.Context, teacherID stri
 	}
 
 	submission.Status = "returned"
+	if strings.TrimSpace(input.Comment) != "" {
+		submission.Feedback = input.Comment
+	}
 	submission.UpdatedAt = time.Now()
 
 	// We use UpdateGrades here as it updates the submission record, even if items are empty
