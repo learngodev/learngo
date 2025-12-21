@@ -4531,6 +4531,7 @@ func submissionDetailPayload(detail service.SubmissionDetail) gin.H {
 		"id":            detail.Submission.ID,
 		"assignment_id": detail.Submission.AssignmentID,
 		"student_id":    detail.Submission.StudentID,
+		"student_name":  detail.StudentName,
 		"status":        detail.Submission.Status,
 		"score":         detail.Submission.Score,
 		"feedback":      detail.Submission.Feedback,

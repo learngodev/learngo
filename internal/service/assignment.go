@@ -19,14 +19,16 @@ type AssignmentService struct {
 	assignments repository.AssignmentRepository
 	submissions repository.SubmissionRepository
 	comments    repository.SubmissionCommentRepository
+	students    repository.StudentRepository
 }
 
 // NewAssignmentService creates a new AssignmentService.
-func NewAssignmentService(assignments repository.AssignmentRepository, submissions repository.SubmissionRepository, comments repository.SubmissionCommentRepository) *AssignmentService {
+func NewAssignmentService(assignments repository.AssignmentRepository, submissions repository.SubmissionRepository, comments repository.SubmissionCommentRepository, students repository.StudentRepository) *AssignmentService {
 	return &AssignmentService{
 		assignments: assignments,
 		submissions: submissions,
 		comments:    comments,
+		students:    students,
 	}
 }
 
@@ -197,8 +199,9 @@ func (s *AssignmentService) Submit(ctx context.Context, input SubmitAssignmentIn
 
 // SubmissionDetail aggregates a submission and its items.
 type SubmissionDetail struct {
-	Submission domain.AssignmentSubmission
-	Items      []domain.SubmissionItem
+	Submission  domain.AssignmentSubmission
+	Items       []domain.SubmissionItem
+	StudentName string
 }
 
 // GetAssignment retrieves an assignment with its questions.
@@ -228,13 +231,24 @@ func (s *AssignmentService) ListAssignmentSubmissions(ctx context.Context, assig
 	}
 
 	ids := make([]string, 0, len(subs))
+	studentIDs := make([]string, 0, len(subs))
 	for _, sub := range subs {
 		ids = append(ids, sub.ID)
+		studentIDs = append(studentIDs, sub.StudentID)
 	}
 
 	items, err := s.submissions.ListItemsBySubmissionIDs(ctx, ids)
 	if err != nil {
 		return nil, err
+	}
+
+	students, err := s.students.ListByIDs(ctx, studentIDs)
+	if err != nil {
+		return nil, err
+	}
+	studentNameMap := make(map[string]string, len(students))
+	for _, st := range students {
+		studentNameMap[st.ID] = st.Name
 	}
 
 	itemsBySubmission := make(map[string][]domain.SubmissionItem, len(subs))
@@ -245,8 +259,9 @@ func (s *AssignmentService) ListAssignmentSubmissions(ctx context.Context, assig
 	details := make([]SubmissionDetail, 0, len(subs))
 	for _, sub := range subs {
 		details = append(details, SubmissionDetail{
-			Submission: sub,
-			Items:      itemsBySubmission[sub.ID],
+			Submission:  sub,
+			Items:       itemsBySubmission[sub.ID],
+			StudentName: studentNameMap[sub.StudentID],
 		})
 	}
 	return details, nil
