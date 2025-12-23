@@ -435,62 +435,6 @@ type NoteComment struct {
 	CreatedAt  time.Time
 }
 
-// AIProvider represents supported AI model providers.
-type AIProvider string
-
-const (
-	AIProviderQwen     AIProvider = "qwen"
-	AIProviderDeepSeek AIProvider = "deepseek"
-)
-
-// AIAgentSetting stores per-school AI assistant configuration.
-type AIAgentSetting struct {
-	ID                      string     `gorm:"primaryKey;size:36"`
-	SchoolID                string     `gorm:"size:36;index"`
-	Provider                AIProvider `gorm:"size:32"`
-	Model                   string     `gorm:"size:128"`
-	APIKey                  string     `gorm:"size:256"`
-	BaseURL                 string     `gorm:"size:256"`
-	Temperature             float32    `gorm:"type:real"`
-	TopP                    float32    `gorm:"type:real"`
-	MaxOutputTokens         int        `gorm:"default:0"`
-	MaxDailyRequests        int        `gorm:"default:0"`
-	MaxConcurrentRequests   int        `gorm:"default:0"`
-	MaxConversationMessages int        `gorm:"default:0"`
-	SystemPrompt            string     `gorm:"type:text"`
-	VisionEnabled           bool       `gorm:"default:false"`
-	UpdatedBy               string     `gorm:"size:36"`
-	UpdatedByName           string     `gorm:"size:128"`
-	CreatedAt               time.Time
-	UpdatedAt               time.Time
-}
-
-// AIAgentSettingAudit tracks administrative changes to AI assistant settings.
-type AIAgentSettingAudit struct {
-	ID           string    `gorm:"primaryKey;size:36"`
-	SchoolID     string    `gorm:"size:36;index"`
-	OperatorID   string    `gorm:"size:36"`
-	OperatorName string    `gorm:"size:128"`
-	Action       string    `gorm:"size:64"`
-	Detail       string    `gorm:"type:text"`
-	CreatedAt    time.Time `gorm:"index"`
-}
-
-// AIChatSession groups student AI assistant interactions.
-type AIChatSession struct {
-	ID            string    `gorm:"primaryKey;size:36"`
-	SchoolID      string    `gorm:"size:36;index"`
-	AccountID     string    `gorm:"size:36;index"`
-	Role          Role      `gorm:"size:16"`
-	Title         string    `gorm:"size:256"`
-	LastMessageAt time.Time `gorm:"index"`
-	MessageCount  int       `gorm:"default:0"`
-	TokenCount    int       `gorm:"default:0"`
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
-	ClosedAt      *time.Time
-}
-
 // SystemSwitch persists administrative feature toggles.
 type SystemSwitch struct {
 	ID               string `gorm:"primaryKey;size:64"`
@@ -549,18 +493,6 @@ type SystemAuditLog struct {
 	Detail    string    `gorm:"size:512"`
 	TimeLabel string    `gorm:"size:64"`
 	CreatedAt time.Time `gorm:"index"`
-}
-
-// AIChatMessage stores individual AI assistant exchanges.
-type AIChatMessage struct {
-	ID           string    `gorm:"primaryKey;size:36"`
-	SessionID    string    `gorm:"size:36;index"`
-	Sender       string    `gorm:"size:16"`
-	Content      string    `gorm:"type:text"`
-	PromptTokens int       `gorm:"default:0"`
-	ResultTokens int       `gorm:"default:0"`
-	LatencyMS    int       `gorm:"default:0"`
-	CreatedAt    time.Time `gorm:"index"`
 }
 
 // TimeSlot defines a class period.
