@@ -83,6 +83,10 @@ func New() (*Application, error) {
 	ossCredentialRepo := gormrepo.NewOssCredentialStore(db)
 	ossPolicyRepo := gormrepo.NewOssPolicyStore(db)
 	ossAuditRepo := gormrepo.NewOssAuditStore(db)
+	aiSettingRepo := gormrepo.NewAIAgentSettingStore(db)
+	aiAuditRepo := gormrepo.NewAIAgentSettingAuditStore(db)
+	aiSessionRepo := gormrepo.NewAIChatSessionStore(db)
+	aiMessageRepo := gormrepo.NewAIChatMessageStore(db)
 	systemSwitchRepo := gormrepo.NewSystemSwitchStore(db)
 	systemParameterRepo := gormrepo.NewSystemParameterStore(db)
 	systemBroadcastRepo := gormrepo.NewSystemBroadcastStore(db)
@@ -104,6 +108,9 @@ func New() (*Application, error) {
 	noteCommentService := service.NewNoteCommentService(noteRepo, noteCommentRepo, accountRepo)
 	ossService := service.NewAdminOssService(ossCredentialRepo, ossPolicyRepo, ossAuditRepo, accountRepo)
 	systemService := service.NewAdminSystemService(systemSwitchRepo, systemParameterRepo, systemBroadcastRepo, systemAuditRepo)
+	aiModel := service.NewOpenAIChatModel()
+	aiService := service.NewAIAssistantService(aiSettingRepo, aiAuditRepo, aiSessionRepo, aiMessageRepo, accountRepo, aiModel, studentPortalService, teacherPortalService, assignmentService)
+	aiGradingService := service.NewAIGradingService(aiSettingRepo, aiModel)
 	streamHub := realtime.NewHub()
 
 	engine := gin.New()
@@ -120,7 +127,7 @@ func New() (*Application, error) {
 	scheduleService := service.NewScheduleService(timeSlotRepo, courseScheduleRepo, courseSessionRepo, courseRepo, teacherRepo, classroomRepo)
 	classroomService := service.NewClassroomService(classroomRepo)
 
-	handler := apihandlers.NewHandler(authService, adminService, assignmentService, teacherPortalService, studentPortalService, conversationService, noteService, noteCommentService, ossService, systemService, schoolService, courseService, scheduleService, classroomService, streamHub)
+	handler := apihandlers.NewHandler(authService, adminService, assignmentService, teacherPortalService, studentPortalService, conversationService, noteService, noteCommentService, ossService, systemService, aiService, aiGradingService, schoolService, courseService, scheduleService, classroomService, streamHub)
 
 	adminGuard := middleware.JWTAuth(middleware.AuthConfig{Secret: cfg.JWTSecret, AllowedRoles: []string{string(domain.RoleAdmin)}})
 	teacherGuard := middleware.JWTAuth(middleware.AuthConfig{Secret: cfg.JWTSecret, AllowedRoles: []string{string(domain.RoleTeacher), string(domain.RoleAdmin)}})
@@ -188,7 +195,13 @@ func migrate(db *gorm.DB) error {
 		&domain.SystemParameter{},
 		&domain.SystemBroadcast{},
 		&domain.SystemAuditLog{},
+		&domain.AIAgentSetting{},
+		&domain.AIAgentSettingAudit{},
+		&domain.AIChatSession{},
+		&domain.AIChatMessage{},
 		&domain.PasswordResetToken{},
+		&domain.TimeSlot{},
+		&domain.Classroom{},
 	)
 }
 
