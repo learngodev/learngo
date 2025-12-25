@@ -112,6 +112,7 @@ func New() (*Application, error) {
 	aiService := service.NewAIAssistantService(aiSettingRepo, aiAuditRepo, aiSessionRepo, aiMessageRepo, accountRepo, aiModel, studentPortalService, teacherPortalService, assignmentService)
 	aiGradingService := service.NewAIGradingService(aiSettingRepo, aiModel)
 	streamHub := realtime.NewHub()
+	fileService := service.NewFileService(db, ossCredentialRepo)
 
 	engine := gin.New()
 	engine.Use(gin.Recovery())
@@ -127,7 +128,7 @@ func New() (*Application, error) {
 	scheduleService := service.NewScheduleService(timeSlotRepo, courseScheduleRepo, courseSessionRepo, courseRepo, teacherRepo, classroomRepo)
 	classroomService := service.NewClassroomService(classroomRepo)
 
-	handler := apihandlers.NewHandler(authService, adminService, assignmentService, teacherPortalService, studentPortalService, conversationService, noteService, noteCommentService, ossService, systemService, aiService, aiGradingService, schoolService, courseService, scheduleService, classroomService, streamHub)
+	handler := apihandlers.NewHandler(authService, adminService, assignmentService, teacherPortalService, studentPortalService, conversationService, noteService, noteCommentService, ossService, systemService, aiService, aiGradingService, schoolService, courseService, scheduleService, classroomService, fileService, streamHub)
 
 	adminGuard := middleware.JWTAuth(middleware.AuthConfig{Secret: cfg.JWTSecret, AllowedRoles: []string{string(domain.RoleAdmin)}})
 	teacherGuard := middleware.JWTAuth(middleware.AuthConfig{Secret: cfg.JWTSecret, AllowedRoles: []string{string(domain.RoleTeacher), string(domain.RoleAdmin)}})
@@ -202,6 +203,9 @@ func migrate(db *gorm.DB) error {
 		&domain.PasswordResetToken{},
 		&domain.TimeSlot{},
 		&domain.Classroom{},
+		&domain.File{},
+		&domain.AssignmentAttachment{},
+		&domain.SubmissionAttachment{},
 	)
 }
 

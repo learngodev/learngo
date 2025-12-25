@@ -44,12 +44,13 @@ type Handler struct {
 	courseService *service.CourseService
 	schedule      *service.ScheduleService
 	classroom     *service.ClassroomService
+	fileService   *service.FileService
 	streamHub     *realtime.Hub
 	validate      *validator.Validate
 }
 
 // NewHandler constructs a Handler instance.
-func NewHandler(auth *service.AuthService, admin *service.AdminService, assignments *service.AssignmentService, teacher *service.TeacherPortalService, student *service.StudentPortalService, conversations *service.ConversationService, notes *service.NoteService, noteComments *service.NoteCommentService, oss *service.AdminOssService, system *service.AdminSystemService, ai *service.AIAssistantService, aiGrading *service.AIGradingService, school *service.SchoolService, courseService *service.CourseService, schedule *service.ScheduleService, classroom *service.ClassroomService, streamHub *realtime.Hub) *Handler {
+func NewHandler(auth *service.AuthService, admin *service.AdminService, assignments *service.AssignmentService, teacher *service.TeacherPortalService, student *service.StudentPortalService, conversations *service.ConversationService, notes *service.NoteService, noteComments *service.NoteCommentService, oss *service.AdminOssService, system *service.AdminSystemService, ai *service.AIAssistantService, aiGrading *service.AIGradingService, school *service.SchoolService, courseService *service.CourseService, schedule *service.ScheduleService, classroom *service.ClassroomService, fileService *service.FileService, streamHub *realtime.Hub) *Handler {
 	return &Handler{
 		auth:          auth,
 		admin:         admin,
@@ -67,6 +68,7 @@ func NewHandler(auth *service.AuthService, admin *service.AdminService, assignme
 		courseService: courseService,
 		schedule:      schedule,
 		classroom:     classroom,
+		fileService:   fileService,
 		streamHub:     streamHub,
 		validate:      validator.New(),
 	}
@@ -81,6 +83,19 @@ func (h *Handler) RegisterRoutes(r *gin.Engine, adminGuard gin.HandlerFunc, teac
 		api.POST("/auth/password/reset/request", h.RequestPasswordReset)
 		api.POST("/auth/password/reset/confirm", h.ConfirmPasswordReset)
 		api.GET("/schools", h.ListSchools)
+
+		// File Upload Routes (Authenticated)
+		// We can use a general guard or specific ones. Assuming student/teacher can upload.
+		// Let's put it under a common authenticated group if one exists, or just add guards.
+		// For now, I'll add it to both teacher and student groups or a common one.
+		// Since there isn't a common "user" group visible here, I'll add to api root but with middleware check inside or just add to specific groups.
+		// Actually, let's add a new group for files that accepts any valid token.
+		// But I don't see a generic "authGuard" passed in.
+		// I'll add it to student and teacher groups for now.
+
+		files := api.Group("/files", studentGuard)
+		files.POST("/upload", h.GetUploadURL)
+		files.GET("/download/:id", h.GetDownloadURL)
 
 		admin := api.Group("/admin", adminGuard)
 		admin.POST("/teachers", h.CreateTeacher)
@@ -162,8 +177,11 @@ func (h *Handler) RegisterRoutes(r *gin.Engine, adminGuard gin.HandlerFunc, teac
 		submissions.GET(":id/submissions/me", h.GetMySubmission)
 
 		student := api.Group("/student", studentGuard)
+		student.POST("/files/upload-url", h.GetUploadURL)
+		student.GET("/files/:id/download-url", h.GetDownloadURL)
 		student.GET("/assignments", h.ListStudentAssignments)
 		student.GET("/schedule", h.ListStudentSchedule)
+		student.GET("/school/members", h.ListSchoolMembers)
 		student.GET("/time-slots", h.ListTimeSlots)
 		student.GET("/agenda", h.ListStudentAgenda)
 		student.GET("/exams", h.ListStudentExams)
@@ -177,10 +195,13 @@ func (h *Handler) RegisterRoutes(r *gin.Engine, adminGuard gin.HandlerFunc, teac
 		student.POST("/reminders/complete_all", h.UpdateAllStudentRemindersCompletion)
 
 		teacher := api.Group("/teacher", teacherGuard)
+		teacher.POST("/files/upload-url", h.GetUploadURL)
+		teacher.GET("/files/:id/download-url", h.GetDownloadURL)
 		teacher.GET("/courses", h.ListTeacherCourses)
 		teacher.GET("/courses/:id/classes", h.ListTeacherCourseClasses)
 		teacher.GET("/classes/:id/students", h.ListTeacherClassStudents)
 		teacher.GET("/schedule", h.ListTeacherSchedule)
+		teacher.GET("/school/members", h.ListSchoolMembers)
 		teacher.GET("/time-slots", h.ListTimeSlots)
 		teacher.GET("/assignments", h.ListTeacherAssignments)
 		teacher.GET("/exams", h.ListTeacherExams)

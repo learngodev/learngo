@@ -90,6 +90,19 @@ func (s *OssCredentialStore) SetPrimary(ctx context.Context, credentialID, schoo
 	return updated, nil
 }
 
+func (s *OssCredentialStore) GetPrimary(ctx context.Context, schoolID string) (*domain.OssCredential, error) {
+	var credential domain.OssCredential
+	if err := s.db.WithContext(ctx).
+		Where("school_id = ? AND is_primary = ? AND active = ?", schoolID, true, true).
+		First(&credential).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, repository.ErrNotFound
+		}
+		return nil, err
+	}
+	return &credential, nil
+}
+
 func (s *OssCredentialStore) Delete(ctx context.Context, credentialID, schoolID string) error {
 	result := s.db.WithContext(ctx).
 		Where("id = ? AND school_id = ?", credentialID, schoolID).

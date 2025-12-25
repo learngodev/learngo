@@ -85,6 +85,8 @@ type UpdateOssCredentialInput struct {
 	Region               *string
 	Bucket               *string
 	DirectoryPrefix      *string
+	AccessKeyID          *string
+	AccessKeySecret      *string
 	AccessKeyDisplay     *string
 	AllowPublicRead      *bool
 	AllowMultipartUpload *bool
@@ -101,6 +103,8 @@ type CreateOssCredentialInput struct {
 	Region               string
 	Bucket               string
 	DirectoryPrefix      string
+	AccessKeyID          string
+	AccessKeySecret      string
 	AccessKeyDisplay     string
 	AllowPublicRead      bool
 	AllowMultipartUpload bool
@@ -179,6 +183,14 @@ func (s *AdminOssService) UpdateCredential(ctx context.Context, input UpdateOssC
 		prefix := strings.TrimSpace(*input.DirectoryPrefix)
 		updates["directory_prefix"] = prefix
 		changeSummary = append(changeSummary, fmt.Sprintf("目录前缀→%s", prefix))
+	}
+	if input.AccessKeyID != nil {
+		updates["access_key_id"] = strings.TrimSpace(*input.AccessKeyID)
+		changeSummary = append(changeSummary, "更新AccessKeyID")
+	}
+	if input.AccessKeySecret != nil {
+		updates["access_key_secret"] = strings.TrimSpace(*input.AccessKeySecret)
+		changeSummary = append(changeSummary, "更新AccessKeySecret")
 	}
 	if input.AccessKeyDisplay != nil {
 		display := strings.TrimSpace(*input.AccessKeyDisplay)
@@ -277,6 +289,8 @@ func (s *AdminOssService) CreateCredential(ctx context.Context, input CreateOssC
 	}
 
 	directoryPrefix := strings.TrimSpace(input.DirectoryPrefix)
+	accessKeyID := strings.TrimSpace(input.AccessKeyID)
+	accessKeySecret := strings.TrimSpace(input.AccessKeySecret)
 	accessKeyDisplay := strings.TrimSpace(input.AccessKeyDisplay)
 
 	credential := &domain.OssCredential{
@@ -287,6 +301,8 @@ func (s *AdminOssService) CreateCredential(ctx context.Context, input CreateOssC
 		Region:               region,
 		Bucket:               bucket,
 		DirectoryPrefix:      directoryPrefix,
+		AccessKeyID:          accessKeyID,
+		AccessKeySecret:      accessKeySecret,
 		AccessKeyDisplay:     accessKeyDisplay,
 		AllowPublicRead:      input.AllowPublicRead,
 		AllowMultipartUpload: input.AllowMultipartUpload,

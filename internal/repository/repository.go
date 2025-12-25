@@ -261,6 +261,7 @@ type OssCredentialRepository interface {
 	GetByID(ctx context.Context, credentialID, schoolID string) (*domain.OssCredential, error)
 	Update(ctx context.Context, credentialID, schoolID string, updates map[string]any) (*domain.OssCredential, error)
 	SetPrimary(ctx context.Context, credentialID, schoolID string) (*domain.OssCredential, error)
+	GetPrimary(ctx context.Context, schoolID string) (*domain.OssCredential, error)
 	Delete(ctx context.Context, credentialID, schoolID string) error
 }
 

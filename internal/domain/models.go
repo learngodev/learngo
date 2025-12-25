@@ -366,6 +366,8 @@ type OssCredential struct {
 	Endpoint             string `gorm:"size:128"`
 	Region               string `gorm:"size:64"`
 	Bucket               string `gorm:"size:128"`
+	AccessKeyID          string `gorm:"size:128"`
+	AccessKeySecret      string `gorm:"size:128"`
 	AccessKeyDisplay     string `gorm:"size:128"`
 	DirectoryPrefix      string `gorm:"size:128"`
 	AllowPublicRead      bool   `gorm:"default:false"`
@@ -589,4 +591,33 @@ type CourseSlot struct {
 
 func (CourseSlot) TableName() string {
 	return "time_slots"
+}
+
+// File represents an uploaded file in OSS.
+type File struct {
+	ID         string    `gorm:"primaryKey;size:36" json:"id"`
+	SchoolID   string    `gorm:"size:36;index" json:"school_id"`
+	UploaderID string    `gorm:"size:36;index" json:"uploader_id"`
+	Name       string    `gorm:"size:256" json:"name"`
+	Key        string    `gorm:"size:256" json:"key"` // OSS Object Key
+	URL        string    `gorm:"size:512" json:"url"` // Public or Presigned URL
+	Type       string    `gorm:"size:64" json:"type"` // MIME type
+	Size       int64     `json:"size"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+// AssignmentAttachment links files to assignments.
+type AssignmentAttachment struct {
+	ID           string `gorm:"primaryKey;size:36"`
+	AssignmentID string `gorm:"size:36;index"`
+	FileID       string `gorm:"size:36;index"`
+	CreatedAt    time.Time
+}
+
+// SubmissionAttachment links files to submissions.
+type SubmissionAttachment struct {
+	ID           string `gorm:"primaryKey;size:36"`
+	SubmissionID string `gorm:"size:36;index"`
+	FileID       string `gorm:"size:36;index"`
+	CreatedAt    time.Time
 }
