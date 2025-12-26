@@ -99,7 +99,8 @@ func New() (*Application, error) {
 	classroomRepo := gormrepo.NewClassroomRepository(db)
 
 	authService := service.NewAuthService(accountRepo, passwordResetRepo, cfg)
-	adminService := service.NewAdminService(accountRepo, teacherRepo, studentRepo, departmentRepo, classRepo, teacherStudentRepo)
+	aiModel := service.NewOpenAIChatModel()
+	adminService := service.NewAdminService(accountRepo, teacherRepo, studentRepo, departmentRepo, classRepo, teacherStudentRepo, aiModel, aiSettingRepo)
 	assignmentService := service.NewAssignmentService(assignmentRepo, submissionRepo, submissionCommentRepo, studentRepo)
 	teacherPortalService := service.NewTeacherPortalService(teacherRepo, assignmentRepo, submissionRepo, studentRepo, courseSessionRepo, courseRepo, classRepo, courseSlotRepo, accountRepo, courseScheduleRepo)
 	studentPortalService := service.NewStudentPortalService(studentRepo, assignmentRepo, submissionRepo, courseRepo, courseSlotRepo, courseSessionRepo, teacherRepo, accountRepo, studentReminderRepo)
@@ -108,7 +109,6 @@ func New() (*Application, error) {
 	noteCommentService := service.NewNoteCommentService(noteRepo, noteCommentRepo, accountRepo)
 	ossService := service.NewAdminOssService(ossCredentialRepo, ossPolicyRepo, ossAuditRepo, accountRepo)
 	systemService := service.NewAdminSystemService(systemSwitchRepo, systemParameterRepo, systemBroadcastRepo, systemAuditRepo)
-	aiModel := service.NewOpenAIChatModel()
 	aiService := service.NewAIAssistantService(aiSettingRepo, aiAuditRepo, aiSessionRepo, aiMessageRepo, accountRepo, aiModel, studentPortalService, teacherPortalService, assignmentService)
 	aiGradingService := service.NewAIGradingService(aiSettingRepo, aiModel)
 	streamHub := realtime.NewHub()

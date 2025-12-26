@@ -2,7 +2,9 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -22,6 +24,8 @@ type AdminService struct {
 	departments  repository.DepartmentRepository
 	classes      repository.ClassRepository
 	teacherLinks repository.TeacherStudentRepository
+	aiModel      AIChatModel
+	aiSettings   repository.AIAgentSettingRepository
 }
 
 var (
@@ -71,8 +75,29 @@ type AdminBatchOperationResult struct {
 	Failed    map[string]string `json:"failed"`
 }
 
+// AIOperation represents a single operation parsed from AI instruction.
+type AIOperation struct {
+	Action string          `json:"action"`
+	Data   json.RawMessage `json:"data"`
+}
+
+// AIAnalyzeResponse represents the analysis result from AI.
+type AIAnalyzeResponse struct {
+	Operations []AIOperation `json:"operations"`
+	Analysis   string        `json:"analysis"`
+}
+
 // NewAdminService constructs an AdminService.
-func NewAdminService(acc repository.AccountRepository, teachers repository.TeacherRepository, students repository.StudentRepository, departments repository.DepartmentRepository, classes repository.ClassRepository, links repository.TeacherStudentRepository) *AdminService {
+func NewAdminService(
+	acc repository.AccountRepository,
+	teachers repository.TeacherRepository,
+	students repository.StudentRepository,
+	departments repository.DepartmentRepository,
+	classes repository.ClassRepository,
+	links repository.TeacherStudentRepository,
+	aiModel AIChatModel,
+	aiSettings repository.AIAgentSettingRepository,
+) *AdminService {
 	return &AdminService{
 		accounts:     acc,
 		teachers:     teachers,
@@ -80,6 +105,8 @@ func NewAdminService(acc repository.AccountRepository, teachers repository.Teach
 		departments:  departments,
 		classes:      classes,
 		teacherLinks: links,
+		aiModel:      aiModel,
+		aiSettings:   aiSettings,
 	}
 }
 
@@ -117,12 +144,17 @@ func (s *AdminService) CreateTeacher(ctx context.Context, input CreateTeacherInp
 		return nil, err
 	}
 
+	var email *string
+	if input.Email != "" {
+		email = &input.Email
+	}
+
 	teacher := &domain.Teacher{
 		ID:        uuid.NewString(),
 		SchoolID:  input.SchoolID,
 		AccountID: account.ID,
 		Number:    input.Number,
-		Email:     input.Email,
+		Email:     email,
 		Phone:     input.Phone,
 	}
 
@@ -168,12 +200,17 @@ func (s *AdminService) CreateStudent(ctx context.Context, input CreateStudentInp
 		return nil, err
 	}
 
+	var email *string
+	if input.Email != "" {
+		email = &input.Email
+	}
+
 	student := &domain.Student{
 		ID:        uuid.NewString(),
 		SchoolID:  input.SchoolID,
 		AccountID: account.ID,
 		Number:    input.Number,
-		Email:     input.Email,
+		Email:     email,
 		Phone:     input.Phone,
 	}
 
@@ -230,7 +267,7 @@ type AdminAccountSummary struct {
 	Role         domain.Role `json:"role"`
 	Identifier   string      `json:"identifier"`
 	Name         string      `json:"name"`
-	Email        string      `json:"email,omitempty"`
+	Email        *string     `json:"email,omitempty"`
 	Phone        string      `json:"phone,omitempty"`
 	DepartmentID string      `json:"department_id,omitempty"`
 	Department   string      `json:"department,omitempty"`
@@ -695,4 +732,179 @@ func (s *AdminService) UpdateAccountStructure(ctx context.Context, input UpdateA
 	}
 
 	return nil
+}
+
+// AnalyzeBatchInstruction analyzes natural language instructions and returns proposed operations.
+func (s *AdminService) AnalyzeBatchInstruction(ctx context.Context, schoolID uuid.UUID, instruction string) (*AIAnalyzeResponse, error) {
+	setting, err := s.aiSettings.GetBySchoolID(ctx, schoolID.String())
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch ai settings: %w", err)
+	}
+	if setting == nil {
+		return nil, errors.New("no ai settings available")
+	}
+
+	setting.SystemPrompt = `You are an administrative assistant for a school management system.
+Your task is to analyze the user's input and extract any valid administrative operations.
+Ignore any conversational filler, greetings, or irrelevant text.
+
+The supported operations are:
+1. "create_student": {"name": "string", "email": "string" (optional), "password": "string", "number": "string"}
+2. "create_teacher": {"name": "string", "email": "string" (optional), "password": "string", "number": "string"}
+3. "lock_account": {"number": "string"}
+4. "unlock_account": {"number": "string"}
+
+Output MUST be a JSON object with two fields:
+- "operations": An array of operation objects found in the input. Each object must have an "action" field and a "data" field. If no valid operations are found, this array should be empty.
+- "analysis": A string field summarizing the actions to be taken. If no operations are found, explain why (e.g., "No valid commands found in the input.").
+
+Example 1 (Valid Command):
+Input: "Create a student named John Doe with password 123"
+Output:
+{
+  "operations": [
+    {"action": "create_student", "data": {"name": "John Doe", "password": "123", "number": "generated_or_placeholder"}}
+  ],
+  "analysis": "I will create a student account for John Doe."
+}
+
+Example 2 (Mixed Input):
+Input: "Hello there! Please lock account S12345. Thanks!"
+Output:
+{
+  "operations": [
+    {"action": "lock_account", "data": {"number": "S12345"}}
+  ],
+  "analysis": "I will lock the account with number S12345."
+}
+
+Example 3 (Irrelevant Input):
+Input: "What is the weather today?"
+Output:
+{
+  "operations": [],
+  "analysis": "I can only assist with school administrative tasks like creating accounts or locking users. I cannot answer questions about the weather."
+}
+
+Do not include any markdown formatting or explanation outside the JSON.`
+
+	req := AIChatModelRequest{
+		Setting: setting,
+		Message: instruction,
+	}
+
+	resp, err := s.aiModel.GenerateResponse(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("ai generation failed: %w", err)
+	}
+
+	content := strings.TrimSpace(resp.Content)
+	content = strings.TrimPrefix(content, "```json")
+	content = strings.TrimPrefix(content, "```")
+	content = strings.TrimSuffix(content, "```")
+
+	var aiResp AIAnalyzeResponse
+
+	if err := json.Unmarshal([]byte(content), &aiResp); err != nil {
+		// Fallback for backward compatibility or malformed response
+		var ops []AIOperation
+		if err2 := json.Unmarshal([]byte(content), &ops); err2 == nil {
+			aiResp.Operations = ops
+		} else {
+			return nil, fmt.Errorf("failed to parse ai response: %w", err)
+		}
+	}
+
+	return &aiResp, nil
+}
+
+// ExecuteBatchOperations executes a list of pre-approved operations.
+func (s *AdminService) ExecuteBatchOperations(ctx context.Context, schoolID uuid.UUID, operations []AIOperation) ([]string, error) {
+	var results []string
+	for _, op := range operations {
+		var res string
+		var err error
+		switch op.Action {
+		case "create_student":
+			var data struct {
+				Name     string `json:"name"`
+				Email    string `json:"email"`
+				Password string `json:"password"`
+				Number   string `json:"number"`
+			}
+			if err = json.Unmarshal(op.Data, &data); err == nil {
+				input := CreateStudentInput{
+					SchoolID:   schoolID.String(),
+					Name:       data.Name,
+					Email:      data.Email,
+					DefaultPwd: data.Password,
+					Number:     data.Number,
+				}
+				_, err = s.CreateStudent(ctx, input)
+				if err == nil {
+					res = fmt.Sprintf("Created student %s (%s)", data.Name, data.Number)
+				}
+			}
+		case "create_teacher":
+			var data struct {
+				Name     string `json:"name"`
+				Email    string `json:"email"`
+				Password string `json:"password"`
+				Number   string `json:"number"`
+			}
+			if err = json.Unmarshal(op.Data, &data); err == nil {
+				input := CreateTeacherInput{
+					SchoolID:   schoolID.String(),
+					Name:       data.Name,
+					Email:      data.Email,
+					DefaultPwd: data.Password,
+					Number:     data.Number,
+				}
+				_, err = s.CreateTeacher(ctx, input)
+				if err == nil {
+					res = fmt.Sprintf("Created teacher %s (%s)", data.Name, data.Number)
+				}
+			}
+		case "lock_account":
+			var data struct {
+				Number string `json:"number"`
+			}
+			if err = json.Unmarshal(op.Data, &data); err == nil {
+				acc, errFind := s.accounts.FindByIdentifier(ctx, schoolID.String(), data.Number)
+				if errFind == nil && acc != nil {
+					err = s.LockAccount(ctx, schoolID.String(), acc.ID)
+					if err == nil {
+						res = fmt.Sprintf("Locked account %s", data.Number)
+					}
+				} else {
+					err = fmt.Errorf("account not found: %s", data.Number)
+				}
+			}
+		case "unlock_account":
+			var data struct {
+				Number string `json:"number"`
+			}
+			if err = json.Unmarshal(op.Data, &data); err == nil {
+				acc, errFind := s.accounts.FindByIdentifier(ctx, schoolID.String(), data.Number)
+				if errFind == nil && acc != nil {
+					err = s.UnlockAccount(ctx, schoolID.String(), acc.ID)
+					if err == nil {
+						res = fmt.Sprintf("Unlocked account %s", data.Number)
+					}
+				} else {
+					err = fmt.Errorf("account not found: %s", data.Number)
+				}
+			}
+		default:
+			res = fmt.Sprintf("Unknown action: %s", op.Action)
+		}
+
+		if err != nil {
+			results = append(results, fmt.Sprintf("Failed %s: %v", op.Action, err))
+		} else {
+			results = append(results, res)
+		}
+	}
+
+	return results, nil
 }

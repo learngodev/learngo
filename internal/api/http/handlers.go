@@ -15,6 +15,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 
 	"learn-go/internal/api/grpcmapper"
@@ -134,6 +135,8 @@ func (h *Handler) RegisterRoutes(r *gin.Engine, adminGuard gin.HandlerFunc, teac
 		admin.GET("/ai/settings", h.GetAIAgentSetting)
 		admin.PUT("/ai/settings", h.UpdateAIAgentSetting)
 		admin.GET("/ai/settings/audit_logs", h.ListAIAgentSettingAudits)
+		admin.POST("/ai/analyze", h.AdminAIAnalyze)
+		admin.POST("/ai/execute", h.AdminAIExecute)
 		admin.GET("/ai/usage", h.ListAIUsageSummaries)
 		admin.GET("/ai/usage/export", h.ExportAIUsageSummaries)
 		admin.GET("/ai/usage/report", h.GetAIUsageReport)
@@ -406,7 +409,7 @@ type createTeacherRequest struct {
 	SchoolID   string `json:"school_id" validate:"required"`
 	Number     string `json:"number" validate:"required"`
 	Name       string `json:"name" validate:"required"`
-	Email      string `json:"email" validate:"required,email"`
+	Email      string `json:"email" validate:"omitempty,email"`
 	Phone      string `json:"phone" validate:"omitempty"`
 	DefaultPwd string `json:"default_password" validate:"required"`
 }
@@ -442,7 +445,7 @@ type createStudentRequest struct {
 	SchoolID   string `json:"school_id" validate:"required"`
 	Number     string `json:"number" validate:"required"`
 	Name       string `json:"name" validate:"required"`
-	Email      string `json:"email" validate:"required,email"`
+	Email      string `json:"email" validate:"omitempty,email"`
 	Phone      string `json:"phone"`
 	ClassID    string `json:"class_id"`
 	DefaultPwd string `json:"default_password" validate:"required"`
@@ -899,6 +902,72 @@ func (h *Handler) BatchOperateAccounts(c *gin.Context) {
 	response.Success(c, http.StatusOK, gin.H{
 		"succeeded": result.Succeeded,
 		"failed":    result.Failed,
+	})
+}
+
+type adminAIBatchRequest struct {
+	SchoolID    string `json:"school_id" validate:"required"`
+	Instruction string `json:"instruction" validate:"required"`
+}
+
+type adminAIExecuteRequest struct {
+	SchoolID   string                `json:"school_id" validate:"required"`
+	Operations []service.AIOperation `json:"operations" validate:"required"`
+}
+
+// AdminAIAnalyze handles AI analysis of batch operations.
+func (h *Handler) AdminAIAnalyze(c *gin.Context) {
+	var req adminAIBatchRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		return
+	}
+	if err := h.validate.Struct(req); err != nil {
+		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		return
+	}
+
+	schoolUUID, err := uuid.Parse(req.SchoolID)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid school_id", err.Error())
+		return
+	}
+
+	aiResp, err := h.admin.AnalyzeBatchInstruction(c.Request.Context(), schoolUUID, req.Instruction)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "ai analysis failed", err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, aiResp)
+}
+
+// AdminAIExecute handles execution of AI batch operations.
+func (h *Handler) AdminAIExecute(c *gin.Context) {
+	var req adminAIExecuteRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		return
+	}
+	if err := h.validate.Struct(req); err != nil {
+		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		return
+	}
+
+	schoolUUID, err := uuid.Parse(req.SchoolID)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid school_id", err.Error())
+		return
+	}
+
+	results, err := h.admin.ExecuteBatchOperations(c.Request.Context(), schoolUUID, req.Operations)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "ai execution failed", err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, gin.H{
+		"results": results,
 	})
 }
 

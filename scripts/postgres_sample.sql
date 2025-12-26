@@ -81,7 +81,7 @@ CREATE TABLE teachers (
     account_id CHAR(36) NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
     number     VARCHAR(64) NOT NULL,
     department_id CHAR(36) REFERENCES departments(id) ON DELETE SET NULL,
-    email      VARCHAR(128) NOT NULL,
+    email      VARCHAR(128),
     phone      VARCHAR(32),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -99,7 +99,7 @@ CREATE TABLE students (
     account_id CHAR(36) NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
     number     VARCHAR(64) NOT NULL,
     class_id   CHAR(36) REFERENCES classes(id) ON DELETE SET NULL,
-    email      VARCHAR(128) NOT NULL,
+    email      VARCHAR(128),
     phone      VARCHAR(32),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
