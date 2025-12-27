@@ -366,6 +366,14 @@ func (f *fakeCourseRepo) ListAssignmentsByCourseIDs(ctx context.Context, courseI
 	return nil, nil
 }
 
+func (f *fakeCourseRepo) GetByInvitationCode(ctx context.Context, code string) (*domain.Course, error) {
+	return nil, nil
+}
+
+func (f *fakeCourseRepo) ListByStudentID(ctx context.Context, studentID string) ([]domain.Course, error) {
+	return nil, nil
+}
+
 type fakeClassRepo struct {
 	classes map[string]string
 }

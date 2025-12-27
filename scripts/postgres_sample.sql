@@ -468,3 +468,19 @@ CREATE TABLE ai_chat_messages (
 );
 
 CREATE INDEX ai_chat_messages_created_at_idx ON ai_chat_messages(created_at);
+
+CREATE TABLE ai_usage_logs (
+    id            CHAR(36) PRIMARY KEY,
+    school_id     CHAR(36) NOT NULL,
+    account_id    CHAR(36) NOT NULL,
+    role          VARCHAR(16) NOT NULL,
+    feature       VARCHAR(64) NOT NULL,
+    model         VARCHAR(128) NOT NULL,
+    prompt_tokens INT DEFAULT 0,
+    result_tokens INT DEFAULT 0,
+    total_tokens  INT DEFAULT 0,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX ai_usage_logs_school_id_idx ON ai_usage_logs(school_id);
+CREATE INDEX ai_usage_logs_created_at_idx ON ai_usage_logs(created_at);

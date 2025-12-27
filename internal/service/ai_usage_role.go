@@ -56,8 +56,29 @@ func (s *AIAssistantService) GetUsageRoleBreakdown(ctx context.Context, input Li
 		return nil, err
 	}
 
+	logBreakdown, err := s.logs.UsageByRoleSince(ctx, schoolID, since)
+	if err != nil {
+		return nil, err
+	}
+
 	if breakdown == nil {
 		breakdown = make(map[domain.Role]repository.AIChatUsageTotals)
+	}
+
+	for role, totals := range logBreakdown {
+		existing, exists := breakdown[role]
+		if !exists {
+			breakdown[role] = totals
+		} else {
+			if totals.AccountCount > existing.AccountCount {
+				existing.AccountCount = totals.AccountCount
+			}
+			existing.UserMessages += totals.UserMessages
+			existing.AssistantMessages += totals.AssistantMessages
+			existing.PromptTokens += totals.PromptTokens
+			existing.ResultTokens += totals.ResultTokens
+			breakdown[role] = existing
+		}
 	}
 
 	for _, role := range usageRoleOrder {

@@ -127,11 +127,35 @@ func (s *AIAssistantService) GetUsageTimeline(ctx context.Context, input UsageTi
 		return nil, err
 	}
 
+	logRows, err := s.logs.UsageTimelineBySchool(ctx, schoolID, startDay, queryEnd, input.Role)
+	if err != nil {
+		return nil, err
+	}
+
 	keyed := make(map[time.Time]repository.AIChatUsageTimelinePoint, len(rows))
 	for _, row := range rows {
 		bucket := row.Bucket.UTC()
 		bucket = time.Date(bucket.Year(), bucket.Month(), bucket.Day(), 0, 0, 0, 0, time.UTC)
 		keyed[bucket] = row
+	}
+
+	for _, row := range logRows {
+		bucket := row.Bucket.UTC()
+		bucket = time.Date(bucket.Year(), bucket.Month(), bucket.Day(), 0, 0, 0, 0, time.UTC)
+
+		existing, exists := keyed[bucket]
+		if !exists {
+			keyed[bucket] = row
+		} else {
+			if row.AccountCount > existing.AccountCount {
+				existing.AccountCount = row.AccountCount
+			}
+			existing.UserMessages += row.UserMessages
+			existing.AssistantMessages += row.AssistantMessages
+			existing.PromptTokens += row.PromptTokens
+			existing.ResultTokens += row.ResultTokens
+			keyed[bucket] = existing
+		}
 	}
 
 	timeline := make([]AIChatUsageTimelinePoint, 0, daySpan)

@@ -6,6 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
+
+	"github.com/google/uuid"
 
 	"learn-go/internal/domain"
 	"learn-go/internal/repository"
@@ -14,13 +17,19 @@ import (
 // AIGradingService provides AI-powered assignment checking and grading.
 type AIGradingService struct {
 	settings repository.AIAgentSettingRepository
+	logs     repository.AIUsageLogRepository
 	model    AIChatModel
 }
 
 // NewAIGradingService creates a new AIGradingService.
-func NewAIGradingService(settings repository.AIAgentSettingRepository, model AIChatModel) *AIGradingService {
+func NewAIGradingService(
+	settings repository.AIAgentSettingRepository,
+	logs repository.AIUsageLogRepository,
+	model AIChatModel,
+) *AIGradingService {
 	return &AIGradingService{
 		settings: settings,
+		logs:     logs,
 		model:    model,
 	}
 }
@@ -28,6 +37,8 @@ func NewAIGradingService(settings repository.AIAgentSettingRepository, model AIC
 // CheckAssignmentInput contains data for AI pre-check.
 type CheckAssignmentInput struct {
 	SchoolID    string
+	AccountID   string
+	Role        domain.Role
 	Title       string
 	Description string
 	Content     string
@@ -42,6 +53,8 @@ type CheckAssignmentResult struct {
 
 // GradeAssignmentInput contains data for AI grading.
 type GradeAssignmentInput struct {
+	AccountID   string
+	Role        domain.Role
 	SchoolID    string
 	Title       string
 	Description string
@@ -96,6 +109,19 @@ Please return the result in strict JSON format as follows (ensure all text field
 		return nil, err
 	}
 
+	_ = s.logs.Create(ctx, &domain.AIUsageLog{
+		ID:           uuid.NewString(),
+		SchoolID:     input.SchoolID,
+		AccountID:    input.AccountID,
+		Role:         input.Role,
+		Feature:      "assignment_check",
+		Model:        setting.Model,
+		PromptTokens: resp.PromptTokens,
+		ResultTokens: resp.ResultTokens,
+		TotalTokens:  resp.PromptTokens + resp.ResultTokens,
+		CreatedAt:    time.Now(),
+	})
+
 	var result CheckAssignmentResult
 	if err := json.Unmarshal([]byte(cleanJSON(resp.Content)), &result); err != nil {
 		return nil, fmt.Errorf("failed to parse AI response: %w", err)
@@ -141,6 +167,19 @@ Please return the result in strict JSON format as follows (ensure all text field
 		return nil, err
 	}
 
+	_ = s.logs.Create(ctx, &domain.AIUsageLog{
+		ID:           uuid.NewString(),
+		SchoolID:     input.SchoolID,
+		AccountID:    input.AccountID,
+		Role:         input.Role,
+		Feature:      "assignment_grading",
+		Model:        setting.Model,
+		PromptTokens: resp.PromptTokens,
+		ResultTokens: resp.ResultTokens,
+		TotalTokens:  resp.PromptTokens + resp.ResultTokens,
+		CreatedAt:    time.Now(),
+	})
+
 	var result GradeAssignmentResult
 	if err := json.Unmarshal([]byte(cleanJSON(resp.Content)), &result); err != nil {
 		return nil, fmt.Errorf("failed to parse AI response: %w", err)
@@ -151,6 +190,8 @@ Please return the result in strict JSON format as follows (ensure all text field
 
 // GenerateQuestionsInput contains parameters for AI question generation.
 type GenerateQuestionsInput struct {
+	AccountID  string
+	Role       domain.Role
 	SchoolID   string
 	Topic      string
 	Count      int
@@ -211,6 +252,19 @@ Please return the result in strict JSON format as follows:
 	if err != nil {
 		return nil, err
 	}
+
+	_ = s.logs.Create(ctx, &domain.AIUsageLog{
+		ID:           uuid.NewString(),
+		SchoolID:     input.SchoolID,
+		AccountID:    input.AccountID,
+		Role:         input.Role,
+		Feature:      "question_generation",
+		Model:        setting.Model,
+		PromptTokens: resp.PromptTokens,
+		ResultTokens: resp.ResultTokens,
+		TotalTokens:  resp.PromptTokens + resp.ResultTokens,
+		CreatedAt:    time.Now(),
+	})
 
 	var result GenerateQuestionsResult
 	if err := json.Unmarshal([]byte(cleanJSON(resp.Content)), &result); err != nil {

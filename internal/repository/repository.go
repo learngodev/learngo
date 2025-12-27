@@ -93,6 +93,8 @@ type CourseRepository interface {
 	ListAssignments(ctx context.Context, schoolID string, courseID, departmentID, classID string, onlyAssigned bool, page, size int) ([]domain.CourseAssignmentInfo, int64, error)
 	ListWithFilters(ctx context.Context, schoolID string, departmentID, classID string, page, size int) ([]domain.Course, int64, error)
 	ListAssignmentsByCourseIDs(ctx context.Context, courseIDs []string) ([]domain.CourseAssignmentInfo, error)
+	GetByInvitationCode(ctx context.Context, code string) (*domain.Course, error)
+	ListByStudentID(ctx context.Context, studentID string) ([]domain.Course, error)
 }
 
 // CourseStudentRepository manages student enrollments in courses.
@@ -245,6 +247,13 @@ type MessageRepository interface {
 	ListByConversation(ctx context.Context, conversationID string, limit int, beforeID string) ([]domain.Message, error)
 	GetLastByConversation(ctx context.Context, conversationID string) (*domain.Message, error)
 	GetByID(ctx context.Context, id string) (*domain.Message, error)
+}
+
+// AIUsageLogRepository persists non-chat AI usage logs.
+type AIUsageLogRepository interface {
+	Create(ctx context.Context, log *domain.AIUsageLog) error
+	UsageByRoleSince(ctx context.Context, schoolID string, since time.Time) (map[domain.Role]AIChatUsageTotals, error)
+	UsageTimelineBySchool(ctx context.Context, schoolID string, start, end time.Time, role domain.Role) ([]AIChatUsageTimelinePoint, error)
 }
 
 // MessageReceiptRepository records read state for messages.

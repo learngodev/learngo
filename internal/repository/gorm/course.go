@@ -56,6 +56,15 @@ func (s *CourseStore) GetByID(ctx context.Context, id string) (*domain.Course, e
 	return &course, nil
 }
 
+// GetByInvitationCode retrieves a course by invitation code.
+func (s *CourseStore) GetByInvitationCode(ctx context.Context, code string) (*domain.Course, error) {
+	var course domain.Course
+	if err := s.db.WithContext(ctx).First(&course, "invitation_code = ?", code).Error; err != nil {
+		return nil, err
+	}
+	return &course, nil
+}
+
 // Update modifies an existing course.
 func (s *CourseStore) Update(ctx context.Context, course *domain.Course) error {
 	return s.db.WithContext(ctx).Save(course).Error
@@ -101,6 +110,7 @@ func (s *CourseStore) ListAssignments(ctx context.Context, schoolID string, cour
 			c.id as course_id, 
 			c.name as course_name, 
 			c.description, 
+			c.image_url,
 			t.id as teacher_id,
 			a.display_name as teacher_name, 
 			cl.id as class_id,
@@ -112,7 +122,7 @@ func (s *CourseStore) ListAssignments(ctx context.Context, schoolID string, cour
 		Joins("LEFT JOIN accounts a ON t.account_id = a.id").
 		Joins("LEFT JOIN classes cl ON cs.class_id = cl.id").
 		Where("c.school_id = ?", schoolID).
-		Group("c.id, c.name, c.description, t.id, a.display_name, cl.id, cl.name")
+		Group("c.id, c.name, c.description, c.image_url, t.id, a.display_name, cl.id, cl.name")
 
 	if onlyAssigned {
 		db = db.Where("cs.id IS NOT NULL")
@@ -189,6 +199,7 @@ func (s *CourseStore) ListAssignmentsByCourseIDs(ctx context.Context, courseIDs 
 			c.id as course_id, 
 			c.name as course_name, 
 			c.description, 
+			c.image_url,
 			t.id as teacher_id,
 			a.display_name as teacher_name, 
 			cl.id as class_id,
@@ -200,13 +211,22 @@ func (s *CourseStore) ListAssignmentsByCourseIDs(ctx context.Context, courseIDs 
 		Joins("LEFT JOIN accounts a ON t.account_id = a.id").
 		Joins("LEFT JOIN classes cl ON cs.class_id = cl.id").
 		Where("c.id IN ?", courseIDs).
-		Group("c.id, c.name, c.description, t.id, a.display_name, cl.id, cl.name")
+		Group("c.id, c.name, c.description, c.image_url, t.id, a.display_name, cl.id, cl.name")
 
 	if err := db.Scan(&results).Error; err != nil {
 		return nil, err
 	}
 
 	return results, nil
+}
+
+func (s *CourseStore) ListByStudentID(ctx context.Context, studentID string) ([]domain.Course, error) {
+	var courses []domain.Course
+	err := s.db.WithContext(ctx).
+		Joins("JOIN course_students ON course_students.course_id = courses.id").
+		Where("course_students.student_id = ?", studentID).
+		Find(&courses).Error
+	return courses, err
 }
 
 // CourseSessionStore implements repository.CourseSessionRepository.

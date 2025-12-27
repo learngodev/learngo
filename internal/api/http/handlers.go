@@ -182,6 +182,8 @@ func (h *Handler) RegisterRoutes(r *gin.Engine, adminGuard gin.HandlerFunc, teac
 		student := api.Group("/student", studentGuard)
 		student.POST("/files/upload-url", h.GetUploadURL)
 		student.GET("/files/:id/download-url", h.GetDownloadURL)
+		student.GET("/courses", h.ListStudentCourses)
+		student.POST("/courses/join", h.JoinCourse) // Allow students to join via code
 		student.GET("/assignments", h.ListStudentAssignments)
 		student.GET("/schedule", h.ListStudentSchedule)
 		student.GET("/school/members", h.ListSchoolMembers)
@@ -201,6 +203,7 @@ func (h *Handler) RegisterRoutes(r *gin.Engine, adminGuard gin.HandlerFunc, teac
 		teacher.POST("/files/upload-url", h.GetUploadURL)
 		teacher.GET("/files/:id/download-url", h.GetDownloadURL)
 		teacher.GET("/courses", h.ListTeacherCourses)
+		teacher.POST("/courses", h.CreateCourse) // Allow teachers to create courses
 		teacher.GET("/courses/:id/classes", h.ListTeacherCourseClasses)
 		teacher.GET("/classes/:id/students", h.ListTeacherClassStudents)
 		teacher.GET("/schedule", h.ListTeacherSchedule)

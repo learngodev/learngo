@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"math/rand"
 	"strings"
 	"time"
 
@@ -32,23 +33,55 @@ func NewCourseService(
 	}
 }
 
-func (s *CourseService) CreateCourse(ctx context.Context, schoolID, name, description string) (*domain.Course, error) {
+func (s *CourseService) CreateCourse(ctx context.Context, schoolID, name, description, imageURL string, classIDs []string) (*domain.Course, error) {
 	course := &domain.Course{
-		ID:          uuid.New().String(),
-		SchoolID:    schoolID,
-		Name:        name,
-		Description: description,
-		CreatedAt:   time.Now(),
-		UpdatedAt:   time.Now(),
+		ID:             uuid.New().String(),
+		SchoolID:       schoolID,
+		Name:           name,
+		Description:    description,
+		ImageURL:       imageURL,
+		InvitationCode: s.generateInvitationCode(),
+		CreatedAt:      time.Now(),
+		UpdatedAt:      time.Now(),
 	}
 	if err := s.courseRepo.Create(ctx, course); err != nil {
 		return nil, err
 	}
+
+	if len(classIDs) > 0 {
+		for _, classID := range classIDs {
+			if err := s.AssignStudentsByClass(ctx, course.ID, classID); err != nil {
+				return nil, err
+			}
+		}
+	}
+
 	return course, nil
+}
+
+func (s *CourseService) JoinCourseByCode(ctx context.Context, studentID, code string) error {
+	course, err := s.courseRepo.GetByInvitationCode(ctx, code)
+	if err != nil {
+		return err
+	}
+	return s.assignStudents(ctx, course.ID, []string{studentID})
+}
+
+func (s *CourseService) generateInvitationCode() string {
+	const charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	b := make([]byte, 6)
+	for i := range b {
+		b[i] = charset[rand.Intn(len(charset))]
+	}
+	return string(b)
 }
 
 func (s *CourseService) ListCourses(ctx context.Context, schoolID string, page, size int) ([]domain.Course, int64, error) {
 	return s.courseRepo.List(ctx, schoolID, page, size)
+}
+
+func (s *CourseService) ListStudentCourses(ctx context.Context, studentID string) ([]domain.Course, error) {
+	return s.courseRepo.ListByStudentID(ctx, studentID)
 }
 
 func (s *CourseService) ListCourseAssignments(ctx context.Context, schoolID, courseID, departmentID, classID string, onlyAssigned bool, page, size int) ([]domain.CourseAssignmentInfo, int64, error) {
@@ -83,6 +116,7 @@ func (s *CourseService) ListCoursesWithDetails(ctx context.Context, schoolID, de
 			CourseID:    c.ID,
 			CourseName:  c.Name,
 			Description: c.Description,
+			ImageURL:    c.ImageURL,
 		}
 		countedClasses[c.ID] = make(map[string]bool)
 	}
@@ -123,13 +157,14 @@ func mergeUnique(existing, newStr string) string {
 	return existing + ", " + newStr
 }
 
-func (s *CourseService) UpdateCourse(ctx context.Context, id, name, description string) error {
+func (s *CourseService) UpdateCourse(ctx context.Context, id, name, description, imageURL string) error {
 	course, err := s.courseRepo.GetByID(ctx, id)
 	if err != nil {
 		return err
 	}
 	course.Name = name
 	course.Description = description
+	course.ImageURL = imageURL
 	course.UpdatedAt = time.Now()
 	return s.courseRepo.Update(ctx, course)
 }

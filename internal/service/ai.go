@@ -62,6 +62,7 @@ type AIAssistantService struct {
 	audits            repository.AIAgentSettingAuditRepository
 	sessions          repository.AIChatSessionRepository
 	messages          repository.AIChatMessageRepository
+	logs              repository.AIUsageLogRepository
 	accounts          repository.AccountRepository
 	model             AIChatModel
 	limiter           *concurrencyLimiter
@@ -75,6 +76,7 @@ func NewAIAssistantService(
 	settings repository.AIAgentSettingRepository,
 	audits repository.AIAgentSettingAuditRepository,
 	sessions repository.AIChatSessionRepository,
+	logs repository.AIUsageLogRepository,
 	messages repository.AIChatMessageRepository,
 	accounts repository.AccountRepository,
 	model AIChatModel,
@@ -85,6 +87,7 @@ func NewAIAssistantService(
 	return &AIAssistantService{
 		settings:          settings,
 		audits:            audits,
+		logs:              logs,
 		sessions:          sessions,
 		messages:          messages,
 		accounts:          accounts,

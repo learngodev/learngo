@@ -11,13 +11,20 @@ import (
 )
 
 type createCourseRequest struct {
-	Name        string `json:"name" binding:"required"`
-	Description string `json:"description"`
+	Name        string   `json:"name" binding:"required"`
+	Description string   `json:"description"`
+	ImageURL    string   `json:"image_url"`
+	ClassIDs    []string `json:"class_ids"`
 }
 
 type updateCourseRequest struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
+	ImageURL    string `json:"image_url"`
+}
+
+type joinCourseRequest struct {
+	Code string `json:"code" binding:"required"`
 }
 
 func (h *Handler) CreateCourse(c *gin.Context) {
@@ -33,13 +40,54 @@ func (h *Handler) CreateCourse(c *gin.Context) {
 		return
 	}
 
-	course, err := h.courseService.CreateCourse(c.Request.Context(), schoolID, req.Name, req.Description)
+	course, err := h.courseService.CreateCourse(c.Request.Context(), schoolID, req.Name, req.Description, req.ImageURL, req.ClassIDs)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, "failed_to_create_course", err.Error())
 		return
 	}
 
 	response.Success(c, http.StatusOK, course)
+}
+
+func (h *Handler) JoinCourse(c *gin.Context) {
+	var req joinCourseRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+
+	accountID := getAccountID(c)
+	student, err := h.student.GetStudentByAccountID(c.Request.Context(), accountID)
+	if err != nil {
+		response.Error(c, http.StatusForbidden, "student_profile_not_found", err.Error())
+		return
+	}
+
+	if err := h.courseService.JoinCourseByCode(c.Request.Context(), student.ID, req.Code); err != nil {
+		response.Error(c, http.StatusInternalServerError, "failed_to_join_course", err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, nil)
+}
+
+func (h *Handler) ListStudentCourses(c *gin.Context) {
+	accountID := getAccountID(c)
+	student, err := h.student.GetStudentByAccountID(c.Request.Context(), accountID)
+	if err != nil {
+		response.Error(c, http.StatusForbidden, "student_profile_not_found", err.Error())
+		return
+	}
+
+	courses, err := h.courseService.ListStudentCourses(c.Request.Context(), student.ID)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "failed_to_list_courses", err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, gin.H{
+		"items": courses,
+	})
 }
 
 func (h *Handler) ListCourses(c *gin.Context) {
@@ -89,7 +137,7 @@ func (h *Handler) UpdateCourse(c *gin.Context) {
 		return
 	}
 
-	if err := h.courseService.UpdateCourse(c.Request.Context(), id, req.Name, req.Description); err != nil {
+	if err := h.courseService.UpdateCourse(c.Request.Context(), id, req.Name, req.Description, req.ImageURL); err != nil {
 		response.Error(c, http.StatusInternalServerError, "failed_to_update_course", err.Error())
 		return
 	}

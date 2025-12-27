@@ -193,12 +193,14 @@ type ScheduleStats struct {
 
 // Course represents a subject taught by a teacher.
 type Course struct {
-	ID          string    `gorm:"primaryKey;size:36" json:"id"`
-	SchoolID    string    `gorm:"size:36;index" json:"school_id"`
-	Name        string    `gorm:"size:128" json:"name"`
-	Description string    `gorm:"size:512" json:"description"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID             string    `gorm:"primaryKey;size:36" json:"id"`
+	SchoolID       string    `gorm:"size:36;index" json:"school_id"`
+	Name           string    `gorm:"size:128" json:"name"`
+	Description    string    `gorm:"size:512" json:"description"`
+	ImageURL       string    `gorm:"size:256" json:"image_url"`
+	InvitationCode string    `gorm:"size:32;index" json:"invitation_code"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }
 
 // CourseAssignmentInfo represents enriched course assignment data.
@@ -207,6 +209,7 @@ type CourseAssignmentInfo struct {
 	CourseID     string `json:"course_id"`
 	CourseName   string `json:"course_name"`
 	Description  string `json:"description"`
+	ImageURL     string `json:"image_url"`
 	TeacherID    string `json:"teacher_id"`
 	TeacherName  string `json:"teacher_name"`
 	ClassID      string `json:"class_id"`
@@ -562,6 +565,20 @@ type AIChatMessage struct {
 	PromptTokens int       `gorm:"default:0"`
 	ResultTokens int       `gorm:"default:0"`
 	LatencyMS    int       `gorm:"default:0"`
+	CreatedAt    time.Time `gorm:"index"`
+}
+
+// AIUsageLog tracks token usage for non-chat AI features (e.g. grading, generation).
+type AIUsageLog struct {
+	ID           string    `gorm:"primaryKey;size:36"`
+	SchoolID     string    `gorm:"size:36;index"`
+	AccountID    string    `gorm:"size:36;index"` // Operator
+	Role         Role      `gorm:"size:16"`       // Operator Role
+	Feature      string    `gorm:"size:64;index"` // e.g. "grading", "question_generation"
+	Model        string    `gorm:"size:128"`
+	PromptTokens int       `gorm:"default:0"`
+	ResultTokens int       `gorm:"default:0"`
+	TotalTokens  int       `gorm:"default:0"`
 	CreatedAt    time.Time `gorm:"index"`
 }
 

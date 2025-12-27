@@ -87,6 +87,7 @@ func New() (*Application, error) {
 	aiAuditRepo := gormrepo.NewAIAgentSettingAuditStore(db)
 	aiSessionRepo := gormrepo.NewAIChatSessionStore(db)
 	aiMessageRepo := gormrepo.NewAIChatMessageStore(db)
+	aiUsageLogRepo := gormrepo.NewAIUsageLogStore(db)
 	systemSwitchRepo := gormrepo.NewSystemSwitchStore(db)
 	systemParameterRepo := gormrepo.NewSystemParameterStore(db)
 	systemBroadcastRepo := gormrepo.NewSystemBroadcastStore(db)
@@ -109,8 +110,8 @@ func New() (*Application, error) {
 	noteCommentService := service.NewNoteCommentService(noteRepo, noteCommentRepo, accountRepo)
 	ossService := service.NewAdminOssService(ossCredentialRepo, ossPolicyRepo, ossAuditRepo, accountRepo)
 	systemService := service.NewAdminSystemService(systemSwitchRepo, systemParameterRepo, systemBroadcastRepo, systemAuditRepo)
-	aiService := service.NewAIAssistantService(aiSettingRepo, aiAuditRepo, aiSessionRepo, aiMessageRepo, accountRepo, aiModel, studentPortalService, teacherPortalService, assignmentService)
-	aiGradingService := service.NewAIGradingService(aiSettingRepo, aiModel)
+	aiService := service.NewAIAssistantService(aiSettingRepo, aiAuditRepo, aiSessionRepo, aiUsageLogRepo, aiMessageRepo, accountRepo, aiModel, studentPortalService, teacherPortalService, assignmentService)
+	aiGradingService := service.NewAIGradingService(aiSettingRepo, aiUsageLogRepo, aiModel)
 	streamHub := realtime.NewHub()
 	fileService := service.NewFileService(db, ossCredentialRepo)
 
@@ -199,6 +200,7 @@ func migrate(db *gorm.DB) error {
 		&domain.AIAgentSetting{},
 		&domain.AIAgentSettingAudit{},
 		&domain.AIChatSession{},
+		&domain.AIUsageLog{},
 		&domain.AIChatMessage{},
 		&domain.PasswordResetToken{},
 		&domain.TimeSlot{},

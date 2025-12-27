@@ -5,7 +5,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"learn-go/internal/domain"
 	"learn-go/internal/service"
+	"learn-go/pkg/middleware"
 	"learn-go/pkg/response"
 )
 
@@ -29,6 +31,7 @@ func (h *Handler) CheckAssignment(c *gin.Context) {
 	}
 
 	accountID := getAccountID(c)
+	role := domain.Role(c.GetString(middleware.ContextRole))
 	schoolID, err := h.teacher.GetSchoolID(c.Request.Context(), accountID)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, "failed to resolve school context", err.Error())
@@ -40,6 +43,8 @@ func (h *Handler) CheckAssignment(c *gin.Context) {
 
 	input := service.CheckAssignmentInput{
 		SchoolID:    schoolID,
+		AccountID:   accountID,
+		Role:        role,
 		Title:       req.Title,
 		Description: req.Description,
 		Content:     req.Content,
@@ -75,6 +80,7 @@ func (h *Handler) GradeAssignment(c *gin.Context) {
 	}
 
 	accountID := getAccountID(c)
+	role := domain.Role(c.GetString(middleware.ContextRole))
 	schoolID, err := h.teacher.GetSchoolID(c.Request.Context(), accountID)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, "failed to resolve school context", err.Error())
@@ -83,6 +89,8 @@ func (h *Handler) GradeAssignment(c *gin.Context) {
 
 	input := service.GradeAssignmentInput{
 		SchoolID:    schoolID,
+		AccountID:   accountID,
+		Role:        role,
 		Title:       req.Title,
 		Description: req.Description,
 		Content:     req.Content,
@@ -118,6 +126,7 @@ func (h *Handler) GenerateQuestions(c *gin.Context) {
 	}
 
 	accountID := getAccountID(c)
+	role := domain.Role(c.GetString(middleware.ContextRole))
 	schoolID, err := h.teacher.GetSchoolID(c.Request.Context(), accountID)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, "failed to resolve school context", err.Error())
@@ -126,6 +135,8 @@ func (h *Handler) GenerateQuestions(c *gin.Context) {
 
 	input := service.GenerateQuestionsInput{
 		SchoolID:   schoolID,
+		AccountID:  accountID,
+		Role:       role,
 		Topic:      req.Topic,
 		Count:      req.Count,
 		Difficulty: req.Difficulty,

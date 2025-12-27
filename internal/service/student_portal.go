@@ -48,6 +48,11 @@ func (s *StudentPortalService) GetSchoolID(ctx context.Context, accountID string
 	return account.SchoolID, nil
 }
 
+// GetStudentByAccountID retrieves the student profile for a given account.
+func (s *StudentPortalService) GetStudentByAccountID(ctx context.Context, accountID string) (*domain.Student, error) {
+	return s.students.GetByAccountID(ctx, accountID)
+}
+
 // NewStudentPortalService constructs StudentPortalService.
 func NewStudentPortalService(
 	students repository.StudentRepository,
