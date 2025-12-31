@@ -16,19 +16,30 @@ import (
 
 // AssignmentService manages assignments and submissions.
 type AssignmentService struct {
-	assignments repository.AssignmentRepository
-	submissions repository.SubmissionRepository
-	comments    repository.SubmissionCommentRepository
-	students    repository.StudentRepository
+	assignments   repository.AssignmentRepository
+	submissions   repository.SubmissionRepository
+	comments      repository.SubmissionCommentRepository
+	students      repository.StudentRepository
+	notifications *NotificationService
+	files         *FileService
 }
 
 // NewAssignmentService creates a new AssignmentService.
-func NewAssignmentService(assignments repository.AssignmentRepository, submissions repository.SubmissionRepository, comments repository.SubmissionCommentRepository, students repository.StudentRepository) *AssignmentService {
+func NewAssignmentService(
+	assignments repository.AssignmentRepository,
+	submissions repository.SubmissionRepository,
+	comments repository.SubmissionCommentRepository,
+	students repository.StudentRepository,
+	notifications *NotificationService,
+	files *FileService,
+) *AssignmentService {
 	return &AssignmentService{
-		assignments: assignments,
-		submissions: submissions,
-		comments:    comments,
-		students:    students,
+		assignments:   assignments,
+		submissions:   submissions,
+		comments:      comments,
+		students:      students,
+		notifications: notifications,
+		files:         files,
 	}
 }
 
@@ -54,6 +65,7 @@ type CreateAssignmentInput struct {
 	MaxScore      float64
 	AllowResubmit bool
 	Questions     []QuestionInput
+	Attachments   []string
 }
 
 // QuestionInput describes a single question.
@@ -101,9 +113,33 @@ func (s *AssignmentService) CreateAssignment(ctx context.Context, input CreateAs
 		})
 	}
 
-	if err := s.assignments.Create(ctx, assignment, questions); err != nil {
+	attachments := make([]domain.AssignmentAttachment, 0, len(input.Attachments))
+	for _, fileID := range input.Attachments {
+		attachments = append(attachments, domain.AssignmentAttachment{
+			ID:           uuid.NewString(),
+			AssignmentID: assignment.ID,
+			FileID:       fileID,
+			CreatedAt:    time.Now(),
+		})
+	}
+
+	if err := s.assignments.Create(ctx, assignment, questions, attachments); err != nil {
 		return nil, err
 	}
+
+	// Notify students
+	go func() {
+		bgCtx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
+		defer cancel()
+
+		students, err := s.students.ListByClassID(bgCtx, input.ClassID)
+		if err == nil {
+			for _, student := range students {
+				s.notifications.Create(bgCtx, student.AccountID, "New Assignment: "+input.Title, "A new assignment has been published.", domain.NotificationTypeAssignment, assignment.ID)
+			}
+		}
+	}()
+
 	return assignment, nil
 }
 
@@ -131,7 +167,7 @@ func (s *AssignmentService) Submit(ctx context.Context, input SubmitAssignmentIn
 	}
 
 	// Calculate progress
-	_, questions, err := s.assignments.Get(ctx, input.AssignmentID)
+	_, questions, _, err := s.assignments.Get(ctx, input.AssignmentID)
 	if err != nil {
 		return err
 	}
@@ -205,18 +241,19 @@ type SubmissionDetail struct {
 }
 
 // GetAssignment retrieves an assignment with its questions.
-func (s *AssignmentService) GetAssignment(ctx context.Context, assignmentID string) (*domain.Assignment, []domain.AssignmentQuestion, error) {
+func (s *AssignmentService) GetAssignment(ctx context.Context, assignmentID string) (*domain.Assignment, []domain.AssignmentQuestion, []domain.File, error) {
 	if assignmentID == "" {
-		return nil, nil, errors.New("assignment id required")
+		return nil, nil, nil, errors.New("assignment id required")
 	}
-	assignment, questions, err := s.assignments.Get(ctx, assignmentID)
+	assignment, questions, files, err := s.assignments.Get(ctx, assignmentID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil, ErrAssignmentNotFound
+			return nil, nil, nil, ErrAssignmentNotFound
 		}
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
-	return assignment, questions, nil
+
+	return assignment, questions, files, nil
 }
 
 // ListAssignmentSubmissions returns submissions and items for an assignment.
@@ -273,7 +310,7 @@ func (s *AssignmentService) GetSubmissionForStudent(ctx context.Context, assignm
 		return nil, nil, errors.New("assignment and student required")
 	}
 
-	if _, _, err := s.GetAssignment(ctx, assignmentID); err != nil {
+	if _, _, _, err := s.GetAssignment(ctx, assignmentID); err != nil {
 		return nil, nil, err
 	}
 
@@ -299,7 +336,7 @@ func (s *AssignmentService) GetSubmissionForTeacher(ctx context.Context, teacher
 		return nil, nil, errors.New("teacher, assignment and submission required")
 	}
 
-	assignment, _, err := s.GetAssignment(ctx, assignmentID)
+	assignment, _, _, err := s.GetAssignment(ctx, assignmentID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -351,7 +388,7 @@ func (s *AssignmentService) GradeSubmission(ctx context.Context, teacherID strin
 		return nil, nil, errors.New("assignment and submission required")
 	}
 
-	assignment, _, err := s.GetAssignment(ctx, input.AssignmentID)
+	assignment, _, _, err := s.GetAssignment(ctx, input.AssignmentID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -443,7 +480,7 @@ func (s *AssignmentService) ReturnSubmission(ctx context.Context, teacherID stri
 		return nil, nil, errors.New("assignment and submission required")
 	}
 
-	assignment, _, err := s.GetAssignment(ctx, input.AssignmentID)
+	assignment, _, _, err := s.GetAssignment(ctx, input.AssignmentID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -516,7 +553,7 @@ func (s *AssignmentService) UpdateAssignment(ctx context.Context, input UpdateAs
 		return nil, errors.New("assignment id and teacher id required")
 	}
 
-	assignment, _, err := s.assignments.Get(ctx, input.ID)
+	assignment, _, _, err := s.assignments.Get(ctx, input.ID)
 	if err != nil {
 		return nil, err
 	}

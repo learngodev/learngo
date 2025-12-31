@@ -203,6 +203,10 @@ func (s *Store) UpdatePasswordHash(ctx context.Context, accountID string, passwo
 	return nil
 }
 
+func (s *Store) Update(ctx context.Context, account *domain.Account) error {
+	return s.db.WithContext(ctx).Save(account).Error
+}
+
 func (s *Store) Delete(ctx context.Context, accountID, schoolID string) error {
 	result := s.db.WithContext(ctx).
 		Where("id = ? AND school_id = ?", accountID, schoolID).

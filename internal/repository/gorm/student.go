@@ -24,6 +24,10 @@ func (s *StudentStore) Create(ctx context.Context, student *domain.Student) erro
 	return s.db.WithContext(ctx).Create(student).Error
 }
 
+func (s *StudentStore) Update(ctx context.Context, student *domain.Student) error {
+	return s.db.WithContext(ctx).Save(student).Error
+}
+
 func (s *StudentStore) GetByNumber(ctx context.Context, schoolID, number string) (*domain.Student, error) {
 	var student domain.Student
 	if err := s.db.WithContext(ctx).

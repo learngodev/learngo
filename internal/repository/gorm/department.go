@@ -27,7 +27,7 @@ func (s *DepartmentStore) List(ctx context.Context, schoolID string) ([]domain.D
 	err := s.db.WithContext(ctx).
 		Table("departments").
 		Select("departments.*, "+
-			"(SELECT count(DISTINCT teacher_id) FROM course_schedules JOIN classes ON course_schedules.class_id = classes.id WHERE classes.department_id = departments.id) as teacher_count, "+
+			"(SELECT count(DISTINCT class_teachers.teacher_id) FROM class_teachers JOIN classes ON class_teachers.class_id = classes.id WHERE classes.department_id = departments.id) as teacher_count, "+
 			"(SELECT count(*) FROM students JOIN classes ON students.class_id = classes.id WHERE classes.department_id = departments.id) as student_count").
 		Where("departments.school_id = ?", schoolID).
 		Order("departments.created_at").

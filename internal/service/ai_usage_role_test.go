@@ -78,6 +78,9 @@ func (f *fakeAccountRepo) UpdateStatus(ctx context.Context, accountID, schoolID 
 func (f *fakeAccountRepo) UpdatePasswordHash(ctx context.Context, accountID string, passwordHash string) error {
 	return errors.New("not implemented")
 }
+func (f *fakeAccountRepo) Update(ctx context.Context, account *domain.Account) error {
+	return errors.New("not implemented")
+}
 func (f *fakeAccountRepo) Delete(ctx context.Context, accountID, schoolID string) error {
 	return errors.New("not implemented")
 }

@@ -69,6 +69,10 @@ func (c *AliyunClient) PutObject(objectKey string, reader io.Reader) error {
 	return c.bucket.PutObject(objectKey, reader)
 }
 
+func (c *AliyunClient) GetObject(objectKey string) (io.ReadCloser, error) {
+	return c.bucket.GetObject(objectKey)
+}
+
 func (c *AliyunClient) DeleteObject(objectKey string) error {
 	return c.bucket.DeleteObject(objectKey)
 }

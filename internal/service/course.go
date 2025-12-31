@@ -15,6 +15,7 @@ import (
 type CourseService struct {
 	courseRepo        repository.CourseRepository
 	courseStudentRepo repository.CourseStudentRepository
+	courseTeacherRepo repository.CourseTeacherRepository
 	studentRepo       repository.StudentRepository
 	teacherRepo       repository.TeacherRepository
 }
@@ -22,18 +23,20 @@ type CourseService struct {
 func NewCourseService(
 	courseRepo repository.CourseRepository,
 	courseStudentRepo repository.CourseStudentRepository,
+	courseTeacherRepo repository.CourseTeacherRepository,
 	studentRepo repository.StudentRepository,
 	teacherRepo repository.TeacherRepository,
 ) *CourseService {
 	return &CourseService{
 		courseRepo:        courseRepo,
 		courseStudentRepo: courseStudentRepo,
+		courseTeacherRepo: courseTeacherRepo,
 		studentRepo:       studentRepo,
 		teacherRepo:       teacherRepo,
 	}
 }
 
-func (s *CourseService) CreateCourse(ctx context.Context, schoolID, name, description, imageURL string, classIDs []string) (*domain.Course, error) {
+func (s *CourseService) CreateCourse(ctx context.Context, schoolID string, teacherIDs []string, name, description, imageURL string, classIDs []string) (*domain.Course, error) {
 	course := &domain.Course{
 		ID:             uuid.New().String(),
 		SchoolID:       schoolID,
@@ -46,6 +49,12 @@ func (s *CourseService) CreateCourse(ctx context.Context, schoolID, name, descri
 	}
 	if err := s.courseRepo.Create(ctx, course); err != nil {
 		return nil, err
+	}
+
+	if len(teacherIDs) > 0 {
+		if err := s.courseTeacherRepo.Add(ctx, course.ID, teacherIDs); err != nil {
+			return nil, err
+		}
 	}
 
 	if len(classIDs) > 0 {

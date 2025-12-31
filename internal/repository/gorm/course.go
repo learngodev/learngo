@@ -40,7 +40,7 @@ func (s *CourseStore) List(ctx context.Context, schoolID string, page, size int)
 		query = query.Offset(offset).Limit(size)
 	}
 
-	if err := query.Find(&courses).Error; err != nil {
+	if err := query.Preload("Teachers").Find(&courses).Error; err != nil {
 		return nil, 0, err
 	}
 
@@ -50,7 +50,7 @@ func (s *CourseStore) List(ctx context.Context, schoolID string, page, size int)
 // GetByID retrieves a course by ID.
 func (s *CourseStore) GetByID(ctx context.Context, id string) (*domain.Course, error) {
 	var course domain.Course
-	if err := s.db.WithContext(ctx).First(&course, "id = ?", id).Error; err != nil {
+	if err := s.db.WithContext(ctx).Preload("Teachers").First(&course, "id = ?", id).Error; err != nil {
 		return nil, err
 	}
 	return &course, nil
@@ -118,7 +118,8 @@ func (s *CourseStore) ListAssignments(ctx context.Context, schoolID string, cour
 			(SELECT count(*) FROM students s WHERE s.class_id = cl.id) as student_count
 		`).
 		Joins("LEFT JOIN course_schedules cs ON c.id = cs.course_id").
-		Joins("LEFT JOIN teachers t ON cs.teacher_id = t.id").
+		Joins("LEFT JOIN course_teachers ct ON c.id = ct.course_id").
+		Joins("LEFT JOIN teachers t ON t.id = COALESCE(cs.teacher_id, ct.teacher_id)").
 		Joins("LEFT JOIN accounts a ON t.account_id = a.id").
 		Joins("LEFT JOIN classes cl ON cs.class_id = cl.id").
 		Where("c.school_id = ?", schoolID).
@@ -207,7 +208,8 @@ func (s *CourseStore) ListAssignmentsByCourseIDs(ctx context.Context, courseIDs 
 			(SELECT count(*) FROM students s WHERE s.class_id = cl.id) as student_count
 		`).
 		Joins("LEFT JOIN course_schedules cs ON c.id = cs.course_id").
-		Joins("LEFT JOIN teachers t ON cs.teacher_id = t.id").
+		Joins("LEFT JOIN course_teachers ct ON c.id = ct.course_id").
+		Joins("LEFT JOIN teachers t ON t.id = COALESCE(cs.teacher_id, ct.teacher_id)").
 		Joins("LEFT JOIN accounts a ON t.account_id = a.id").
 		Joins("LEFT JOIN classes cl ON cs.class_id = cl.id").
 		Where("c.id IN ?", courseIDs).

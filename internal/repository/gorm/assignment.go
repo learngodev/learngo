@@ -19,7 +19,7 @@ func NewAssignmentStore(db *gorm.DB) *AssignmentStore {
 	return &AssignmentStore{db: db}
 }
 
-func (s *AssignmentStore) Create(ctx context.Context, assignment *domain.Assignment, questions []domain.AssignmentQuestion) error {
+func (s *AssignmentStore) Create(ctx context.Context, assignment *domain.Assignment, questions []domain.AssignmentQuestion, attachments []domain.AssignmentAttachment) error {
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(assignment).Error; err != nil {
 			return err
@@ -32,20 +32,36 @@ func (s *AssignmentStore) Create(ctx context.Context, assignment *domain.Assignm
 				return err
 			}
 		}
+		for i := range attachments {
+			attachments[i].AssignmentID = assignment.ID
+		}
+		if len(attachments) > 0 {
+			if err := tx.Create(&attachments).Error; err != nil {
+				return err
+			}
+		}
 		return nil
 	})
 }
 
-func (s *AssignmentStore) Get(ctx context.Context, id string) (*domain.Assignment, []domain.AssignmentQuestion, error) {
+func (s *AssignmentStore) Get(ctx context.Context, id string) (*domain.Assignment, []domain.AssignmentQuestion, []domain.File, error) {
 	var assignment domain.Assignment
 	if err := s.db.WithContext(ctx).First(&assignment, "id = ?", id).Error; err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	var questions []domain.AssignmentQuestion
 	if err := s.db.WithContext(ctx).Where("assignment_id = ?", assignment.ID).Order("order_index").Find(&questions).Error; err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
-	return &assignment, questions, nil
+	var files []domain.File
+	if err := s.db.WithContext(ctx).
+		Table("files").
+		Joins("JOIN assignment_attachments ON assignment_attachments.file_id = files.id").
+		Where("assignment_attachments.assignment_id = ?", assignment.ID).
+		Find(&files).Error; err != nil {
+		return nil, nil, nil, err
+	}
+	return &assignment, questions, files, nil
 }
 
 func (s *AssignmentStore) ListByClass(ctx context.Context, classID string, limit int, types []domain.AssignmentType) ([]domain.Assignment, error) {

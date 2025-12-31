@@ -963,6 +963,266 @@ If the user asks about assignment submission status (e.g. "collected?", "who sub
 	return result, nil
 }
 
+// StreamMessage sends a message and streams the response.
+func (s *AIAssistantService) StreamMessage(ctx context.Context, input SendAIChatMessageInput, onChunk func(chunk string) error) (*SendAIChatMessageResult, error) {
+	accountID := strings.TrimSpace(input.AccountID)
+	sessionID := strings.TrimSpace(input.SessionID)
+	content := strings.TrimSpace(input.Content)
+
+	if accountID == "" {
+		return nil, errors.New("account_id required")
+	}
+	if sessionID == "" {
+		return nil, errors.New("session_id required")
+	}
+	if content == "" {
+		return nil, ErrAIChatMessageEmpty
+	}
+
+	account, err := s.accounts.FindByID(ctx, accountID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrAIAccountNotFound
+		}
+		return nil, err
+	}
+
+	session, err := s.sessions.GetByID(ctx, sessionID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrAIChatSessionNotFound
+		}
+		return nil, err
+	}
+	if session.AccountID != account.ID {
+		return nil, ErrAIChatSessionForbidden
+	}
+	if session.ClosedAt != nil {
+		return nil, ErrAIChatSessionClosed
+	}
+
+	setting, err := s.settings.GetBySchoolID(ctx, session.SchoolID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrAISettingNotConfigured
+		}
+		return nil, err
+	}
+
+	now := time.Now()
+
+	if setting.MaxDailyRequests > 0 {
+		startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+		count, err := s.messages.CountUserMessagesSince(ctx, account.ID, startOfDay)
+		if err != nil {
+			return nil, err
+		}
+		if int(count) >= setting.MaxDailyRequests {
+			return nil, ErrAIChatDailyLimitExceeded
+		}
+	}
+
+	if setting.MaxConversationMessages > 0 && session.MessageCount >= setting.MaxConversationMessages {
+		return nil, ErrAIChatSessionLimitReached
+	}
+
+	var release func()
+	if setting.MaxConcurrentRequests > 0 {
+		var ok bool
+		ok, release = s.limiter.TryAcquire(session.SchoolID, setting.MaxConcurrentRequests)
+		if !ok {
+			return nil, ErrAIChatConcurrentLimitReached
+		}
+		defer release()
+	}
+
+	userMessage := &domain.AIChatMessage{
+		ID:        uuid.NewString(),
+		SessionID: session.ID,
+		Sender:    "user",
+		Content:   content,
+		CreatedAt: now,
+	}
+
+	if err := s.messages.Create(ctx, userMessage); err != nil {
+		return nil, err
+	}
+
+	updates := map[string]any{
+		"last_message_at": now,
+		"updated_at":      now,
+		"message_count":   session.MessageCount + 1,
+	}
+	if err := s.sessions.UpdateFields(ctx, session.ID, updates); err != nil {
+		return nil, err
+	}
+
+	session.LastMessageAt = now
+	session.UpdatedAt = now
+	session.MessageCount++
+
+	result := &SendAIChatMessageResult{
+		Session:        session,
+		UserMessage:    userMessage,
+		ProviderReason: ProviderErrorReasonUnknown,
+	}
+
+	if s.model == nil {
+		return result, nil
+	}
+
+	historyLimit := 10
+	historyMessages, err := s.messages.ListBySession(ctx, session.ID, historyLimit, now)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch history: %w", err)
+	}
+
+	for i, j := 0, len(historyMessages)-1; i < j; i, j = i+1, j-1 {
+		historyMessages[i], historyMessages[j] = historyMessages[j], historyMessages[i]
+	}
+
+	const toolInstructions = `
+You have access to the following tools. To use a tool, reply with ONLY the tool call in the format: TOOL_CALL: <tool_name> <json_arguments>.
+Do not add any other text when calling a tool.
+
+Tools:
+1. get_my_courses: List the courses I am enrolled in. Args: {}
+2. get_upcoming_sessions: List my upcoming course sessions. Args: {"limit": 5}
+3. create_assignment: (Teacher only) Create a new assignment. Args: {"course_id": "...", "class_id": "...", "title": "...", "description": "...", "due_at": "YYYY-MM-DDTHH:MM:SSZ"}
+4. check_assignment_status: (Teacher only) Check submission status of assignments. Args: {"query": "assignment title keyword"}
+
+If the user asks about courses or schedule, use the appropriate tool.
+If the user asks to assign homework, ask for missing details if necessary, then use create_assignment.
+If the user asks about assignment submission status (e.g. "collected?", "who submitted?"), use check_assignment_status.
+`
+	originalSystemPrompt := setting.SystemPrompt
+	setting.SystemPrompt = originalSystemPrompt + "\n" + toolInstructions
+
+	var resp *AIChatModelResponse
+	var toolIterations int
+	maxToolIterations := 3
+
+	currentHistory := historyMessages
+	currentMessage := content
+
+	for {
+		var fullContent strings.Builder
+		var isToolCall bool
+		var checkedToolCall bool
+		var buffer strings.Builder
+
+		resp, err = s.model.StreamResponse(ctx, AIChatModelRequest{
+			Setting: setting,
+			Session: session,
+			Message: currentMessage,
+			History: currentHistory,
+		}, func(chunk string) error {
+			fullContent.WriteString(chunk)
+
+			if !checkedToolCall {
+				buffer.WriteString(chunk)
+				if fullContent.Len() >= 10 {
+					if strings.HasPrefix(fullContent.String(), "TOOL_CALL:") {
+						isToolCall = true
+					}
+					checkedToolCall = true
+
+					if !isToolCall {
+						// Flush buffer
+						if err := onChunk(buffer.String()); err != nil {
+							return err
+						}
+						buffer.Reset()
+					}
+				}
+				return nil
+			}
+
+			if !isToolCall {
+				return onChunk(chunk)
+			}
+			return nil
+		})
+
+		if err != nil {
+			providerErr := NormalizeProviderError(err)
+			result.ProviderError = providerErr
+			if providerErr != nil {
+				result.ProviderReason = providerErr.Reason
+			}
+			return result, nil
+		}
+
+		if !checkedToolCall && fullContent.Len() > 0 {
+			if err := onChunk(fullContent.String()); err != nil {
+				// ignore error
+			}
+		}
+
+		if strings.HasPrefix(resp.Content, "TOOL_CALL:") {
+			if toolIterations >= maxToolIterations {
+				resp.Content = "Error: Too many tool calls."
+				break
+			}
+			toolIterations++
+
+			toolOutput := s.executeTool(ctx, account, resp.Content)
+
+			currentHistory = append(currentHistory, domain.AIChatMessage{
+				Sender:  "assistant",
+				Content: resp.Content,
+			})
+
+			currentMessage = fmt.Sprintf("Tool Output: %s", toolOutput)
+			continue
+		}
+		break
+	}
+
+	setting.SystemPrompt = originalSystemPrompt
+
+	reason := resp.Reason
+	if reason == "" {
+		reason = ProviderErrorReasonUnknown
+	}
+	result.ProviderReason = reason
+
+	assistantAt := time.Now()
+	assistantMessage := &domain.AIChatMessage{
+		ID:           uuid.NewString(),
+		SessionID:    session.ID,
+		Sender:       "assistant",
+		Content:      resp.Content,
+		PromptTokens: resp.PromptTokens,
+		ResultTokens: resp.ResultTokens,
+		LatencyMS:    int(resp.Latency / time.Millisecond),
+		CreatedAt:    assistantAt,
+	}
+
+	if err := s.messages.Create(ctx, assistantMessage); err != nil {
+		result.ProviderError = &ProviderError{Reason: ProviderErrorReasonTransport, Err: err}
+		return result, nil
+	}
+
+	session.LastMessageAt = assistantAt
+	session.UpdatedAt = assistantAt
+	session.MessageCount++
+	session.TokenCount += resp.PromptTokens + resp.ResultTokens
+
+	if err := s.sessions.UpdateFields(ctx, session.ID, map[string]any{
+		"last_message_at": assistantAt,
+		"updated_at":      assistantAt,
+		"message_count":   session.MessageCount,
+		"token_count":     session.TokenCount,
+	}); err != nil {
+		result.ProviderError = &ProviderError{Reason: ProviderErrorReasonTransport, Err: err}
+		return result, nil
+	}
+
+	result.AssistantMessage = assistantMessage
+	return result, nil
+}
+
 // CloseSession marks an AI chat session as closed for further interaction.
 func (s *AIAssistantService) CloseSession(ctx context.Context, accountID, sessionID string) (*domain.AIChatSession, error) {
 	accountID = strings.TrimSpace(accountID)

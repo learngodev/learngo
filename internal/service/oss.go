@@ -51,6 +51,7 @@ type AdminOssCredentialView struct {
 	AccessKeyMasked      string     `json:"access_key_masked"`
 	AllowPublicRead      bool       `json:"allow_public_read"`
 	AllowMultipartUpload bool       `json:"allow_multipart_upload"`
+	UseRelayUpload       bool       `json:"use_relay_upload"`
 	IsPrimary            bool       `json:"is_primary"`
 	Active               bool       `json:"active"`
 	CreatedAt            time.Time  `json:"created_at"`
@@ -90,6 +91,7 @@ type UpdateOssCredentialInput struct {
 	AccessKeyDisplay     *string
 	AllowPublicRead      *bool
 	AllowMultipartUpload *bool
+	UseRelayUpload       *bool
 	Active               *bool
 	IsPrimary            *bool
 	OperatorID           string
@@ -108,6 +110,7 @@ type CreateOssCredentialInput struct {
 	AccessKeyDisplay     string
 	AllowPublicRead      bool
 	AllowMultipartUpload bool
+	UseRelayUpload       bool
 	Active               bool
 	IsPrimary            bool
 	OperatorID           string
@@ -186,11 +189,15 @@ func (s *AdminOssService) UpdateCredential(ctx context.Context, input UpdateOssC
 	}
 	if input.AccessKeyID != nil {
 		updates["access_key_id"] = strings.TrimSpace(*input.AccessKeyID)
-		changeSummary = append(changeSummary, "更新AccessKeyID")
+		now := time.Now()
+		updates["last_rotated_at"] = &now
+		changeSummary = append(changeSummary, "更新AccessKeyID并刷新轮换时间")
 	}
 	if input.AccessKeySecret != nil {
 		updates["access_key_secret"] = strings.TrimSpace(*input.AccessKeySecret)
-		changeSummary = append(changeSummary, "更新AccessKeySecret")
+		now := time.Now()
+		updates["last_rotated_at"] = &now
+		changeSummary = append(changeSummary, "更新AccessKeySecret并刷新轮换时间")
 	}
 	if input.AccessKeyDisplay != nil {
 		display := strings.TrimSpace(*input.AccessKeyDisplay)
@@ -213,6 +220,14 @@ func (s *AdminOssService) UpdateCredential(ctx context.Context, input UpdateOssC
 			changeSummary = append(changeSummary, "开启分片上传")
 		} else {
 			changeSummary = append(changeSummary, "关闭分片上传")
+		}
+	}
+	if input.UseRelayUpload != nil {
+		updates["use_relay_upload"] = *input.UseRelayUpload
+		if *input.UseRelayUpload {
+			changeSummary = append(changeSummary, "启用服务端中继上传")
+		} else {
+			changeSummary = append(changeSummary, "关闭服务端中继上传")
 		}
 	}
 	if input.Active != nil {
@@ -306,6 +321,7 @@ func (s *AdminOssService) CreateCredential(ctx context.Context, input CreateOssC
 		AccessKeyDisplay:     accessKeyDisplay,
 		AllowPublicRead:      input.AllowPublicRead,
 		AllowMultipartUpload: input.AllowMultipartUpload,
+		UseRelayUpload:       input.UseRelayUpload,
 		Active:               input.Active,
 		IsPrimary:            input.IsPrimary,
 	}
@@ -336,6 +352,9 @@ func (s *AdminOssService) CreateCredential(ctx context.Context, input CreateOssC
 	}
 	if stored.AllowMultipartUpload {
 		detail = append(detail, "开启分片上传")
+	}
+	if stored.UseRelayUpload {
+		detail = append(detail, "启用服务端中继上传")
 	}
 
 	if err := s.recordAudit(ctx, schoolID, input.OperatorID, "创建访问凭证", detail); err != nil {
@@ -551,6 +570,7 @@ func toOssCredentialView(cred *domain.OssCredential) AdminOssCredentialView {
 		AccessKeyMasked:      masked,
 		AllowPublicRead:      cred.AllowPublicRead,
 		AllowMultipartUpload: cred.AllowMultipartUpload,
+		UseRelayUpload:       cred.UseRelayUpload,
 		IsPrimary:            cred.IsPrimary,
 		Active:               cred.Active,
 		CreatedAt:            cred.CreatedAt,

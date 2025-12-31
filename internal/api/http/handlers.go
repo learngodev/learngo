@@ -3,6 +3,7 @@ package http
 import (
 	"bytes"
 	"encoding/csv"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -46,12 +47,13 @@ type Handler struct {
 	schedule      *service.ScheduleService
 	classroom     *service.ClassroomService
 	fileService   *service.FileService
+	notifications *service.NotificationService
 	streamHub     *realtime.Hub
 	validate      *validator.Validate
 }
 
 // NewHandler constructs a Handler instance.
-func NewHandler(auth *service.AuthService, admin *service.AdminService, assignments *service.AssignmentService, teacher *service.TeacherPortalService, student *service.StudentPortalService, conversations *service.ConversationService, notes *service.NoteService, noteComments *service.NoteCommentService, oss *service.AdminOssService, system *service.AdminSystemService, ai *service.AIAssistantService, aiGrading *service.AIGradingService, school *service.SchoolService, courseService *service.CourseService, schedule *service.ScheduleService, classroom *service.ClassroomService, fileService *service.FileService, streamHub *realtime.Hub) *Handler {
+func NewHandler(auth *service.AuthService, admin *service.AdminService, assignments *service.AssignmentService, teacher *service.TeacherPortalService, student *service.StudentPortalService, conversations *service.ConversationService, notes *service.NoteService, noteComments *service.NoteCommentService, oss *service.AdminOssService, system *service.AdminSystemService, ai *service.AIAssistantService, aiGrading *service.AIGradingService, school *service.SchoolService, courseService *service.CourseService, schedule *service.ScheduleService, classroom *service.ClassroomService, fileService *service.FileService, notifications *service.NotificationService, streamHub *realtime.Hub) *Handler {
 	return &Handler{
 		auth:          auth,
 		admin:         admin,
@@ -70,6 +72,7 @@ func NewHandler(auth *service.AuthService, admin *service.AdminService, assignme
 		schedule:      schedule,
 		classroom:     classroom,
 		fileService:   fileService,
+		notifications: notifications,
 		streamHub:     streamHub,
 		validate:      validator.New(),
 	}
@@ -94,9 +97,22 @@ func (h *Handler) RegisterRoutes(r *gin.Engine, adminGuard gin.HandlerFunc, teac
 		// But I don't see a generic "authGuard" passed in.
 		// I'll add it to student and teacher groups for now.
 
+		// Relay download uses a short-lived token in query string so it can be used by Image.network.
+		// It is intentionally not guarded by JWT middleware.
+		api.GET("/files/download/relay/:id", h.RelayDownload)
+
 		files := api.Group("/files", studentGuard)
 		files.POST("/upload", h.GetUploadURL)
+		files.POST("/upload/relay", h.RelayUpload)
 		files.GET("/download/:id", h.GetDownloadURL)
+		files.GET("/:id/download-url", h.GetDownloadURL)
+
+		// Notifications
+		notifs := api.Group("/notifications", studentGuard)
+		notifs.GET("", h.ListNotifications)
+		notifs.PUT("/:id/read", h.MarkNotificationAsRead)
+		notifs.PUT("/read-all", h.MarkAllNotificationsAsRead)
+		notifs.GET("/unread-count", h.CountUnreadNotifications)
 
 		admin := api.Group("/admin", adminGuard)
 		admin.POST("/teachers", h.CreateTeacher)
@@ -107,10 +123,13 @@ func (h *Handler) RegisterRoutes(r *gin.Engine, adminGuard gin.HandlerFunc, teac
 		admin.POST("/classes", h.CreateClass)
 		admin.PATCH("/classes/:id", h.UpdateClass)
 		admin.DELETE("/classes/:id", h.DeleteClass)
+		admin.POST("/classes/:id/teachers", h.AddTeacherToClass)
+		admin.DELETE("/classes/:id/teachers/:accountId", h.RemoveTeacherFromClass)
 		admin.GET("/departments", h.ListDepartments)
 		admin.GET("/departments/:id/classes", h.ListClasses)
 		admin.GET("/accounts", h.ListAccounts)
 		admin.POST("/accounts/batch", h.BatchOperateAccounts)
+		admin.PATCH("/accounts/:id", h.UpdateAccount)
 		admin.PATCH("/accounts/:id/structure", h.UpdateAccountStructure)
 		admin.POST("/accounts/:id/password/reset", h.ResetAccountPassword)
 		admin.POST("/accounts/:id/lock", h.LockAccount)
@@ -641,9 +660,12 @@ type updateOssCredentialRequest struct {
 	Region               *string `json:"region"`
 	Bucket               *string `json:"bucket"`
 	DirectoryPrefix      *string `json:"directory_prefix"`
+	AccessKeyID          *string `json:"access_key_id"`
+	AccessKeySecret      *string `json:"access_key_secret"`
 	AccessKeyDisplay     *string `json:"access_key_display"`
 	AllowPublicRead      *bool   `json:"allow_public_read"`
 	AllowMultipartUpload *bool   `json:"allow_multipart_upload"`
+	UseRelayUpload       *bool   `json:"use_relay_upload"`
 	Active               *bool   `json:"active"`
 	IsPrimary            *bool   `json:"is_primary"`
 }
@@ -660,9 +682,12 @@ type createOssCredentialRequest struct {
 	Region               string `json:"region" validate:"required"`
 	Bucket               string `json:"bucket" validate:"required"`
 	DirectoryPrefix      string `json:"directory_prefix"`
+	AccessKeyID          string `json:"access_key_id" validate:"required"`
+	AccessKeySecret      string `json:"access_key_secret" validate:"required"`
 	AccessKeyDisplay     string `json:"access_key_display"`
 	AllowPublicRead      bool   `json:"allow_public_read"`
 	AllowMultipartUpload bool   `json:"allow_multipart_upload"`
+	UseRelayUpload       bool   `json:"use_relay_upload"`
 	Active               *bool  `json:"active"`
 	IsPrimary            bool   `json:"is_primary"`
 }
@@ -747,6 +772,48 @@ func (h *Handler) ResetAccountPassword(c *gin.Context) {
 	})
 }
 
+func (h *Handler) UpdateAccount(c *gin.Context) {
+	accountID := strings.TrimSpace(c.Param("id"))
+	if accountID == "" {
+		response.Error(c, http.StatusBadRequest, "account id is required", nil)
+		return
+	}
+
+	type updateRequest struct {
+		Name   *string `json:"name"`
+		Number *string `json:"number"`
+		Email  *string `json:"email"`
+		Phone  *string `json:"phone"`
+	}
+	var req updateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		return
+	}
+
+	schoolID := strings.TrimSpace(c.Query("school_id"))
+	if schoolID == "" {
+		response.Error(c, http.StatusBadRequest, "school_id required", nil)
+		return
+	}
+
+	err := h.admin.UpdateAccount(c.Request.Context(), service.UpdateAccountInput{
+		SchoolID:  schoolID,
+		AccountID: accountID,
+		Name:      req.Name,
+		Number:    req.Number,
+		Email:     req.Email,
+		Phone:     req.Phone,
+	})
+
+	if err != nil {
+		h.handleAdminAccountError(c, err, "unable to update account")
+		return
+	}
+
+	response.Success(c, http.StatusOK, nil)
+}
+
 func (h *Handler) UpdateAccountStructure(c *gin.Context) {
 	accountID := strings.TrimSpace(c.Param("id"))
 	if accountID == "" {
@@ -777,6 +844,65 @@ func (h *Handler) UpdateAccountStructure(c *gin.Context) {
 
 	if err != nil {
 		h.handleAdminAccountError(c, err, "unable to update account structure")
+		return
+	}
+
+	response.Success(c, http.StatusOK, nil)
+}
+
+func (h *Handler) AddTeacherToClass(c *gin.Context) {
+	classID := strings.TrimSpace(c.Param("id"))
+	if classID == "" {
+		response.Error(c, http.StatusBadRequest, "class id is required", nil)
+		return
+	}
+
+	type request struct {
+		AccountID string `json:"account_id" binding:"required"`
+	}
+	var req request
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		return
+	}
+
+	schoolID := strings.TrimSpace(c.Query("school_id"))
+	if schoolID == "" {
+		response.Error(c, http.StatusBadRequest, "school_id required", nil)
+		return
+	}
+
+	err := h.admin.AddTeacherToClass(c.Request.Context(), schoolID, classID, req.AccountID)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "failed to add teacher", err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, nil)
+}
+
+func (h *Handler) RemoveTeacherFromClass(c *gin.Context) {
+	classID := strings.TrimSpace(c.Param("id"))
+	if classID == "" {
+		response.Error(c, http.StatusBadRequest, "class id is required", nil)
+		return
+	}
+
+	accountID := strings.TrimSpace(c.Param("accountId"))
+	if accountID == "" {
+		response.Error(c, http.StatusBadRequest, "account id is required", nil)
+		return
+	}
+
+	schoolID := strings.TrimSpace(c.Query("school_id"))
+	if schoolID == "" {
+		response.Error(c, http.StatusBadRequest, "school_id required", nil)
+		return
+	}
+
+	err := h.admin.RemoveTeacherFromClass(c.Request.Context(), schoolID, classID, accountID)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "failed to remove teacher", err.Error())
 		return
 	}
 
@@ -1830,6 +1956,11 @@ func (h *Handler) SendAIChatMessage(c *gin.Context) {
 		return
 	}
 
+	if c.GetHeader("Accept") == "text/event-stream" {
+		h.sendAIChatMessageStream(c, accountID, sessionID, req.Content)
+		return
+	}
+
 	result, err := h.ai.SendMessage(c.Request.Context(), service.SendAIChatMessageInput{
 		AccountID: accountID,
 		SessionID: sessionID,
@@ -1879,6 +2010,38 @@ func (h *Handler) SendAIChatMessage(c *gin.Context) {
 	respPayload["status"] = status
 
 	response.Success(c, http.StatusCreated, respPayload)
+}
+
+func (h *Handler) sendAIChatMessageStream(c *gin.Context, accountID, sessionID, content string) {
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	c.Header("Transfer-Encoding", "chunked")
+
+	result, err := h.ai.StreamMessage(c.Request.Context(), service.SendAIChatMessageInput{
+		AccountID: accountID,
+		SessionID: sessionID,
+		Content:   content,
+	}, func(chunk string) error {
+		c.SSEvent("message", chunk)
+		c.Writer.Flush()
+		return nil
+	})
+
+	if err != nil {
+		// Map error to status code/message if possible, but we are in stream.
+		// Just send error event.
+		c.SSEvent("error", err.Error())
+		return
+	}
+
+	// Send final completion event with full message details if needed
+	if result != nil && result.AssistantMessage != nil {
+		payload, _ := json.Marshal(aiChatMessagePayload(*result.AssistantMessage))
+		c.SSEvent("completed", string(payload))
+	} else {
+		c.SSEvent("done", "completed")
+	}
 }
 
 type createDepartmentRequest struct {
@@ -1993,9 +2156,12 @@ func (h *Handler) CreateOssCredential(c *gin.Context) {
 		Region:               req.Region,
 		Bucket:               req.Bucket,
 		DirectoryPrefix:      req.DirectoryPrefix,
+		AccessKeyID:          req.AccessKeyID,
+		AccessKeySecret:      req.AccessKeySecret,
 		AccessKeyDisplay:     req.AccessKeyDisplay,
 		AllowPublicRead:      req.AllowPublicRead,
 		AllowMultipartUpload: req.AllowMultipartUpload,
+		UseRelayUpload:       req.UseRelayUpload,
 		Active:               active,
 		IsPrimary:            req.IsPrimary,
 		OperatorID:           operatorID,
@@ -2172,9 +2338,12 @@ func (h *Handler) UpdateOssCredential(c *gin.Context) {
 		Region:               req.Region,
 		Bucket:               req.Bucket,
 		DirectoryPrefix:      req.DirectoryPrefix,
+		AccessKeyID:          req.AccessKeyID,
+		AccessKeySecret:      req.AccessKeySecret,
 		AccessKeyDisplay:     req.AccessKeyDisplay,
 		AllowPublicRead:      req.AllowPublicRead,
 		AllowMultipartUpload: req.AllowMultipartUpload,
+		UseRelayUpload:       req.UseRelayUpload,
 		Active:               req.Active,
 		IsPrimary:            req.IsPrimary,
 		OperatorID:           operatorID,
@@ -2248,7 +2417,6 @@ func (h *Handler) UpdateOssPolicy(c *gin.Context) {
 
 	response.Success(c, http.StatusOK, gin.H{"policy": policy})
 }
-
 func (h *Handler) ListSystemSwitches(c *gin.Context) {
 	schoolID := strings.TrimSpace(c.Query("school_id"))
 	if schoolID == "" {
@@ -2607,6 +2775,7 @@ type createAssignmentRequest struct {
 	MaxScore      float64                         `json:"max_score" validate:"gte=0"`
 	AllowResubmit bool                            `json:"allow_resubmit"`
 	Questions     []createAssignmentQuestionInput `json:"questions" validate:"required,min=1,dive"`
+	Attachments   []string                        `json:"attachments"`
 }
 
 type createAssignmentQuestionInput struct {
@@ -2663,6 +2832,7 @@ func (h *Handler) CreateAssignment(c *gin.Context) {
 		MaxScore:      req.MaxScore,
 		AllowResubmit: req.AllowResubmit,
 		Questions:     questions,
+		Attachments:   req.Attachments,
 	})
 	if err != nil {
 		response.Error(c, http.StatusBadRequest, "unable to create assignment", err.Error())
@@ -2723,7 +2893,7 @@ func (h *Handler) GetAssignment(c *gin.Context) {
 		return
 	}
 
-	assignment, questions, err := h.assignments.GetAssignment(c.Request.Context(), assignmentID)
+	assignment, questions, files, err := h.assignments.GetAssignment(c.Request.Context(), assignmentID)
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrAssignmentNotFound):
@@ -2734,7 +2904,7 @@ func (h *Handler) GetAssignment(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, http.StatusOK, gin.H{"assignment": assignmentPayload(*assignment, questions)})
+	response.Success(c, http.StatusOK, gin.H{"assignment": assignmentPayload(*assignment, questions, files)})
 }
 
 func (h *Handler) ListAssignmentSubmissions(c *gin.Context) {
@@ -3767,7 +3937,7 @@ func (h *Handler) GetMySubmission(c *gin.Context) {
 		return
 	}
 
-	assignment, questions, err := h.assignments.GetAssignment(c.Request.Context(), assignmentID)
+	assignment, questions, files, err := h.assignments.GetAssignment(c.Request.Context(), assignmentID)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, "unable to load assignment", err.Error())
 		return
@@ -3786,7 +3956,7 @@ func (h *Handler) GetMySubmission(c *gin.Context) {
 	}
 
 	payload := gin.H{
-		"assignment": assignmentPayload(*assignment, questions),
+		"assignment": assignmentPayload(*assignment, questions, files),
 		"submission": submissionDetailPayload(*detail),
 		"items":      itemsPayload,
 		"comments":   submissionCommentsPayload(comments),
@@ -4571,7 +4741,7 @@ func (h *Handler) MarkConversationRead(c *gin.Context) {
 	})
 }
 
-func assignmentPayload(assignment domain.Assignment, questions []domain.AssignmentQuestion) gin.H {
+func assignmentPayload(assignment domain.Assignment, questions []domain.AssignmentQuestion, files []domain.File) gin.H {
 	questionsPayload := make([]gin.H, 0, len(questions))
 	for _, q := range questions {
 		questionsPayload = append(questionsPayload, assignmentQuestionPayload(q))
@@ -4592,6 +4762,7 @@ func assignmentPayload(assignment domain.Assignment, questions []domain.Assignme
 		"created_at":     assignment.CreatedAt,
 		"updated_at":     assignment.UpdatedAt,
 		"questions":      questionsPayload,
+		"attachments":    files,
 	}
 }
 

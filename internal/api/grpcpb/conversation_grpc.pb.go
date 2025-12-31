@@ -8,6 +8,7 @@ package grpcpb
 
 import (
 	context "context"
+
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -19,13 +20,19 @@ import (
 const _ = grpc.SupportPackageIsVersion8
 
 const (
-	ConversationService_Stream_FullMethodName = "/learngo.api.v1.ConversationService/Stream"
+	ConversationService_Stream_FullMethodName         = "/learngo.api.v1.ConversationService/Stream"
+	ConversationService_Subscribe_FullMethodName      = "/learngo.api.v1.ConversationService/Subscribe"
+	ConversationService_SubscribeInbox_FullMethodName = "/learngo.api.v1.ConversationService/SubscribeInbox"
 )
 
 // ConversationServiceClient is the client API for ConversationService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type ConversationServiceClient interface {
+	// Subscribe is a server-streaming subscription (web-friendly).
+	Subscribe(ctx context.Context, in *JoinConversation, opts ...grpc.CallOption) (ConversationService_SubscribeClient, error)
+	// SubscribeInbox aggregates events across all conversations for a user.
+	SubscribeInbox(ctx context.Context, in *JoinConversation, opts ...grpc.CallOption) (ConversationService_SubscribeInboxClient, error)
 	Stream(ctx context.Context, opts ...grpc.CallOption) (ConversationService_StreamClient, error)
 }
 
@@ -35,6 +42,38 @@ type conversationServiceClient struct {
 
 func NewConversationServiceClient(cc grpc.ClientConnInterface) ConversationServiceClient {
 	return &conversationServiceClient{cc}
+}
+
+func (c *conversationServiceClient) Subscribe(ctx context.Context, in *JoinConversation, opts ...grpc.CallOption) (ConversationService_SubscribeClient, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &ConversationService_ServiceDesc.Streams[1], ConversationService_Subscribe_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &conversationServiceSubscribeClient{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+func (c *conversationServiceClient) SubscribeInbox(ctx context.Context, in *JoinConversation, opts ...grpc.CallOption) (ConversationService_SubscribeInboxClient, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &ConversationService_ServiceDesc.Streams[2], ConversationService_SubscribeInbox_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &conversationServiceSubscribeInboxClient{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
 }
 
 func (c *conversationServiceClient) Stream(ctx context.Context, opts ...grpc.CallOption) (ConversationService_StreamClient, error) {
@@ -51,6 +90,40 @@ type ConversationService_StreamClient interface {
 	Send(*ConversationStreamRequest) error
 	Recv() (*ConversationStreamResponse, error)
 	grpc.ClientStream
+}
+
+type ConversationService_SubscribeClient interface {
+	Recv() (*ConversationStreamResponse, error)
+	grpc.ClientStream
+}
+
+type ConversationService_SubscribeInboxClient interface {
+	Recv() (*ConversationStreamResponse, error)
+	grpc.ClientStream
+}
+
+type conversationServiceSubscribeClient struct {
+	grpc.ClientStream
+}
+
+func (x *conversationServiceSubscribeClient) Recv() (*ConversationStreamResponse, error) {
+	m := new(ConversationStreamResponse)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+type conversationServiceSubscribeInboxClient struct {
+	grpc.ClientStream
+}
+
+func (x *conversationServiceSubscribeInboxClient) Recv() (*ConversationStreamResponse, error) {
+	m := new(ConversationStreamResponse)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
 }
 
 type conversationServiceStreamClient struct {
@@ -73,6 +146,10 @@ func (x *conversationServiceStreamClient) Recv() (*ConversationStreamResponse, e
 // All implementations must embed UnimplementedConversationServiceServer
 // for forward compatibility
 type ConversationServiceServer interface {
+	// Subscribe is a server-streaming subscription (web-friendly).
+	Subscribe(*JoinConversation, ConversationService_SubscribeServer) error
+	// SubscribeInbox aggregates events across all conversations for a user.
+	SubscribeInbox(*JoinConversation, ConversationService_SubscribeInboxServer) error
 	Stream(ConversationService_StreamServer) error
 	mustEmbedUnimplementedConversationServiceServer()
 }
@@ -81,6 +158,12 @@ type ConversationServiceServer interface {
 type UnimplementedConversationServiceServer struct {
 }
 
+func (UnimplementedConversationServiceServer) Subscribe(*JoinConversation, ConversationService_SubscribeServer) error {
+	return status.Errorf(codes.Unimplemented, "method Subscribe not implemented")
+}
+func (UnimplementedConversationServiceServer) SubscribeInbox(*JoinConversation, ConversationService_SubscribeInboxServer) error {
+	return status.Errorf(codes.Unimplemented, "method SubscribeInbox not implemented")
+}
 func (UnimplementedConversationServiceServer) Stream(ConversationService_StreamServer) error {
 	return status.Errorf(codes.Unimplemented, "method Stream not implemented")
 }
@@ -97,8 +180,50 @@ func RegisterConversationServiceServer(s grpc.ServiceRegistrar, srv Conversation
 	s.RegisterService(&ConversationService_ServiceDesc, srv)
 }
 
+func _ConversationService_Subscribe_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(JoinConversation)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(ConversationServiceServer).Subscribe(m, &conversationServiceSubscribeServer{ServerStream: stream})
+}
+
+func _ConversationService_SubscribeInbox_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(JoinConversation)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(ConversationServiceServer).SubscribeInbox(m, &conversationServiceSubscribeInboxServer{ServerStream: stream})
+}
+
 func _ConversationService_Stream_Handler(srv interface{}, stream grpc.ServerStream) error {
 	return srv.(ConversationServiceServer).Stream(&conversationServiceStreamServer{ServerStream: stream})
+}
+
+type ConversationService_SubscribeServer interface {
+	Send(*ConversationStreamResponse) error
+	grpc.ServerStream
+}
+
+type conversationServiceSubscribeServer struct {
+	grpc.ServerStream
+}
+
+func (x *conversationServiceSubscribeServer) Send(m *ConversationStreamResponse) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+type ConversationService_SubscribeInboxServer interface {
+	Send(*ConversationStreamResponse) error
+	grpc.ServerStream
+}
+
+type conversationServiceSubscribeInboxServer struct {
+	grpc.ServerStream
+}
+
+func (x *conversationServiceSubscribeInboxServer) Send(m *ConversationStreamResponse) error {
+	return x.ServerStream.SendMsg(m)
 }
 
 type ConversationService_StreamServer interface {
@@ -136,6 +261,16 @@ var ConversationService_ServiceDesc = grpc.ServiceDesc{
 			Handler:       _ConversationService_Stream_Handler,
 			ServerStreams: true,
 			ClientStreams: true,
+		},
+		{
+			StreamName:    "Subscribe",
+			Handler:       _ConversationService_Subscribe_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "SubscribeInbox",
+			Handler:       _ConversationService_SubscribeInbox_Handler,
+			ServerStreams: true,
 		},
 	},
 	Metadata: "proto/conversation.proto",

@@ -2,11 +2,13 @@ package gormrepo
 
 import (
 	"context"
+	"time"
+
+	"github.com/google/uuid"
+	"gorm.io/gorm"
 
 	"learn-go/internal/domain"
 	"learn-go/internal/repository"
-
-	"gorm.io/gorm"
 )
 
 // ClassStore implements repository.ClassRepository using GORM.
@@ -27,7 +29,7 @@ func (s *ClassStore) ListByDepartment(ctx context.Context, schoolID, departmentI
 	query := s.db.WithContext(ctx).Table("classes").
 		Select("classes.*, "+
 			"(SELECT count(*) FROM students WHERE students.class_id = classes.id) as student_count, "+
-			"(SELECT count(DISTINCT teacher_id) FROM course_schedules WHERE course_schedules.class_id = classes.id) as teacher_count").
+			"(SELECT count(DISTINCT teacher_id) FROM class_teachers WHERE class_teachers.class_id = classes.id) as teacher_count").
 		Where("classes.school_id = ?", schoolID)
 
 	if departmentID != "" {
@@ -69,6 +71,22 @@ func (s *ClassStore) Delete(ctx context.Context, id, schoolID string) error {
 	return s.db.WithContext(ctx).
 		Where("id = ? AND school_id = ?", id, schoolID).
 		Delete(&domain.Class{}).Error
+}
+
+func (s *ClassStore) AddTeacher(ctx context.Context, classID, teacherID string) error {
+	link := domain.ClassTeacher{
+		ID:        uuid.New().String(),
+		ClassID:   classID,
+		TeacherID: teacherID,
+		CreatedAt: time.Now(),
+	}
+	return s.db.WithContext(ctx).Create(&link).Error
+}
+
+func (s *ClassStore) RemoveTeacher(ctx context.Context, classID, teacherID string) error {
+	return s.db.WithContext(ctx).
+		Where("class_id = ? AND teacher_id = ?", classID, teacherID).
+		Delete(&domain.ClassTeacher{}).Error
 }
 
 var _ repository.ClassRepository = (*ClassStore)(nil)

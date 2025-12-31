@@ -127,6 +127,10 @@ func (r *listUsageAccountRepo) UpdatePasswordHash(context.Context, string, strin
 	return errors.New("not implemented")
 }
 
+func (r *listUsageAccountRepo) Update(ctx context.Context, account *domain.Account) error {
+	return errors.New("not implemented")
+}
+
 func (r *listUsageAccountRepo) Delete(context.Context, string, string) error {
 	return errors.New("not implemented")
 }

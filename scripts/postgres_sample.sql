@@ -4,6 +4,12 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- Drop existing tables in dependency order (if they exist)
+DROP TABLE IF EXISTS submission_attachments CASCADE;
+DROP TABLE IF EXISTS assignment_attachments CASCADE;
+DROP TABLE IF EXISTS files CASCADE;
+DROP TABLE IF EXISTS oss_audit_logs CASCADE;
+DROP TABLE IF EXISTS oss_policies CASCADE;
+DROP TABLE IF EXISTS oss_credentials CASCADE;
 DROP TABLE IF EXISTS note_comments CASCADE;
 DROP TABLE IF EXISTS notes CASCADE;
 DROP TABLE IF EXISTS ai_chat_messages CASCADE;
@@ -20,9 +26,12 @@ DROP TABLE IF EXISTS assignment_submissions CASCADE;
 DROP TABLE IF EXISTS assignment_questions CASCADE;
 DROP TABLE IF EXISTS assignments CASCADE;
 DROP TABLE IF EXISTS course_sessions CASCADE;
+DROP TABLE IF EXISTS course_teachers CASCADE;
 DROP TABLE IF EXISTS courses CASCADE;
 DROP TABLE IF EXISTS course_slots CASCADE;
+DROP TABLE IF EXISTS time_slots CASCADE;
 DROP TABLE IF EXISTS classrooms CASCADE;
+DROP TABLE IF EXISTS class_teachers CASCADE;
 DROP TABLE IF EXISTS teacher_student_links CASCADE;
 DROP TABLE IF EXISTS students CASCADE;
 DROP TABLE IF EXISTS teachers CASCADE;
@@ -56,6 +65,77 @@ ALTER TABLE accounts
 
 CREATE INDEX accounts_role_idx ON accounts(role);
 CREATE INDEX accounts_school_idx ON accounts(school_id);
+
+-- OSS tables ----------------------------------------------------------------
+CREATE TABLE oss_credentials (
+    id                    CHAR(36) PRIMARY KEY,
+    school_id             CHAR(36) NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    name                  VARCHAR(128) NOT NULL,
+    endpoint              VARCHAR(128) NOT NULL,
+    region                VARCHAR(64) NOT NULL,
+    bucket                VARCHAR(128) NOT NULL,
+    access_key_id         VARCHAR(128) NOT NULL DEFAULT '',
+    access_key_secret     VARCHAR(128) NOT NULL DEFAULT '',
+    access_key_display    VARCHAR(128) NOT NULL DEFAULT '',
+    directory_prefix      VARCHAR(128) NOT NULL DEFAULT '',
+    allow_public_read     BOOLEAN NOT NULL DEFAULT FALSE,
+    allow_multipart_upload BOOLEAN NOT NULL DEFAULT FALSE,
+    use_relay_upload      BOOLEAN NOT NULL DEFAULT FALSE,
+    is_primary            BOOLEAN NOT NULL DEFAULT FALSE,
+    active                BOOLEAN NOT NULL DEFAULT FALSE,
+    last_rotated_at       TIMESTAMPTZ,
+    created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX oss_credentials_school_id_idx ON oss_credentials(school_id);
+CREATE INDEX oss_credentials_is_primary_idx ON oss_credentials(is_primary);
+CREATE INDEX oss_credentials_active_idx ON oss_credentials(active);
+
+CREATE TABLE oss_policies (
+    id             CHAR(36) PRIMARY KEY,
+    school_id       CHAR(36) NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    name            VARCHAR(128) NOT NULL,
+    description     VARCHAR(512) NOT NULL DEFAULT '',
+    applies_to      VARCHAR(128) NOT NULL,
+    status          VARCHAR(32) NOT NULL DEFAULT 'enabled',
+    last_updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX oss_policies_school_id_idx ON oss_policies(school_id);
+CREATE INDEX oss_policies_status_idx ON oss_policies(status);
+
+CREATE TABLE oss_audit_logs (
+    id            CHAR(36) PRIMARY KEY,
+    school_id      CHAR(36) NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    action         VARCHAR(128) NOT NULL,
+    operator_id    CHAR(36) NOT NULL,
+    operator_name  VARCHAR(128) NOT NULL DEFAULT '',
+    detail         VARCHAR(512) NOT NULL DEFAULT '',
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX oss_audit_logs_school_id_idx ON oss_audit_logs(school_id);
+CREATE INDEX oss_audit_logs_created_at_idx ON oss_audit_logs(created_at);
+
+-- File tables ---------------------------------------------------------------
+CREATE TABLE files (
+    id          CHAR(36) PRIMARY KEY,
+    school_id   CHAR(36) NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+    uploader_id CHAR(36) NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    name        VARCHAR(256) NOT NULL,
+    key         VARCHAR(256) NOT NULL,
+    url         VARCHAR(512) NOT NULL DEFAULT '',
+    type        VARCHAR(255) NOT NULL,
+    size        BIGINT NOT NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX files_school_id_idx ON files(school_id);
+CREATE INDEX files_uploader_id_idx ON files(uploader_id);
+CREATE INDEX files_key_idx ON files(key);
 
 CREATE TABLE departments (
     id         CHAR(36) PRIMARY KEY,
@@ -111,6 +191,18 @@ ALTER TABLE students
 ALTER TABLE students
     ADD CONSTRAINT "uni_students_number" UNIQUE (number);
 
+-- Class teacher assignment (many-to-many) -----------------------------------
+CREATE TABLE class_teachers (
+    id         CHAR(36) PRIMARY KEY,
+    class_id   CHAR(36) NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+    teacher_id CHAR(36) NOT NULL REFERENCES teachers(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (class_id, teacher_id)
+);
+
+CREATE INDEX class_teachers_class_id_idx ON class_teachers(class_id);
+CREATE INDEX class_teachers_teacher_id_idx ON class_teachers(teacher_id);
+
 CREATE TABLE teacher_student_links (
     id         CHAR(36) PRIMARY KEY,
     teacher_id CHAR(36) NOT NULL REFERENCES teachers(id) ON DELETE CASCADE,
@@ -127,6 +219,14 @@ CREATE TABLE courses (
     description VARCHAR(512),
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE course_teachers (
+    id          CHAR(36) PRIMARY KEY,
+    course_id   CHAR(36) NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+    teacher_id  CHAR(36) NOT NULL REFERENCES teachers(id) ON DELETE CASCADE,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (course_id, teacher_id)
 );
 
 CREATE TABLE classrooms (
@@ -218,6 +318,26 @@ CREATE TABLE assignment_submissions (
 );
 
 CREATE UNIQUE INDEX assignment_submissions_unique ON assignment_submissions(assignment_id, student_id);
+
+CREATE TABLE assignment_attachments (
+    id            CHAR(36) PRIMARY KEY,
+    assignment_id CHAR(36) NOT NULL REFERENCES assignments(id) ON DELETE CASCADE,
+    file_id       CHAR(36) NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX assignment_attachments_assignment_id_idx ON assignment_attachments(assignment_id);
+CREATE INDEX assignment_attachments_file_id_idx ON assignment_attachments(file_id);
+
+CREATE TABLE submission_attachments (
+    id            CHAR(36) PRIMARY KEY,
+    submission_id CHAR(36) NOT NULL REFERENCES assignment_submissions(id) ON DELETE CASCADE,
+    file_id       CHAR(36) NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX submission_attachments_submission_id_idx ON submission_attachments(submission_id);
+CREATE INDEX submission_attachments_file_id_idx ON submission_attachments(file_id);
 
 CREATE TABLE submission_items (
     id            CHAR(36) PRIMARY KEY,
@@ -330,12 +450,18 @@ VALUES ('55555555-5555-5555-5555-555555555555', '11111111-1111-1111-1111-1111111
 INSERT INTO teacher_student_links (id, teacher_id, student_id)
 VALUES ('66666666-6666-6666-6666-666666666666', '44444444-4444-4444-4444-444444444444', '55555555-5555-5555-5555-555555555555');
 
+INSERT INTO class_teachers (id, class_id, teacher_id)
+VALUES ('ct-link-001', '33333333-3333-3333-3333-333333333333', '44444444-4444-4444-4444-444444444444');
+
 INSERT INTO courses (id, school_id, name, description)
 VALUES 
     ('77777777-7777-7777-7777-777777777777', '11111111-1111-1111-1111-111111111111', '计算机网络', '大二核心课程'),
     ('77777777-7777-7777-7777-777777777778', '11111111-1111-1111-1111-111111111111', '操作系统', '深入理解计算机系统核心'),
     ('77777777-7777-7777-7777-777777777779', '11111111-1111-1111-1111-111111111111', '数据结构与算法', '编程基础必修课');
-
+INSERT INTO course_teachers (id, course_id, teacher_id) VALUES
+    ('ct-001', '77777777-7777-7777-7777-777777777777', '44444444-4444-4444-4444-444444444444'),
+    ('ct-002', '77777777-7777-7777-7777-777777777778', '44444444-4444-4444-4444-444444444444'),
+    ('ct-003', '77777777-7777-7777-7777-777777777779', '44444444-4444-4444-4444-444444444444');
 INSERT INTO time_slots (id, school_id, name, start_time, end_time)
 VALUES
     ('slot-001', '11111111-1111-1111-1111-111111111111', '第1-2节', '08:00', '09:40'),

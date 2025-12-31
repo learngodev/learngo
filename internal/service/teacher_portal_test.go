@@ -210,20 +210,21 @@ func (f *fakeTeacherRepo) GetByAccountID(ctx context.Context, accountID string) 
 	}
 	return nil, nil
 }
+func (f *fakeTeacherRepo) Update(context.Context, *domain.Teacher) error { return nil }
 
 type fakeAssignmentRepo struct {
 	assignment *domain.Assignment
 	questions  []domain.AssignmentQuestion
 }
 
-func (f *fakeAssignmentRepo) Create(context.Context, *domain.Assignment, []domain.AssignmentQuestion) error {
+func (f *fakeAssignmentRepo) Create(context.Context, *domain.Assignment, []domain.AssignmentQuestion, []domain.AssignmentAttachment) error {
 	return nil
 }
-func (f *fakeAssignmentRepo) Get(ctx context.Context, id string) (*domain.Assignment, []domain.AssignmentQuestion, error) {
+func (f *fakeAssignmentRepo) Get(ctx context.Context, id string) (*domain.Assignment, []domain.AssignmentQuestion, []domain.File, error) {
 	if f.assignment != nil && f.assignment.ID == id {
-		return f.assignment, f.questions, nil
+		return f.assignment, f.questions, nil, nil
 	}
-	return nil, nil, gorm.ErrRecordNotFound
+	return nil, nil, nil, gorm.ErrRecordNotFound
 }
 func (f *fakeAssignmentRepo) ListByClass(context.Context, string, int, []domain.AssignmentType) ([]domain.Assignment, error) {
 	return nil, nil
@@ -330,6 +331,7 @@ func (f *fakeStudentRepo) ListByClassID(context.Context, string) ([]domain.Stude
 func (f *fakeStudentRepo) ListByDepartmentID(context.Context, string) ([]domain.Student, error) {
 	return nil, nil
 }
+func (f *fakeStudentRepo) Update(context.Context, *domain.Student) error { return nil }
 
 type fakeCourseRepo struct {
 	courses map[string]string
@@ -394,6 +396,8 @@ func (f *fakeClassRepo) ListByIDs(ctx context.Context, ids []string) ([]domain.C
 }
 func (f *fakeClassRepo) UpdateName(context.Context, string, string, string) error { return nil }
 func (f *fakeClassRepo) Delete(context.Context, string, string) error             { return nil }
+func (f *fakeClassRepo) AddTeacher(context.Context, string, string) error         { return nil }
+func (f *fakeClassRepo) RemoveTeacher(context.Context, string, string) error      { return nil }
 
 type teacherAccountRepoStub struct {
 	accounts map[string]domain.Account
@@ -427,4 +431,5 @@ func (f *teacherAccountRepoStub) UpdateStatus(context.Context, string, string, d
 func (f *teacherAccountRepoStub) UpdatePasswordHash(context.Context, string, string) error {
 	return nil
 }
-func (f *teacherAccountRepoStub) Delete(context.Context, string, string) error { return nil }
+func (f *teacherAccountRepoStub) Update(context.Context, *domain.Account) error { return nil }
+func (f *teacherAccountRepoStub) Delete(context.Context, string, string) error  { return nil }

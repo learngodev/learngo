@@ -42,6 +42,11 @@ func (s *TeacherPortalService) GetSchoolID(ctx context.Context, accountID string
 	return account.SchoolID, nil
 }
 
+// GetProfile retrieves the teacher profile for a given account.
+func (s *TeacherPortalService) GetProfile(ctx context.Context, accountID string) (*domain.Teacher, error) {
+	return s.teachers.GetByAccountID(ctx, accountID)
+}
+
 // NewTeacherPortalService constructs TeacherPortalService.
 func NewTeacherPortalService(
 	teachers repository.TeacherRepository,
@@ -195,6 +200,7 @@ type TeacherAssignmentDetail struct {
 	MaxScore      float64                `json:"max_score"`
 	Questions     []TeacherQuestionItem  `json:"questions"`
 	Stats         TeacherAssignmentStats `json:"stats"`
+	Attachments   []domain.File          `json:"attachments"`
 }
 
 // TeacherQuestionItem mirrors assignment questions.
@@ -414,7 +420,7 @@ func (s *TeacherPortalService) GetAssignmentDetail(ctx context.Context, accountI
 		return nil, ErrTeacherProfileNotFound
 	}
 
-	assignment, questions, err := s.assignments.Get(ctx, assignmentID)
+	assignment, questions, files, err := s.assignments.Get(ctx, assignmentID)
 	if err != nil {
 		return nil, err
 	}
@@ -493,6 +499,7 @@ func (s *TeacherPortalService) GetAssignmentDetail(ctx context.Context, accountI
 			LatestSubmissionAt: stat.LatestSubmittedAt,
 			ScoreDistribution:  toTeacherScoreDistribution(stat.ScoreDistribution),
 		},
+		Attachments: files,
 	}, nil
 }
 
@@ -506,7 +513,7 @@ func (s *TeacherPortalService) ExportAssignmentGrades(ctx context.Context, accou
 		return nil, ErrTeacherProfileNotFound
 	}
 
-	assignment, _, err := s.assignments.Get(ctx, assignmentID)
+	assignment, _, _, err := s.assignments.Get(ctx, assignmentID)
 	if err != nil {
 		return nil, err
 	}

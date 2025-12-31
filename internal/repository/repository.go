@@ -33,6 +33,7 @@ type AccountRepository interface {
 	) ([]domain.Account, int64, error)
 	UpdateStatus(ctx context.Context, accountID, schoolID string, status domain.AccountStatus) error
 	UpdatePasswordHash(ctx context.Context, accountID string, passwordHash string) error
+	Update(ctx context.Context, account *domain.Account) error
 	Delete(ctx context.Context, accountID, schoolID string) error
 }
 
@@ -49,12 +50,22 @@ type PasswordResetTokenRepository interface {
 	DeleteByAccount(ctx context.Context, accountID string) error
 }
 
+// NotificationRepository manages user notifications.
+type NotificationRepository interface {
+	Create(ctx context.Context, notification *domain.Notification) error
+	ListByUser(ctx context.Context, userID string, limit int, offset int) ([]domain.Notification, int64, error)
+	MarkAsRead(ctx context.Context, id string, userID string) error
+	MarkAllAsRead(ctx context.Context, userID string) error
+	CountUnread(ctx context.Context, userID string) (int64, error)
+}
+
 // TeacherRepository handles teacher profile persistence.
 type TeacherRepository interface {
 	Create(ctx context.Context, teacher *domain.Teacher) error
 	GetByNumber(ctx context.Context, schoolID, number string) (*domain.Teacher, error)
 	GetByID(ctx context.Context, id string) (*domain.Teacher, error)
 	GetByAccountID(ctx context.Context, accountID string) (*domain.Teacher, error)
+	Update(ctx context.Context, teacher *domain.Teacher) error
 }
 
 // StudentRepository handles student profile persistence.
@@ -68,6 +79,7 @@ type StudentRepository interface {
 	ListByDepartmentID(ctx context.Context, departmentID string) ([]domain.Student, error)
 	CountByClassIDs(ctx context.Context, classIDs []string) (map[string]int64, error)
 	UpdateClassID(ctx context.Context, studentID string, classID string) error
+	Update(ctx context.Context, student *domain.Student) error
 }
 
 // StudentReminderRepository persists custom reminders created by students.
@@ -159,12 +171,21 @@ type ClassRepository interface {
 	ListByIDs(ctx context.Context, ids []string) ([]domain.Class, error)
 	UpdateName(ctx context.Context, id, schoolID, name string) error
 	Delete(ctx context.Context, id, schoolID string) error
+	AddTeacher(ctx context.Context, classID, teacherID string) error
+	RemoveTeacher(ctx context.Context, classID, teacherID string) error
+}
+
+// CourseTeacherRepository handles course-teacher associations.
+type CourseTeacherRepository interface {
+	Add(ctx context.Context, courseID string, teacherIDs []string) error
+	Remove(ctx context.Context, courseID string, teacherIDs []string) error
+	ListByCourseID(ctx context.Context, courseID string) ([]domain.CourseTeacher, error)
 }
 
 // AssignmentRepository handles assignments.
 type AssignmentRepository interface {
-	Create(ctx context.Context, assignment *domain.Assignment, questions []domain.AssignmentQuestion) error
-	Get(ctx context.Context, id string) (*domain.Assignment, []domain.AssignmentQuestion, error)
+	Create(ctx context.Context, assignment *domain.Assignment, questions []domain.AssignmentQuestion, attachments []domain.AssignmentAttachment) error
+	Get(ctx context.Context, id string) (*domain.Assignment, []domain.AssignmentQuestion, []domain.File, error)
 	ListByClass(ctx context.Context, classID string, limit int, types []domain.AssignmentType) ([]domain.Assignment, error)
 	ListDueBetween(ctx context.Context, classID string, start, end time.Time, types []domain.AssignmentType) ([]domain.Assignment, error)
 	ListByTeacher(ctx context.Context, teacherID string, limit int, classID string, types []domain.AssignmentType) ([]domain.Assignment, error)

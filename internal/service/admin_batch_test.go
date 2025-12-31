@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 
 	"learn-go/internal/domain"
@@ -109,8 +110,33 @@ func (m *memoryAccountRepo) ListByIDs(context.Context, []string) ([]domain.Accou
 	return nil, errors.New("not implemented")
 }
 
-func (m *memoryAccountRepo) ListByRole(context.Context, string, domain.Role, domain.AccountStatus, string, string, string, bool, bool, int, int, string) ([]domain.Account, int64, error) {
-	return nil, 0, errors.New("not implemented")
+func (m *memoryAccountRepo) ListByRole(ctx context.Context, schoolID string, role domain.Role, status domain.AccountStatus, deptID, classID, courseID string, onlyClassless, onlyDeptless bool, page, size int, query string) ([]domain.Account, int64, error) {
+	var result []domain.Account
+	for _, acc := range m.accounts {
+		if acc.SchoolID == schoolID {
+			if query != "" {
+				// Mock search by name/identifier
+				// Assuming DisplayName is populated in test data
+				// But memoryAccountRepo only sets ID, SchoolID, Role, Status in tests usually.
+				// We need to ensure test data has DisplayName if we want to test name lookup.
+				// For now, let's just check if query matches ID or DisplayName (if present)
+				match := false
+				if strings.Contains(acc.Identifier, query) {
+					match = true
+				}
+				// We don't have DisplayName in Account struct in this file context,
+				// but domain.Account has it.
+				if strings.Contains(acc.DisplayName, query) {
+					match = true
+				}
+				if !match {
+					continue
+				}
+			}
+			result = append(result, *acc)
+		}
+	}
+	return result, int64(len(result)), nil
 }
 
 func (m *memoryAccountRepo) UpdateStatus(ctx context.Context, accountID, schoolID string, status domain.AccountStatus) error {
@@ -123,6 +149,11 @@ func (m *memoryAccountRepo) UpdateStatus(ctx context.Context, accountID, schoolI
 }
 
 func (m *memoryAccountRepo) UpdatePasswordHash(context.Context, string, string) error {
+	return nil
+}
+
+func (m *memoryAccountRepo) Update(ctx context.Context, account *domain.Account) error {
+	m.accounts[account.ID] = account
 	return nil
 }
 
@@ -147,6 +178,7 @@ func (noopTeacherRepo) GetByID(context.Context, string) (*domain.Teacher, error)
 func (noopTeacherRepo) GetByAccountID(context.Context, string) (*domain.Teacher, error) {
 	return nil, nil
 }
+func (noopTeacherRepo) Update(context.Context, *domain.Teacher) error { return nil }
 
 var _ repository.TeacherRepository = (*noopTeacherRepo)(nil)
 
@@ -173,6 +205,7 @@ func (noopStudentRepo) ListByClassID(context.Context, string) ([]domain.Student,
 func (noopStudentRepo) ListByDepartmentID(context.Context, string) ([]domain.Student, error) {
 	return nil, nil
 }
+func (noopStudentRepo) Update(context.Context, *domain.Student) error { return nil }
 
 var _ repository.StudentRepository = (*noopStudentRepo)(nil)
 
@@ -200,6 +233,8 @@ func (noopClassRepo) GetByID(context.Context, string) (*domain.Class, error) {
 func (noopClassRepo) ListByIDs(context.Context, []string) ([]domain.Class, error) { return nil, nil }
 func (noopClassRepo) UpdateName(context.Context, string, string, string) error    { return nil }
 func (noopClassRepo) Delete(context.Context, string, string) error                { return nil }
+func (noopClassRepo) AddTeacher(context.Context, string, string) error            { return nil }
+func (noopClassRepo) RemoveTeacher(context.Context, string, string) error         { return nil }
 
 var _ repository.ClassRepository = (*noopClassRepo)(nil)
 

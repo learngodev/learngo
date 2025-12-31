@@ -24,6 +24,10 @@ func (s *AccountStore) Create(ctx context.Context, account *domain.Account) erro
 	return s.db.WithContext(ctx).Create(account).Error
 }
 
+func (s *AccountStore) Update(ctx context.Context, account *domain.Account) error {
+	return s.db.WithContext(ctx).Save(account).Error
+}
+
 func (s *AccountStore) FindByIdentifier(ctx context.Context, schoolID, identifier string) (*domain.Account, error) {
 	var account domain.Account
 	if err := s.db.WithContext(ctx).Where("school_id = ? AND identifier = ?", schoolID, identifier).First(&account).Error; err != nil {
@@ -139,8 +143,11 @@ func (s *AccountStore) ListByRole(
 	if classID != "" {
 		if role == domain.RoleTeacher {
 			joinTeachers()
-			base = base.Joins("JOIN course_schedules ON course_schedules.teacher_id = teachers.id").
-				Where("course_schedules.class_id = ?", classID)
+			base = base.Where(
+				"teachers.id IN (?) OR teachers.id IN (?)",
+				s.db.Table("course_schedules").Select("teacher_id").Where("class_id = ?", classID),
+				s.db.Table("class_teachers").Select("teacher_id").Where("class_id = ?", classID),
+			)
 		} else {
 			joinStudents()
 			base = base.Where("students.class_id = ?", classID)

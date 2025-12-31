@@ -794,6 +794,10 @@ func (s *stubAccountRepo) UpdatePasswordHash(context.Context, string, string) er
 	panic("unexpected call")
 }
 
+func (s *stubAccountRepo) Update(ctx context.Context, account *domain.Account) error {
+	panic("unexpected call")
+}
+
 func (s *stubAccountRepo) Delete(context.Context, string, string) error {
 	panic("unexpected call")
 }

@@ -40,7 +40,13 @@ func (h *Handler) CreateCourse(c *gin.Context) {
 		return
 	}
 
-	course, err := h.courseService.CreateCourse(c.Request.Context(), schoolID, req.Name, req.Description, req.ImageURL, req.ClassIDs)
+	var teacherIDs []string
+	accountID := getAccountID(c)
+	if teacher, err := h.teacher.GetProfile(c.Request.Context(), accountID); err == nil && teacher != nil {
+		teacherIDs = append(teacherIDs, teacher.ID)
+	}
+
+	course, err := h.courseService.CreateCourse(c.Request.Context(), schoolID, teacherIDs, req.Name, req.Description, req.ImageURL, req.ClassIDs)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, "failed_to_create_course", err.Error())
 		return

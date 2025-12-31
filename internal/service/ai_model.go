@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -17,6 +18,7 @@ import (
 // AIChatModel abstracts provider-specific chat generation.
 type AIChatModel interface {
 	GenerateResponse(ctx context.Context, req AIChatModelRequest) (*AIChatModelResponse, error)
+	StreamResponse(ctx context.Context, req AIChatModelRequest, onChunk func(chunk string) error) (*AIChatModelResponse, error)
 }
 
 // AIChatModelRequest carries the context for generating an assistant reply.
@@ -216,6 +218,167 @@ func (m *OpenAIChatModel) GenerateResponse(ctx context.Context, req AIChatModelR
 	}, nil
 }
 
+// StreamResponse calls the configured provider API with streaming enabled.
+func (m *OpenAIChatModel) StreamResponse(ctx context.Context, req AIChatModelRequest, onChunk func(chunk string) error) (*AIChatModelResponse, error) {
+	start := time.Now()
+
+	if req.Setting == nil {
+		return nil, &ProviderError{Reason: ProviderErrorReasonInput, Message: "ai setting missing"}
+	}
+	if req.Setting.APIKey == "" {
+		return nil, &ProviderError{Reason: ProviderErrorReasonAuth, Message: "api key missing"}
+	}
+
+	baseURL := strings.TrimRight(req.Setting.BaseURL, "/")
+	if baseURL == "" {
+		switch req.Setting.Provider {
+		case domain.AIProviderQwen:
+			baseURL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+		case domain.AIProviderDeepSeek:
+			baseURL = "https://api.deepseek.com"
+		default:
+			return nil, &ProviderError{Reason: ProviderErrorReasonInput, Message: "base url required for custom provider"}
+		}
+	}
+	url := fmt.Sprintf("%s/chat/completions", baseURL)
+
+	messages := []openAIMessage{}
+	if req.Setting.SystemPrompt != "" {
+		messages = append(messages, openAIMessage{Role: "system", Content: req.Setting.SystemPrompt})
+	}
+
+	// Add history messages
+	for _, msg := range req.History {
+		role := "user"
+		if msg.Sender == "assistant" {
+			role = "assistant"
+		}
+		messages = append(messages, openAIMessage{Role: role, Content: msg.Content})
+	}
+
+	messages = append(messages, openAIMessage{Role: "user", Content: req.Message})
+
+	payload := openAIChatRequest{
+		Model:       req.Setting.Model,
+		Messages:    messages,
+		Temperature: req.Setting.Temperature,
+		TopP:        req.Setting.TopP,
+		MaxTokens:   req.Setting.MaxOutputTokens,
+		Stream:      true,
+	}
+
+	bodyBytes, err := json.Marshal(payload)
+	if err != nil {
+		return nil, &ProviderError{Reason: ProviderErrorReasonInput, Err: err}
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(bodyBytes))
+	if err != nil {
+		return nil, &ProviderError{Reason: ProviderErrorReasonTransport, Err: err}
+	}
+
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Accept", "text/event-stream")
+
+	apiKey := strings.TrimSpace(req.Setting.APIKey)
+	if strings.HasPrefix(strings.ToLower(apiKey), "bearer ") {
+		apiKey = strings.TrimSpace(apiKey[7:])
+	}
+	httpReq.Header.Set("Authorization", fmt.Sprintf("Bearer %s", apiKey))
+
+	resp, err := m.client.Do(httpReq)
+	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return nil, &ProviderError{Reason: ProviderErrorReasonTimeout, Err: err}
+		}
+		return nil, &ProviderError{Reason: ProviderErrorReasonTransport, Err: err}
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		var errResp openAIChatResponse
+		_ = json.Unmarshal(respBody, &errResp)
+		msg := fmt.Sprintf("provider error: %d", resp.StatusCode)
+		if errResp.Error != nil {
+			msg = fmt.Sprintf("%s: %s", msg, errResp.Error.Message)
+		}
+		reason := ProviderErrorReasonUpstream
+		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+			reason = ProviderErrorReasonAuth
+		} else if resp.StatusCode == http.StatusTooManyRequests {
+			reason = ProviderErrorReasonQuota
+		} else if resp.StatusCode >= 500 {
+			reason = ProviderErrorReasonUpstream
+		}
+		return nil, &ProviderError{Reason: reason, Message: msg}
+	}
+
+	reader := bufio.NewReader(resp.Body)
+	var fullContent strings.Builder
+
+	for {
+		line, err := reader.ReadBytes('\n')
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return nil, &ProviderError{Reason: ProviderErrorReasonTransport, Err: err}
+		}
+
+		lineStr := strings.TrimSpace(string(line))
+		if lineStr == "" {
+			continue
+		}
+		if !strings.HasPrefix(lineStr, "data: ") {
+			continue
+		}
+		data := strings.TrimPrefix(lineStr, "data: ")
+		if data == "[DONE]" {
+			break
+		}
+
+		var chunk openAIChatStreamResponse
+		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+			continue
+		}
+
+		if len(chunk.Choices) > 0 {
+			delta := chunk.Choices[0].Delta.Content
+			if delta != "" {
+				fullContent.WriteString(delta)
+				if err := onChunk(delta); err != nil {
+					return nil, err
+				}
+			}
+		}
+	}
+
+	content := fullContent.String()
+	// Note: Stream response usually doesn't include usage stats in the last chunk for all providers.
+	// We might need to estimate or just return 0.
+
+	return &AIChatModelResponse{
+		Content:      content,
+		PromptTokens: 0, // Unknown in stream
+		ResultTokens: 0, // Unknown in stream
+		Latency:      time.Since(start),
+		Reason:       ProviderErrorReasonUnknown,
+	}, nil
+}
+
+type openAIChatStreamResponse struct {
+	Choices []openAIChatStreamChoice `json:"choices"`
+}
+
+type openAIChatStreamChoice struct {
+	Delta openAIChatStreamDelta `json:"delta"`
+}
+
+type openAIChatStreamDelta struct {
+	Content string `json:"content"`
+}
+
 type openAIChatRequest struct {
 	Model       string          `json:"model"`
 	Messages    []openAIMessage `json:"messages"`
@@ -275,6 +438,44 @@ func (m *EchoAIChatModel) GenerateResponse(ctx context.Context, req AIChatModelR
 	}
 
 	content := fmt.Sprintf("这是一个示例回答，用于说明 AI 接口尚未接入。你刚才的问题是：%s", trimmed)
+
+	promptTokens := estimateTokens(req.Message)
+	resultTokens := estimateTokens(content)
+
+	return &AIChatModelResponse{
+		Content:      content,
+		PromptTokens: promptTokens,
+		ResultTokens: resultTokens,
+		Latency:      time.Since(start),
+		Reason:       ProviderErrorReasonUnknown,
+	}, nil
+}
+
+// StreamResponse implements AIChatModel by simulating streaming.
+func (m *EchoAIChatModel) StreamResponse(ctx context.Context, req AIChatModelRequest, onChunk func(chunk string) error) (*AIChatModelResponse, error) {
+	start := time.Now()
+
+	trimmed := strings.TrimSpace(req.Message)
+	if trimmed == "" {
+		trimmed = "(空消息)"
+	}
+
+	content := fmt.Sprintf("这是一个示例回答，用于说明 AI 接口尚未接入。你刚才的问题是：%s", trimmed)
+
+	// Simulate streaming
+	runes := []rune(content)
+	chunkSize := 5
+	for i := 0; i < len(runes); i += chunkSize {
+		end := i + chunkSize
+		if end > len(runes) {
+			end = len(runes)
+		}
+		chunk := string(runes[i:end])
+		if err := onChunk(chunk); err != nil {
+			return nil, err
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
 
 	promptTokens := estimateTokens(req.Message)
 	resultTokens := estimateTokens(content)

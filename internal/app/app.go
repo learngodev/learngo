@@ -4,9 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/improbable-eng/grpc-web/go/grpcweb"
+	"github.com/rs/cors"
 	"google.golang.org/grpc"
 
 	apigrpc "learn-go/internal/api/grpcpb"
@@ -96,13 +99,20 @@ func New() (*Application, error) {
 	schoolRepo := gormrepo.NewSchoolStore(db)
 	timeSlotRepo := gormrepo.NewTimeSlotRepository(db)
 	courseStudentRepo := gormrepo.NewCourseStudentStore(db)
+	courseTeacherRepo := gormrepo.NewCourseTeacherStore(db)
 	courseScheduleRepo := gormrepo.NewCourseScheduleStore(db)
 	classroomRepo := gormrepo.NewClassroomRepository(db)
+	notificationRepo := gormrepo.NewNotificationStore(db)
 
 	authService := service.NewAuthService(accountRepo, passwordResetRepo, cfg)
 	aiModel := service.NewOpenAIChatModel()
+	streamHub := realtime.NewHub()
+	notificationHub := realtime.NewNotificationHub()
+	notificationService := service.NewNotificationService(notificationRepo, notificationHub)
+	fileService := service.NewFileService(db, ossCredentialRepo)
+	assignmentService := service.NewAssignmentService(assignmentRepo, submissionRepo, submissionCommentRepo, studentRepo, notificationService, fileService)
+
 	adminService := service.NewAdminService(accountRepo, teacherRepo, studentRepo, departmentRepo, classRepo, teacherStudentRepo, aiModel, aiSettingRepo)
-	assignmentService := service.NewAssignmentService(assignmentRepo, submissionRepo, submissionCommentRepo, studentRepo)
 	teacherPortalService := service.NewTeacherPortalService(teacherRepo, assignmentRepo, submissionRepo, studentRepo, courseSessionRepo, courseRepo, classRepo, courseSlotRepo, accountRepo, courseScheduleRepo)
 	studentPortalService := service.NewStudentPortalService(studentRepo, assignmentRepo, submissionRepo, courseRepo, courseSlotRepo, courseSessionRepo, teacherRepo, accountRepo, studentReminderRepo)
 	conversationService := service.NewConversationService(conversationRepo, messageRepo, receiptRepo, accountRepo)
@@ -112,24 +122,24 @@ func New() (*Application, error) {
 	systemService := service.NewAdminSystemService(systemSwitchRepo, systemParameterRepo, systemBroadcastRepo, systemAuditRepo)
 	aiService := service.NewAIAssistantService(aiSettingRepo, aiAuditRepo, aiSessionRepo, aiUsageLogRepo, aiMessageRepo, accountRepo, aiModel, studentPortalService, teacherPortalService, assignmentService)
 	aiGradingService := service.NewAIGradingService(aiSettingRepo, aiUsageLogRepo, aiModel)
-	streamHub := realtime.NewHub()
-	fileService := service.NewFileService(db, ossCredentialRepo)
 
 	engine := gin.New()
 	engine.Use(gin.Recovery())
 	engine.Use(gin.Logger())
+	engine.Use(middleware.CORS())
 
 	grpcServer := grpc.NewServer(
 		grpc.StreamInterceptor(grpcserver.StreamAuthInterceptor(cfg.JWTSecret, []string{string(domain.RoleStudent), string(domain.RoleTeacher), string(domain.RoleAdmin)})),
 	)
 	apigrpc.RegisterConversationServiceServer(grpcServer, grpcserver.NewConversationServer(conversationService, streamHub))
+	apigrpc.RegisterNotificationServiceServer(grpcServer, grpcserver.NewNotificationServer(notificationHub))
 
 	schoolService := service.NewSchoolService(schoolRepo, timeSlotRepo)
-	courseService := service.NewCourseService(courseRepo, courseStudentRepo, studentRepo, teacherRepo)
+	courseService := service.NewCourseService(courseRepo, courseStudentRepo, courseTeacherRepo, studentRepo, teacherRepo)
 	scheduleService := service.NewScheduleService(timeSlotRepo, courseScheduleRepo, courseSessionRepo, courseRepo, teacherRepo, classroomRepo)
 	classroomService := service.NewClassroomService(classroomRepo)
 
-	handler := apihandlers.NewHandler(authService, adminService, assignmentService, teacherPortalService, studentPortalService, conversationService, noteService, noteCommentService, ossService, systemService, aiService, aiGradingService, schoolService, courseService, scheduleService, classroomService, fileService, streamHub)
+	handler := apihandlers.NewHandler(authService, adminService, assignmentService, teacherPortalService, studentPortalService, conversationService, noteService, noteCommentService, ossService, systemService, aiService, aiGradingService, schoolService, courseService, scheduleService, classroomService, fileService, notificationService, streamHub)
 
 	adminGuard := middleware.JWTAuth(middleware.AuthConfig{Secret: cfg.JWTSecret, AllowedRoles: []string{string(domain.RoleAdmin)}})
 	teacherGuard := middleware.JWTAuth(middleware.AuthConfig{Secret: cfg.JWTSecret, AllowedRoles: []string{string(domain.RoleTeacher), string(domain.RoleAdmin)}})
@@ -154,9 +164,49 @@ func (a *Application) Run() error {
 			a.log.Printf("grpc server stopped: %v", err)
 		}
 	}()
+
+	// gRPC-Web (for Flutter Web)
+	grpcWebAddr := fmt.Sprintf(":%s", a.cfg.GRPCWebPort)
+	wrapped := grpcweb.WrapServer(
+		a.grpc,
+		grpcweb.WithOriginFunc(func(origin string) bool {
+			// Web 端使用 Bearer Token，不依赖 cookie；这里放开跨域由上层网关/部署策略约束。
+			return true
+		}),
+	)
+
+	grpcWebHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if wrapped.IsGrpcWebRequest(r) || wrapped.IsAcceptableGrpcCorsRequest(r) || wrapped.IsGrpcWebSocketRequest(r) {
+			wrapped.ServeHTTP(w, r)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	})
+
+	grpcWebServer := &http.Server{Addr: grpcWebAddr, Handler: cors.New(cors.Options{
+		AllowedOrigins: []string{"*"},
+		AllowedMethods: []string{"POST", "OPTIONS"},
+		AllowedHeaders: []string{
+			"Accept",
+			"Content-Type",
+			"Authorization",
+			"X-Grpc-Web",
+			"X-User-Agent",
+			"Grpc-Timeout",
+		},
+		ExposedHeaders: []string{"Grpc-Status", "Grpc-Message", "Grpc-Status-Details-Bin"},
+	}).Handler(grpcWebHandler)}
+
+	go func() {
+		a.log.Printf("starting grpc-web server on %s", grpcWebAddr)
+		if err := grpcWebServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			a.log.Printf("grpc-web server stopped: %v", err)
+		}
+	}()
 	defer func() {
 		a.grpc.GracefulStop()
 		_ = lis.Close()
+		_ = grpcWebServer.Close()
 	}()
 
 	address := fmt.Sprintf(":%s", a.cfg.HTTPPort)
@@ -165,7 +215,7 @@ func (a *Application) Run() error {
 }
 
 func migrate(db *gorm.DB) error {
-	return db.AutoMigrate(
+	if err := db.AutoMigrate(
 		&domain.School{},
 		&domain.Account{},
 		&domain.Teacher{},
@@ -174,8 +224,10 @@ func migrate(db *gorm.DB) error {
 		&domain.TeacherStudentLink{},
 		&domain.Department{},
 		&domain.Class{},
+		&domain.ClassTeacher{},
 		&domain.Course{},
 		&domain.CourseStudent{},
+		&domain.CourseTeacher{},
 		&domain.CourseSlot{},
 		&domain.CourseSchedule{},
 		&domain.CourseSession{},
@@ -208,7 +260,30 @@ func migrate(db *gorm.DB) error {
 		&domain.File{},
 		&domain.AssignmentAttachment{},
 		&domain.SubmissionAttachment{},
-	)
+	); err != nil {
+		return err
+	}
+
+	return ensurePartialUniqueIndexes(db)
+}
+
+func ensurePartialUniqueIndexes(db *gorm.DB) error {
+	// GORM soft-delete keeps rows with deleted_at set, but a plain UNIQUE index on
+	// identifier will still block re-registration. Replace the auto-created index
+	// with a partial unique index that applies only to active rows.
+	//
+	// Postgres and modern SQLite both support partial indexes.
+	dialect := db.Dialector.Name()
+	switch dialect {
+	case "postgres", "sqlite":
+		// Drop the old unique index created by gorm:"uniqueIndex".
+		if err := db.Exec("DROP INDEX IF EXISTS idx_accounts_identifier").Error; err != nil {
+			return err
+		}
+		return db.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_identifier ON accounts (identifier) WHERE deleted_at IS NULL").Error
+	default:
+		return nil
+	}
 }
 
 func resolveDialector(cfg config.AppConfig) (gorm.Dialector, error) {

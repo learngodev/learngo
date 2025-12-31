@@ -12,21 +12,22 @@ import (
 
 // AppConfig holds runtime configuration flags.
 type AppConfig struct {
-	AppName         string
-	Environment     string
-	HTTPPort        string
-	GRPCPort        string
-	DatabaseDriver  string
-	DatabaseDSN     string
-	JWTSecret       string
-	RefreshSecret   string
-	TokenTTL        int64
-	RefreshTokenTTL int64
+	AppName               string
+	Environment           string
+	HTTPPort              string
+	GRPCPort              string
+	GRPCWebPort           string
+	DatabaseDriver        string
+	DatabaseDSN           string
+	JWTSecret             string
+	RefreshSecret         string
+	TokenTTL              int64
+	RefreshTokenTTL       int64
 	PasswordResetTokenTTL int64
-	OssEndpoint     string
-	OssAccessKey    string
-	OssSecretKey    string
-	OssBucket       string
+	OssEndpoint           string
+	OssAccessKey          string
+	OssSecretKey          string
+	OssBucket             string
 }
 
 var (
@@ -40,21 +41,22 @@ func Load() AppConfig {
 		loadDotEnv()
 
 		cfg = AppConfig{
-			AppName:         getEnv("APP_NAME", "LearnGo"),
-			Environment:     getEnv("APP_ENV", "local"),
-			HTTPPort:        getEnv("HTTP_PORT", "8080"),
-			GRPCPort:        getEnv("GRPC_PORT", "9090"),
-			DatabaseDriver:  getEnv("DATABASE_DRIVER", "sqlite"),
-			DatabaseDSN:     getEnv("DATABASE_DSN", "file:learn-go.db?cache=shared&_foreign_keys=on"),
-			JWTSecret:       mustEnv("JWT_SECRET"),
-			RefreshSecret:   mustEnv("REFRESH_SECRET"),
-			TokenTTL:        getEnvAsInt64("TOKEN_TTL", 3600),
-			RefreshTokenTTL: getEnvAsInt64("REFRESH_TOKEN_TTL", 2592000),
+			AppName:               getEnv("APP_NAME", "LearnGo"),
+			Environment:           getEnv("APP_ENV", "local"),
+			HTTPPort:              getEnv("HTTP_PORT", "8080"),
+			GRPCPort:              getEnv("GRPC_PORT", "9090"),
+			GRPCWebPort:           getEnv("GRPC_WEB_PORT", "9091"),
+			DatabaseDriver:        getEnv("DATABASE_DRIVER", "sqlite"),
+			DatabaseDSN:           getEnv("DATABASE_DSN", "file:learn-go.db?cache=shared&_foreign_keys=on"),
+			JWTSecret:             mustEnv("JWT_SECRET"),
+			RefreshSecret:         mustEnv("REFRESH_SECRET"),
+			TokenTTL:              getEnvAsInt64("TOKEN_TTL", 3600),
+			RefreshTokenTTL:       getEnvAsInt64("REFRESH_TOKEN_TTL", 2592000),
 			PasswordResetTokenTTL: getEnvAsInt64("PASSWORD_RESET_TOKEN_TTL", 900),
-			OssEndpoint:     getEnv("OSS_ENDPOINT", ""),
-			OssAccessKey:    getEnv("OSS_ACCESS_KEY", ""),
-			OssSecretKey:    getEnv("OSS_SECRET_KEY", ""),
-			OssBucket:       getEnv("OSS_BUCKET", ""),
+			OssEndpoint:           getEnv("OSS_ENDPOINT", ""),
+			OssAccessKey:          getEnv("OSS_ACCESS_KEY", ""),
+			OssSecretKey:          getEnv("OSS_SECRET_KEY", ""),
+			OssBucket:             getEnv("OSS_BUCKET", ""),
 		}
 	})
 

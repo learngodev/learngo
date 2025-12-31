@@ -30,7 +30,7 @@ type Account struct {
 	SchoolID     string        `gorm:"size:36;index"`
 	Role         Role          `gorm:"size:16;index"`
 	Status       AccountStatus `gorm:"size:32;index;default:'active'"`
-	Identifier   string        `gorm:"size:64;uniqueIndex"` // teacher number or student number
+	Identifier   string        `gorm:"size:64;uniqueIndex:idx_accounts_identifier,where:deleted_at IS NULL"` // teacher number or student number
 	PasswordHash string        `gorm:"size:128"`
 	DisplayName  string        `gorm:"size:128"`
 	CreatedAt    time.Time
@@ -201,6 +201,9 @@ type Course struct {
 	InvitationCode string    `gorm:"size:32;index" json:"invitation_code"`
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
+
+	// Relations
+	Teachers []Teacher `gorm:"many2many:course_teachers;" json:"teachers,omitempty"`
 }
 
 // CourseAssignmentInfo represents enriched course assignment data.
@@ -237,6 +240,22 @@ type CourseStudent struct {
 	ID        string `gorm:"primaryKey;size:36"`
 	CourseID  string `gorm:"size:36;index"`
 	StudentID string `gorm:"size:36;index"`
+	CreatedAt time.Time
+}
+
+// ClassTeacher links a teacher to a class.
+type ClassTeacher struct {
+	ID        string `gorm:"primaryKey;size:36"`
+	ClassID   string `gorm:"size:36;index"`
+	TeacherID string `gorm:"size:36;index"`
+	CreatedAt time.Time
+}
+
+// CourseTeacher links a teacher to a course.
+type CourseTeacher struct {
+	ID        string `gorm:"primaryKey;size:36"`
+	CourseID  string `gorm:"size:36;index"`
+	TeacherID string `gorm:"size:36;index"`
 	CreatedAt time.Time
 }
 
@@ -375,6 +394,7 @@ type OssCredential struct {
 	DirectoryPrefix      string `gorm:"size:128"`
 	AllowPublicRead      bool   `gorm:"default:false"`
 	AllowMultipartUpload bool   `gorm:"default:false"`
+	UseRelayUpload       bool   `gorm:"default:false"`
 	IsPrimary            bool   `gorm:"index"`
 	Active               bool   `gorm:"index"`
 	LastRotatedAt        *time.Time
@@ -616,9 +636,9 @@ type File struct {
 	SchoolID   string    `gorm:"size:36;index" json:"school_id"`
 	UploaderID string    `gorm:"size:36;index" json:"uploader_id"`
 	Name       string    `gorm:"size:256" json:"name"`
-	Key        string    `gorm:"size:256" json:"key"` // OSS Object Key
-	URL        string    `gorm:"size:512" json:"url"` // Public or Presigned URL
-	Type       string    `gorm:"size:64" json:"type"` // MIME type
+	Key        string    `gorm:"size:256" json:"key"`  // OSS Object Key
+	URL        string    `gorm:"size:512" json:"url"`  // Public or Presigned URL
+	Type       string    `gorm:"size:255" json:"type"` // MIME type
 	Size       int64     `json:"size"`
 	CreatedAt  time.Time `json:"created_at"`
 }
@@ -637,4 +657,24 @@ type SubmissionAttachment struct {
 	SubmissionID string `gorm:"size:36;index"`
 	FileID       string `gorm:"size:36;index"`
 	CreatedAt    time.Time
+}
+
+// NotificationType defines the type of notification.
+type NotificationType string
+
+const (
+	NotificationTypeAssignment NotificationType = "assignment"
+	NotificationTypeSystem     NotificationType = "system"
+)
+
+// Notification represents a user notification.
+type Notification struct {
+	ID          string           `gorm:"primaryKey;size:36" json:"id"`
+	UserID      string           `gorm:"size:36;index" json:"user_id"`
+	Title       string           `gorm:"size:256" json:"title"`
+	Content     string           `gorm:"type:text" json:"content"`
+	Type        NotificationType `gorm:"size:32" json:"type"`
+	ReferenceID string           `gorm:"size:36" json:"reference_id"`
+	IsRead      bool             `gorm:"default:false" json:"is_read"`
+	CreatedAt   time.Time        `json:"created_at"`
 }

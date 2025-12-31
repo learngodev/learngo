@@ -78,15 +78,15 @@ func (s *AIGradingService) CheckAssignment(ctx context.Context, input CheckAssig
 	}
 
 	prompt := fmt.Sprintf(`
-You are a helpful teaching assistant. Please review the following assignment submission and provide feedback to the student in Chinese (Simplified).
+You are a helpful teaching assistant. Please review the following assignment submission (or a single question answer) and provide feedback to the student in Chinese (Simplified).
 Focus on:
 1. Relevance to the topic.
 2. Clarity and structure.
 3. Grammar and spelling (if applicable).
 4. Word count requirements (if applicable).
 
-Assignment Title: %s
-Assignment Description: %s
+Assignment/Question Title: %s
+Description/Prompt: %s
 
 Student Submission:
 %s

@@ -3,6 +3,7 @@ package oss
 import (
 	"context"
 	"io"
+	"strings"
 )
 
 // Client defines interface for interacting with Object Storage Service.
@@ -16,6 +17,10 @@ type Client interface {
 
 	// PutObject uploads data directly from server.
 	PutObject(objectKey string, reader io.Reader) error
+
+	// GetObject downloads object content for server-side relay.
+	// Caller must close the returned ReadCloser.
+	GetObject(objectKey string) (io.ReadCloser, error)
 
 	// DeleteObject deletes an object.
 	DeleteObject(objectKey string) error
@@ -50,6 +55,10 @@ func (c *StaticClient) SignURL(objectKey string, method string, expiredInSec int
 
 func (c *StaticClient) PutObject(objectKey string, reader io.Reader) error {
 	return nil
+}
+
+func (c *StaticClient) GetObject(objectKey string) (io.ReadCloser, error) {
+	return io.NopCloser(strings.NewReader("")), nil
 }
 
 func (c *StaticClient) DeleteObject(objectKey string) error {
