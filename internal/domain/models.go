@@ -468,7 +468,7 @@ const (
 	AIProviderDeepSeek AIProvider = "deepseek"
 )
 
-// AIAgentSetting stores per-school AI assistant configuration.
+// AIAgentSetting stores per-school AI configuration.
 type AIAgentSetting struct {
 	ID                      string     `gorm:"primaryKey;size:36"`
 	SchoolID                string     `gorm:"size:36;index"`
@@ -490,7 +490,7 @@ type AIAgentSetting struct {
 	UpdatedAt               time.Time
 }
 
-// AIAgentSettingAudit tracks administrative changes to AI assistant settings.
+// AIAgentSettingAudit tracks administrative changes to AI settings.
 type AIAgentSettingAudit struct {
 	ID           string    `gorm:"primaryKey;size:36"`
 	SchoolID     string    `gorm:"size:36;index"`
@@ -499,21 +499,6 @@ type AIAgentSettingAudit struct {
 	Action       string    `gorm:"size:64"`
 	Detail       string    `gorm:"type:text"`
 	CreatedAt    time.Time `gorm:"index"`
-}
-
-// AIChatSession groups student AI assistant interactions.
-type AIChatSession struct {
-	ID            string    `gorm:"primaryKey;size:36"`
-	SchoolID      string    `gorm:"size:36;index"`
-	AccountID     string    `gorm:"size:36;index"`
-	Role          Role      `gorm:"size:16"`
-	Title         string    `gorm:"size:256"`
-	LastMessageAt time.Time `gorm:"index"`
-	MessageCount  int       `gorm:"default:0"`
-	TokenCount    int       `gorm:"default:0"`
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
-	ClosedAt      *time.Time
 }
 
 // SystemSwitch persists administrative feature toggles.
@@ -574,18 +559,6 @@ type SystemAuditLog struct {
 	Detail    string    `gorm:"size:512"`
 	TimeLabel string    `gorm:"size:64"`
 	CreatedAt time.Time `gorm:"index"`
-}
-
-// AIChatMessage stores individual AI assistant exchanges.
-type AIChatMessage struct {
-	ID           string    `gorm:"primaryKey;size:36"`
-	SessionID    string    `gorm:"size:36;index"`
-	Sender       string    `gorm:"size:16"`
-	Content      string    `gorm:"type:text"`
-	PromptTokens int       `gorm:"default:0"`
-	ResultTokens int       `gorm:"default:0"`
-	LatencyMS    int       `gorm:"default:0"`
-	CreatedAt    time.Time `gorm:"index"`
 }
 
 // AIUsageLog tracks token usage for non-chat AI features (e.g. grading, generation).

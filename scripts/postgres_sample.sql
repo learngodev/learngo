@@ -12,8 +12,6 @@ DROP TABLE IF EXISTS oss_policies CASCADE;
 DROP TABLE IF EXISTS oss_credentials CASCADE;
 DROP TABLE IF EXISTS note_comments CASCADE;
 DROP TABLE IF EXISTS notes CASCADE;
-DROP TABLE IF EXISTS ai_chat_messages CASCADE;
-DROP TABLE IF EXISTS ai_chat_sessions CASCADE;
 DROP TABLE IF EXISTS ai_agent_setting_audits CASCADE;
 DROP TABLE IF EXISTS ai_agent_settings CASCADE;
 DROP TABLE IF EXISTS message_receipts CASCADE;
@@ -534,7 +532,7 @@ VALUES ('44444444-5555-6666-7777-888888888888', '11111111-1111-1111-1111-1111111
 INSERT INTO note_comments (id, note_id, author_id, author_role, content)
 VALUES ('55555555-6666-7777-8888-999999999999', '44444444-5555-6666-7777-888888888888', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'teacher', '很好，补充下实验截图会更完整。');
 
--- AI Assistant tables -------------------------------------------------------
+-- AI tables ----------------------------------------------------------------
 CREATE TABLE ai_agent_settings (
     id                        CHAR(36) PRIMARY KEY,
     school_id                 CHAR(36) NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
@@ -565,35 +563,6 @@ CREATE TABLE ai_agent_setting_audits (
     detail        TEXT,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
-CREATE TABLE ai_chat_sessions (
-    id              CHAR(36) PRIMARY KEY,
-    school_id       CHAR(36) NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
-    account_id      CHAR(36) NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-    role            VARCHAR(16),
-    title           VARCHAR(256),
-    last_message_at TIMESTAMPTZ,
-    message_count   INT DEFAULT 0,
-    token_count     INT DEFAULT 0,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    closed_at       TIMESTAMPTZ
-);
-
-CREATE INDEX ai_chat_sessions_last_message_at_idx ON ai_chat_sessions(last_message_at);
-
-CREATE TABLE ai_chat_messages (
-    id            CHAR(36) PRIMARY KEY,
-    session_id    CHAR(36) NOT NULL REFERENCES ai_chat_sessions(id) ON DELETE CASCADE,
-    sender        VARCHAR(16),
-    content       TEXT,
-    prompt_tokens INT DEFAULT 0,
-    result_tokens INT DEFAULT 0,
-    latency_ms    INT DEFAULT 0,
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX ai_chat_messages_created_at_idx ON ai_chat_messages(created_at);
 
 CREATE TABLE ai_usage_logs (
     id            CHAR(36) PRIMARY KEY,

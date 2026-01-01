@@ -273,8 +273,6 @@ type MessageRepository interface {
 // AIUsageLogRepository persists non-chat AI usage logs.
 type AIUsageLogRepository interface {
 	Create(ctx context.Context, log *domain.AIUsageLog) error
-	UsageByRoleSince(ctx context.Context, schoolID string, since time.Time) (map[domain.Role]AIChatUsageTotals, error)
-	UsageTimelineBySchool(ctx context.Context, schoolID string, start, end time.Time, role domain.Role) ([]AIChatUsageTimelinePoint, error)
 }
 
 // MessageReceiptRepository records read state for messages.
@@ -310,7 +308,7 @@ type OssAuditRepository interface {
 	ListRecent(ctx context.Context, schoolID string, limit int) ([]domain.OssAuditLog, error)
 }
 
-// AIAgentSettingRepository manages AI assistant configuration records.
+// AIAgentSettingRepository manages per-school AI configuration records.
 type AIAgentSettingRepository interface {
 	GetBySchoolID(ctx context.Context, schoolID string) (*domain.AIAgentSetting, error)
 	Upsert(ctx context.Context, setting *domain.AIAgentSetting) error
@@ -320,77 +318,6 @@ type AIAgentSettingRepository interface {
 type AIAgentSettingAuditRepository interface {
 	Create(ctx context.Context, entry *domain.AIAgentSettingAudit) error
 	ListRecent(ctx context.Context, schoolID string, limit int) ([]domain.AIAgentSettingAudit, error)
-}
-
-// AIChatSessionRepository persists AI assistant session metadata.
-type AIChatSessionRepository interface {
-	Create(ctx context.Context, session *domain.AIChatSession) error
-	GetByID(ctx context.Context, sessionID string) (*domain.AIChatSession, error)
-	ListByAccount(ctx context.Context, accountID string, limit int) ([]domain.AIChatSession, error)
-	UpdateFields(ctx context.Context, sessionID string, updates map[string]any) error
-	Delete(ctx context.Context, sessionID string) error
-}
-
-// AIChatMessageRepository persists AI assistant message transcripts.
-type AIChatMessageRepository interface {
-	Create(ctx context.Context, message *domain.AIChatMessage) error
-	ListBySession(ctx context.Context, sessionID string, limit int, before time.Time) ([]domain.AIChatMessage, error)
-	CountUserMessagesSince(ctx context.Context, accountID string, since time.Time) (int64, error)
-	UsageStatsByAccountSince(ctx context.Context, accountID string, since time.Time) (AIChatUsageStats, error)
-	UsageStatsBySchoolSince(ctx context.Context, schoolID string, since time.Time, role domain.Role, limit int, offset int, sort AIChatUsageSort) ([]AIChatAccountUsage, error)
-	UsageTotalsBySchoolSince(ctx context.Context, schoolID string, since time.Time, role domain.Role) (AIChatUsageTotals, error)
-	UsageByRoleSince(ctx context.Context, schoolID string, since time.Time) (map[domain.Role]AIChatUsageTotals, error)
-	UsageTimelineBySchool(ctx context.Context, schoolID string, start time.Time, end time.Time, role domain.Role) ([]AIChatUsageTimelinePoint, error)
-}
-
-// SortDirection enumerates basic ordering options.
-type SortDirection string
-
-const (
-	SortDirectionAsc  SortDirection = "asc"
-	SortDirectionDesc SortDirection = "desc"
-)
-
-// AIChatUsageSortField enumerates sortable usage columns.
-type AIChatUsageSortField string
-
-const (
-	AIChatUsageSortUserMessages  AIChatUsageSortField = "user_messages"
-	AIChatUsageSortTotalMessages AIChatUsageSortField = "total_messages"
-	AIChatUsageSortTotalTokens   AIChatUsageSortField = "total_tokens"
-)
-
-// AIChatUsageSort configures ordering for usage stats queries.
-type AIChatUsageSort struct {
-	Field     AIChatUsageSortField
-	Direction SortDirection
-}
-
-// AIChatUsageStats aggregates AI usage activity.
-type AIChatUsageStats struct {
-	UserMessages      int64
-	AssistantMessages int64
-	PromptTokens      int64
-	ResultTokens      int64
-}
-
-// AIChatAccountUsage aggregates usage information for a single account.
-type AIChatAccountUsage struct {
-	AccountID string
-	AIChatUsageStats
-}
-
-// AIChatUsageTotals aggregates usage across a school.
-type AIChatUsageTotals struct {
-	AccountCount int64
-	AIChatUsageStats
-}
-
-// AIChatUsageTimelinePoint aggregates usage within a fixed time bucket.
-type AIChatUsageTimelinePoint struct {
-	Bucket       time.Time
-	AccountCount int64
-	AIChatUsageStats
 }
 
 // SystemSwitchRepository persists admin feature toggles.

@@ -23,8 +23,8 @@ import (
 	"learn-go/pkg/logger"
 	"learn-go/pkg/middleware"
 
+	"github.com/glebarez/sqlite"
 	"gorm.io/driver/postgres"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
 )
@@ -88,8 +88,6 @@ func New() (*Application, error) {
 	ossAuditRepo := gormrepo.NewOssAuditStore(db)
 	aiSettingRepo := gormrepo.NewAIAgentSettingStore(db)
 	aiAuditRepo := gormrepo.NewAIAgentSettingAuditStore(db)
-	aiSessionRepo := gormrepo.NewAIChatSessionStore(db)
-	aiMessageRepo := gormrepo.NewAIChatMessageStore(db)
 	aiUsageLogRepo := gormrepo.NewAIUsageLogStore(db)
 	systemSwitchRepo := gormrepo.NewSystemSwitchStore(db)
 	systemParameterRepo := gormrepo.NewSystemParameterStore(db)
@@ -120,7 +118,7 @@ func New() (*Application, error) {
 	noteCommentService := service.NewNoteCommentService(noteRepo, noteCommentRepo, accountRepo)
 	ossService := service.NewAdminOssService(ossCredentialRepo, ossPolicyRepo, ossAuditRepo, accountRepo)
 	systemService := service.NewAdminSystemService(systemSwitchRepo, systemParameterRepo, systemBroadcastRepo, systemAuditRepo)
-	aiService := service.NewAIAssistantService(aiSettingRepo, aiAuditRepo, aiSessionRepo, aiUsageLogRepo, aiMessageRepo, accountRepo, aiModel, studentPortalService, teacherPortalService, assignmentService)
+	aiSettingsService := service.NewAISettingsService(aiSettingRepo, aiAuditRepo, accountRepo)
 	aiGradingService := service.NewAIGradingService(aiSettingRepo, aiUsageLogRepo, aiModel)
 
 	engine := gin.New()
@@ -139,7 +137,7 @@ func New() (*Application, error) {
 	scheduleService := service.NewScheduleService(timeSlotRepo, courseScheduleRepo, courseSessionRepo, courseRepo, teacherRepo, classroomRepo)
 	classroomService := service.NewClassroomService(classroomRepo)
 
-	handler := apihandlers.NewHandler(authService, adminService, assignmentService, teacherPortalService, studentPortalService, conversationService, noteService, noteCommentService, ossService, systemService, aiService, aiGradingService, schoolService, courseService, scheduleService, classroomService, fileService, notificationService, streamHub)
+	handler := apihandlers.NewHandler(authService, adminService, assignmentService, teacherPortalService, studentPortalService, conversationService, noteService, noteCommentService, ossService, systemService, aiSettingsService, aiGradingService, schoolService, courseService, scheduleService, classroomService, fileService, notificationService, streamHub)
 
 	adminGuard := middleware.JWTAuth(middleware.AuthConfig{Secret: cfg.JWTSecret, AllowedRoles: []string{string(domain.RoleAdmin)}})
 	teacherGuard := middleware.JWTAuth(middleware.AuthConfig{Secret: cfg.JWTSecret, AllowedRoles: []string{string(domain.RoleTeacher), string(domain.RoleAdmin)}})
@@ -215,6 +213,20 @@ func (a *Application) Run() error {
 }
 
 func migrate(db *gorm.DB) error {
+	// Legacy AI chat tables are removed from the product.
+	// Drop them if they still exist (messages first due to FK dependencies).
+	migrator := db.Migrator()
+	if migrator.HasTable("ai_chat_messages") {
+		if err := migrator.DropTable("ai_chat_messages"); err != nil {
+			return err
+		}
+	}
+	if migrator.HasTable("ai_chat_sessions") {
+		if err := migrator.DropTable("ai_chat_sessions"); err != nil {
+			return err
+		}
+	}
+
 	if err := db.AutoMigrate(
 		&domain.School{},
 		&domain.Account{},
@@ -251,9 +263,7 @@ func migrate(db *gorm.DB) error {
 		&domain.SystemAuditLog{},
 		&domain.AIAgentSetting{},
 		&domain.AIAgentSettingAudit{},
-		&domain.AIChatSession{},
 		&domain.AIUsageLog{},
-		&domain.AIChatMessage{},
 		&domain.PasswordResetToken{},
 		&domain.TimeSlot{},
 		&domain.Classroom{},

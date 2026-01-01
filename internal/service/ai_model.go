@@ -24,9 +24,7 @@ type AIChatModel interface {
 // AIChatModelRequest carries the context for generating an assistant reply.
 type AIChatModelRequest struct {
 	Setting *domain.AIAgentSetting
-	Session *domain.AIChatSession
 	Message string
-	History []domain.AIChatMessage
 }
 
 // AIChatModelResponse contains the assistant output and usage metadata.
@@ -131,15 +129,6 @@ func (m *OpenAIChatModel) GenerateResponse(ctx context.Context, req AIChatModelR
 	messages := []openAIMessage{}
 	if req.Setting.SystemPrompt != "" {
 		messages = append(messages, openAIMessage{Role: "system", Content: req.Setting.SystemPrompt})
-	}
-
-	// Add history messages
-	for _, msg := range req.History {
-		role := "user"
-		if msg.Sender == "assistant" {
-			role = "assistant"
-		}
-		messages = append(messages, openAIMessage{Role: role, Content: msg.Content})
 	}
 
 	messages = append(messages, openAIMessage{Role: "user", Content: req.Message})
@@ -248,13 +237,6 @@ func (m *OpenAIChatModel) StreamResponse(ctx context.Context, req AIChatModelReq
 	}
 
 	// Add history messages
-	for _, msg := range req.History {
-		role := "user"
-		if msg.Sender == "assistant" {
-			role = "assistant"
-		}
-		messages = append(messages, openAIMessage{Role: role, Content: msg.Content})
-	}
 
 	messages = append(messages, openAIMessage{Role: "user", Content: req.Message})
 
