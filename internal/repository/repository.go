@@ -182,6 +182,18 @@ type CourseTeacherRepository interface {
 	ListByCourseID(ctx context.Context, courseID string) ([]domain.CourseTeacher, error)
 }
 
+// CourseChapterRepository manages after-class learning chapters for a course.
+type CourseChapterRepository interface {
+	ListByCourse(ctx context.Context, courseID string) ([]domain.CourseChapter, error)
+	GetByID(ctx context.Context, courseID string, chapterID string) (*domain.CourseChapter, error)
+	ListFiles(ctx context.Context, chapterID string) ([]domain.File, error)
+	Create(ctx context.Context, chapter *domain.CourseChapter) error
+	UpdateFields(ctx context.Context, courseID string, chapterID string, updates map[string]any) (*domain.CourseChapter, error)
+	Delete(ctx context.Context, courseID string, chapterID string) error
+	AttachFile(ctx context.Context, chapterID string, fileID string) error
+	DetachFile(ctx context.Context, chapterID string, fileID string) error
+}
+
 // AssignmentRepository handles assignments.
 type AssignmentRepository interface {
 	Create(ctx context.Context, assignment *domain.Assignment, questions []domain.AssignmentQuestion, attachments []domain.AssignmentAttachment) error

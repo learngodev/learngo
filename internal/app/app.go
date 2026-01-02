@@ -71,6 +71,7 @@ func New() (*Application, error) {
 	departmentRepo := gormrepo.NewDepartmentStore(db)
 	classRepo := gormrepo.NewClassStore(db)
 	courseRepo := gormrepo.NewCourseStore(db)
+	courseChapterRepo := gormrepo.NewCourseChapterStore(db)
 	courseSlotRepo := gormrepo.NewCourseSlotStore(db)
 	courseSessionRepo := gormrepo.NewCourseSessionStore(db)
 	teacherStudentRepo := gormrepo.NewTeacherStudentStore(db)
@@ -111,8 +112,8 @@ func New() (*Application, error) {
 	assignmentService := service.NewAssignmentService(assignmentRepo, submissionRepo, submissionCommentRepo, studentRepo, notificationService, fileService)
 
 	adminService := service.NewAdminService(accountRepo, teacherRepo, studentRepo, departmentRepo, classRepo, teacherStudentRepo, aiModel, aiSettingRepo)
-	teacherPortalService := service.NewTeacherPortalService(teacherRepo, assignmentRepo, submissionRepo, studentRepo, courseSessionRepo, courseRepo, classRepo, courseSlotRepo, accountRepo, courseScheduleRepo)
-	studentPortalService := service.NewStudentPortalService(studentRepo, assignmentRepo, submissionRepo, courseRepo, courseSlotRepo, courseSessionRepo, teacherRepo, accountRepo, studentReminderRepo)
+	teacherPortalService := service.NewTeacherPortalService(teacherRepo, assignmentRepo, submissionRepo, studentRepo, courseSessionRepo, courseRepo, classRepo, courseSlotRepo, accountRepo, courseScheduleRepo, courseChapterRepo)
+	studentPortalService := service.NewStudentPortalService(studentRepo, assignmentRepo, submissionRepo, courseRepo, courseChapterRepo, courseSlotRepo, courseSessionRepo, teacherRepo, accountRepo, studentReminderRepo)
 	conversationService := service.NewConversationService(conversationRepo, messageRepo, receiptRepo, accountRepo)
 	noteService := service.NewNoteService(noteRepo, accountRepo)
 	noteCommentService := service.NewNoteCommentService(noteRepo, noteCommentRepo, accountRepo)
@@ -238,6 +239,8 @@ func migrate(db *gorm.DB) error {
 		&domain.Class{},
 		&domain.ClassTeacher{},
 		&domain.Course{},
+		&domain.CourseChapter{},
+		&domain.CourseChapterAttachment{},
 		&domain.CourseStudent{},
 		&domain.CourseTeacher{},
 		&domain.CourseSlot{},

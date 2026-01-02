@@ -21,6 +21,8 @@ var (
 	ErrStudentReminderNotFound = errors.New("student reminder not found")
 	// ErrStudentReminderInvalid indicates create/update payload is invalid.
 	ErrStudentReminderInvalid = errors.New("student reminder invalid")
+	// ErrCourseAccessDenied indicates the student doesn't have access to the course.
+	ErrCourseAccessDenied = errors.New("course access denied")
 )
 
 // StudentPortalService aggregates academic data for students.
@@ -29,6 +31,7 @@ type StudentPortalService struct {
 	assignments repository.AssignmentRepository
 	submissions repository.SubmissionRepository
 	courses     repository.CourseRepository
+	chapters    repository.CourseChapterRepository
 	slots       repository.CourseSlotRepository
 	sessions    repository.CourseSessionRepository
 	teachers    repository.TeacherRepository
@@ -59,6 +62,7 @@ func NewStudentPortalService(
 	assignments repository.AssignmentRepository,
 	submissions repository.SubmissionRepository,
 	courses repository.CourseRepository,
+	chapters repository.CourseChapterRepository,
 	slots repository.CourseSlotRepository,
 	sessions repository.CourseSessionRepository,
 	teachers repository.TeacherRepository,
@@ -70,6 +74,7 @@ func NewStudentPortalService(
 		assignments: assignments,
 		submissions: submissions,
 		courses:     courses,
+		chapters:    chapters,
 		slots:       slots,
 		sessions:    sessions,
 		teachers:    teachers,
@@ -167,7 +172,8 @@ type UpdateStudentReminderInput struct {
 }
 
 // ListAssignments returns assignments for the student's class.
-func (s *StudentPortalService) ListAssignments(ctx context.Context, accountID string, limit int) ([]StudentAssignmentItem, error) {
+// If courseID is provided, results will be filtered to that course.
+func (s *StudentPortalService) ListAssignments(ctx context.Context, accountID string, limit int, courseID string) ([]StudentAssignmentItem, error) {
 	student, err := s.students.GetByAccountID(ctx, accountID)
 	if err != nil {
 		return nil, err
@@ -184,7 +190,70 @@ func (s *StudentPortalService) ListAssignments(ctx context.Context, accountID st
 	if err != nil {
 		return nil, err
 	}
+
+	if trimmed := strings.TrimSpace(courseID); trimmed != "" {
+		filtered := make([]domain.Assignment, 0, len(assignments))
+		for _, a := range assignments {
+			if a.CourseID == trimmed {
+				filtered = append(filtered, a)
+			}
+		}
+		assignments = filtered
+	}
+
 	return s.buildAssignmentItems(ctx, student.ID, assignments)
+}
+
+func (s *StudentPortalService) ensureStudentCourseAccess(ctx context.Context, studentID string, courseID string) error {
+	courses, err := s.courses.ListByStudentID(ctx, studentID)
+	if err != nil {
+		return err
+	}
+	for _, course := range courses {
+		if course.ID == courseID {
+			return nil
+		}
+	}
+	return ErrCourseAccessDenied
+}
+
+// ListCourseChapters lists chapters for a course the student is enrolled in.
+func (s *StudentPortalService) ListCourseChapters(ctx context.Context, accountID string, courseID string) ([]domain.CourseChapter, error) {
+	student, err := s.students.GetByAccountID(ctx, accountID)
+	if err != nil {
+		return nil, err
+	}
+	if student == nil {
+		return nil, ErrStudentProfileNotFound
+	}
+	if err := s.ensureStudentCourseAccess(ctx, student.ID, courseID); err != nil {
+		return nil, err
+	}
+	return s.chapters.ListByCourse(ctx, courseID)
+}
+
+// GetCourseChapter returns a single chapter and its attached files.
+func (s *StudentPortalService) GetCourseChapter(ctx context.Context, accountID string, courseID string, chapterID string) (*domain.CourseChapter, []domain.File, error) {
+	student, err := s.students.GetByAccountID(ctx, accountID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if student == nil {
+		return nil, nil, ErrStudentProfileNotFound
+	}
+	if err := s.ensureStudentCourseAccess(ctx, student.ID, courseID); err != nil {
+		return nil, nil, err
+	}
+
+	chapter, err := s.chapters.GetByID(ctx, courseID, chapterID)
+	if err != nil {
+		return nil, nil, err
+	}
+	files, err := s.chapters.ListFiles(ctx, chapterID)
+	if err != nil {
+		return nil, nil, err
+	}
+	return chapter, files, nil
 }
 
 // ListExams returns exam-type assignments for the student's class.

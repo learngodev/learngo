@@ -69,6 +69,7 @@ func TestTeacherPortalService_GetAssignmentDetail(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		nil,
 	)
 
 	detail, err := svc.GetAssignmentDetail(context.Background(), "acc-1", "assign-1", true)
@@ -98,7 +99,7 @@ func TestTeacherPortalService_GetAssignmentDetailForbidden(t *testing.T) {
 	courseRepo := &fakeCourseRepo{}
 	classRepo := &fakeClassRepo{}
 
-	svc := NewTeacherPortalService(teacherRepo, assignmentRepo, submissionRepo, studentRepo, nil, courseRepo, classRepo, nil, nil, nil)
+	svc := NewTeacherPortalService(teacherRepo, assignmentRepo, submissionRepo, studentRepo, nil, courseRepo, classRepo, nil, nil, nil, nil)
 
 	_, err := svc.GetAssignmentDetail(context.Background(), "acc-1", "assign-1", false)
 	if !errors.Is(err, ErrTeacherAssignmentForbidden) {
@@ -120,7 +121,7 @@ func TestTeacherPortalService_GetAssignmentDetailHideAnswers(t *testing.T) {
 	studentRepo := &fakeStudentRepo{}
 	courseRepo := &fakeCourseRepo{}
 	classRepo := &fakeClassRepo{}
-	svc := NewTeacherPortalService(teacherRepo, assignmentRepo, submissionRepo, studentRepo, nil, courseRepo, classRepo, nil, nil, nil)
+	svc := NewTeacherPortalService(teacherRepo, assignmentRepo, submissionRepo, studentRepo, nil, courseRepo, classRepo, nil, nil, nil, nil)
 
 	detail, err := svc.GetAssignmentDetail(context.Background(), "acc-1", "assign-1", false)
 	if err != nil {
@@ -167,7 +168,7 @@ func TestTeacherPortalService_ExportAssignmentGrades(t *testing.T) {
 		"acct-2": {ID: "acct-2", DisplayName: "Bob"},
 	}}
 
-	svc := NewTeacherPortalService(teacherRepo, assignmentRepo, submissionRepo, studentRepo, nil, courseRepo, classRepo, nil, accountRepo, nil)
+	svc := NewTeacherPortalService(teacherRepo, assignmentRepo, submissionRepo, studentRepo, nil, courseRepo, classRepo, nil, accountRepo, nil, nil)
 
 	export, err := svc.ExportAssignmentGrades(context.Background(), "acc-1", "assign-1")
 	if err != nil {

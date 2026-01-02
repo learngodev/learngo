@@ -198,6 +198,8 @@ func (h *Handler) RegisterRoutes(r *gin.Engine, adminGuard gin.HandlerFunc, teac
 		student.GET("/courses", h.ListStudentCourses)
 		student.POST("/courses/join", h.JoinCourse) // Allow students to join via code
 		student.GET("/assignments", h.ListStudentAssignments)
+		student.GET("/courses/:id/chapters", h.ListStudentCourseChapters)
+		student.GET("/courses/:id/chapters/:chapterID", h.GetStudentCourseChapter)
 		student.GET("/schedule", h.ListStudentSchedule)
 		student.GET("/school/members", h.ListSchoolMembers)
 		student.GET("/time-slots", h.ListTimeSlots)
@@ -218,6 +220,13 @@ func (h *Handler) RegisterRoutes(r *gin.Engine, adminGuard gin.HandlerFunc, teac
 		teacher.GET("/courses", h.ListTeacherCourses)
 		teacher.POST("/courses", h.CreateCourse) // Allow teachers to create courses
 		teacher.GET("/courses/:id/classes", h.ListTeacherCourseClasses)
+		teacher.GET("/courses/:id/chapters", h.ListTeacherCourseChapters)
+		teacher.POST("/courses/:id/chapters", h.CreateTeacherCourseChapter)
+		teacher.GET("/courses/:id/chapters/:chapterID", h.GetTeacherCourseChapter)
+		teacher.PATCH("/courses/:id/chapters/:chapterID", h.UpdateTeacherCourseChapter)
+		teacher.DELETE("/courses/:id/chapters/:chapterID", h.DeleteTeacherCourseChapter)
+		teacher.POST("/courses/:id/chapters/:chapterID/attachments", h.AttachTeacherCourseChapterFile)
+		teacher.DELETE("/courses/:id/chapters/:chapterID/attachments/:fileID", h.DetachTeacherCourseChapterFile)
 		teacher.GET("/classes/:id/students", h.ListTeacherClassStudents)
 		teacher.GET("/schedule", h.ListTeacherSchedule)
 		teacher.GET("/school/members", h.ListSchoolMembers)
@@ -2120,7 +2129,8 @@ func (h *Handler) ListStudentAssignments(c *gin.Context) {
 	}
 
 	limit := parseLimit(c.DefaultQuery("limit", "20"), 20, 200)
-	items, err := h.student.ListAssignments(c.Request.Context(), accountID, limit)
+	courseID := strings.TrimSpace(c.Query("course_id"))
+	items, err := h.student.ListAssignments(c.Request.Context(), accountID, limit, courseID)
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrStudentProfileNotFound):

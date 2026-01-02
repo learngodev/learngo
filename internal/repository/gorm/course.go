@@ -2,12 +2,26 @@ package gormrepo
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"learn-go/internal/domain"
 
 	"gorm.io/gorm"
 )
+
+func isMissingCourseStudentsTable(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "course_students") {
+		return false
+	}
+	// PostgreSQL: pq: relation "course_students" does not exist
+	// SQLite: no such table: course_students
+	return strings.Contains(msg, "does not exist") || strings.Contains(msg, "no such table")
+}
 
 // CourseStore implements repository.CourseRepository.
 type CourseStore struct {
@@ -225,10 +239,31 @@ func (s *CourseStore) ListAssignmentsByCourseIDs(ctx context.Context, courseIDs 
 func (s *CourseStore) ListByStudentID(ctx context.Context, studentID string) ([]domain.Course, error) {
 	var courses []domain.Course
 	err := s.db.WithContext(ctx).
+		Model(&domain.Course{}).
 		Joins("JOIN course_students ON course_students.course_id = courses.id").
 		Where("course_students.student_id = ?", studentID).
 		Find(&courses).Error
-	return courses, err
+	if err == nil && len(courses) > 0 {
+		return courses, nil
+	}
+	if err != nil && !isMissingCourseStudentsTable(err) {
+		return nil, err
+	}
+
+	// Fallback: infer courses from the student's class schedule.
+	// This keeps sample databases (which may not seed enrollments) usable.
+	courses = nil
+	if err2 := s.db.WithContext(ctx).
+		Model(&domain.Course{}).
+		Distinct("courses.*").
+		Joins("JOIN course_schedules cs ON cs.course_id = courses.id").
+		Joins("JOIN students st ON st.class_id = cs.class_id").
+		Where("st.id = ?", studentID).
+		Find(&courses).Error; err2 != nil {
+		return nil, err2
+	}
+
+	return courses, nil
 }
 
 // CourseSessionStore implements repository.CourseSessionRepository.

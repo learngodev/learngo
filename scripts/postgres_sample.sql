@@ -24,6 +24,7 @@ DROP TABLE IF EXISTS assignment_submissions CASCADE;
 DROP TABLE IF EXISTS assignment_questions CASCADE;
 DROP TABLE IF EXISTS assignments CASCADE;
 DROP TABLE IF EXISTS course_sessions CASCADE;
+DROP TABLE IF EXISTS course_students CASCADE;
 DROP TABLE IF EXISTS course_teachers CASCADE;
 DROP TABLE IF EXISTS courses CASCADE;
 DROP TABLE IF EXISTS course_slots CASCADE;
@@ -225,6 +226,15 @@ CREATE TABLE course_teachers (
     teacher_id  CHAR(36) NOT NULL REFERENCES teachers(id) ON DELETE CASCADE,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (course_id, teacher_id)
+);
+
+-- Course enrollment (many-to-many) -----------------------------------------
+CREATE TABLE course_students (
+    id         CHAR(36) PRIMARY KEY,
+    course_id  CHAR(36) NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+    student_id CHAR(36) NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (course_id, student_id)
 );
 
 CREATE TABLE classrooms (
@@ -460,6 +470,11 @@ INSERT INTO course_teachers (id, course_id, teacher_id) VALUES
     ('ct-001', '77777777-7777-7777-7777-777777777777', '44444444-4444-4444-4444-444444444444'),
     ('ct-002', '77777777-7777-7777-7777-777777777778', '44444444-4444-4444-4444-444444444444'),
     ('ct-003', '77777777-7777-7777-7777-777777777779', '44444444-4444-4444-4444-444444444444');
+
+-- Enroll sample student into scheduled courses
+INSERT INTO course_students (id, course_id, student_id) VALUES
+    ('12121212-1212-1212-1212-121212121212', '77777777-7777-7777-7777-777777777777', '55555555-5555-5555-5555-555555555555'),
+    ('13131313-1313-1313-1313-131313131313', '77777777-7777-7777-7777-777777777778', '55555555-5555-5555-5555-555555555555');
 INSERT INTO time_slots (id, school_id, name, start_time, end_time)
 VALUES
     ('slot-001', '11111111-1111-1111-1111-111111111111', '第1-2节', '08:00', '09:40'),

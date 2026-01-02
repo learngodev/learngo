@@ -28,6 +28,7 @@ type TeacherPortalService struct {
 	slots       repository.CourseSlotRepository
 	accounts    repository.AccountRepository
 	schedules   repository.CourseScheduleRepository
+	chapters    repository.CourseChapterRepository
 }
 
 // GetSchoolID retrieves the school ID for a given account.
@@ -59,6 +60,7 @@ func NewTeacherPortalService(
 	slots repository.CourseSlotRepository,
 	accounts repository.AccountRepository,
 	schedules repository.CourseScheduleRepository,
+	chapters repository.CourseChapterRepository,
 ) *TeacherPortalService {
 	return &TeacherPortalService{
 		teachers:    teachers,
@@ -71,6 +73,7 @@ func NewTeacherPortalService(
 		slots:       slots,
 		accounts:    accounts,
 		schedules:   schedules,
+		chapters:    chapters,
 	}
 }
 
