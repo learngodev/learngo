@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"learn-go/internal/domain"
@@ -11,42 +10,12 @@ import (
 	"github.com/google/uuid"
 )
 
-// ErrTeacherCourseAccessDenied indicates the teacher doesn't have access to the course.
-var ErrTeacherCourseAccessDenied = errors.New("teacher course access denied")
-
-func (s *TeacherPortalService) ensureTeacherCourseAccess(
-	ctx context.Context,
-	accountID string,
-	courseID string,
-) (*domain.Teacher, error) {
-	teacher, err := s.teachers.GetByAccountID(ctx, accountID)
-	if err != nil {
-		return nil, err
-	}
-	if teacher == nil {
-		return nil, ErrTeacherProfileNotFound
-	}
-
-	schedules, err := s.schedules.ListByTeacher(ctx, teacher.ID)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, sch := range schedules {
-		if sch.CourseID == courseID {
-			return teacher, nil
-		}
-	}
-
-	return nil, ErrTeacherCourseAccessDenied
-}
-
 func (s *TeacherPortalService) ListCourseChapters(
 	ctx context.Context,
 	accountID string,
 	courseID string,
 ) ([]domain.CourseChapter, error) {
-	_, err := s.ensureTeacherCourseAccess(ctx, accountID, courseID)
+	_, _, err := s.ensureTeacherCourseAccess(ctx, accountID, courseID)
 	if err != nil {
 		return nil, err
 	}
@@ -60,7 +29,7 @@ func (s *TeacherPortalService) GetCourseChapter(
 	courseID string,
 	chapterID string,
 ) (*domain.CourseChapter, []domain.File, error) {
-	_, err := s.ensureTeacherCourseAccess(ctx, accountID, courseID)
+	_, _, err := s.ensureTeacherCourseAccess(ctx, accountID, courseID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -89,7 +58,7 @@ func (s *TeacherPortalService) CreateCourseChapter(
 	content string,
 	orderIndex int,
 ) (*domain.CourseChapter, error) {
-	teacher, err := s.ensureTeacherCourseAccess(ctx, accountID, courseID)
+	teacher, _, err := s.ensureTeacherCourseAccess(ctx, accountID, courseID)
 	if err != nil {
 		return nil, err
 	}
@@ -120,7 +89,7 @@ func (s *TeacherPortalService) UpdateCourseChapter(
 	chapterID string,
 	updates map[string]any,
 ) (*domain.CourseChapter, error) {
-	_, err := s.ensureTeacherCourseAccess(ctx, accountID, courseID)
+	_, _, err := s.ensureTeacherCourseAccess(ctx, accountID, courseID)
 	if err != nil {
 		return nil, err
 	}
@@ -134,7 +103,7 @@ func (s *TeacherPortalService) DeleteCourseChapter(
 	courseID string,
 	chapterID string,
 ) error {
-	_, err := s.ensureTeacherCourseAccess(ctx, accountID, courseID)
+	_, _, err := s.ensureTeacherCourseAccess(ctx, accountID, courseID)
 	if err != nil {
 		return err
 	}
@@ -158,7 +127,7 @@ func (s *TeacherPortalService) AttachCourseChapterFile(
 	chapterID string,
 	fileID string,
 ) error {
-	_, err := s.ensureTeacherCourseAccess(ctx, accountID, courseID)
+	_, _, err := s.ensureTeacherCourseAccess(ctx, accountID, courseID)
 	if err != nil {
 		return err
 	}
@@ -181,7 +150,7 @@ func (s *TeacherPortalService) DetachCourseChapterFile(
 	chapterID string,
 	fileID string,
 ) error {
-	_, err := s.ensureTeacherCourseAccess(ctx, accountID, courseID)
+	_, _, err := s.ensureTeacherCourseAccess(ctx, accountID, courseID)
 	if err != nil {
 		return err
 	}

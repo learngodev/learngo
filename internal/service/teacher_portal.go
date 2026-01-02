@@ -8,27 +8,37 @@ import (
 
 	"learn-go/internal/domain"
 	"learn-go/internal/repository"
+
+	"github.com/google/uuid"
 )
 
 // ErrTeacherProfileNotFound indicates missing teacher profile for account.
 var ErrTeacherProfileNotFound = errors.New("teacher profile not found")
 
+// ErrTeacherCourseAccessDenied indicates the teacher doesn't have access to the course.
+var ErrTeacherCourseAccessDenied = errors.New("teacher course access denied")
+
 // ErrTeacherAssignmentForbidden indicates the assignment does not belong to the teacher.
 var ErrTeacherAssignmentForbidden = errors.New("teacher assignment forbidden")
 
+// ErrInvalidCourseClass indicates the class is missing or out of scope for the course.
+var ErrInvalidCourseClass = errors.New("invalid course class")
+
 // TeacherPortalService aggregates schedule and assignment data for teachers.
 type TeacherPortalService struct {
-	teachers    repository.TeacherRepository
-	assignments repository.AssignmentRepository
-	submissions repository.SubmissionRepository
-	students    repository.StudentRepository
-	sessions    repository.CourseSessionRepository
-	courses     repository.CourseRepository
-	classes     repository.ClassRepository
-	slots       repository.CourseSlotRepository
-	accounts    repository.AccountRepository
-	schedules   repository.CourseScheduleRepository
-	chapters    repository.CourseChapterRepository
+	teachers       repository.TeacherRepository
+	assignments    repository.AssignmentRepository
+	submissions    repository.SubmissionRepository
+	students       repository.StudentRepository
+	sessions       repository.CourseSessionRepository
+	courses        repository.CourseRepository
+	classes        repository.ClassRepository
+	slots          repository.CourseSlotRepository
+	accounts       repository.AccountRepository
+	schedules      repository.CourseScheduleRepository
+	chapters       repository.CourseChapterRepository
+	courseStudents repository.CourseStudentRepository
+	courseTeachers repository.CourseTeacherRepository
 }
 
 // GetSchoolID retrieves the school ID for a given account.
@@ -61,20 +71,82 @@ func NewTeacherPortalService(
 	accounts repository.AccountRepository,
 	schedules repository.CourseScheduleRepository,
 	chapters repository.CourseChapterRepository,
+	courseStudents repository.CourseStudentRepository,
+	courseTeachers repository.CourseTeacherRepository,
 ) *TeacherPortalService {
 	return &TeacherPortalService{
-		teachers:    teachers,
-		assignments: assignments,
-		submissions: submissions,
-		students:    students,
-		sessions:    sessions,
-		courses:     courses,
-		classes:     classes,
-		slots:       slots,
-		accounts:    accounts,
-		schedules:   schedules,
-		chapters:    chapters,
+		teachers:       teachers,
+		assignments:    assignments,
+		submissions:    submissions,
+		students:       students,
+		sessions:       sessions,
+		courses:        courses,
+		classes:        classes,
+		slots:          slots,
+		accounts:       accounts,
+		schedules:      schedules,
+		chapters:       chapters,
+		courseStudents: courseStudents,
+		courseTeachers: courseTeachers,
 	}
+}
+
+// ensureTeacherCourseAccess validates that the teacher owns or teaches the course.
+func (s *TeacherPortalService) ensureTeacherCourseAccess(ctx context.Context, accountID, courseID string) (*domain.Teacher, *domain.Course, error) {
+	teacher, err := s.teachers.GetByAccountID(ctx, accountID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if teacher == nil {
+		return nil, nil, ErrTeacherProfileNotFound
+	}
+
+	course, err := s.courses.GetByID(ctx, courseID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if course != nil && course.SchoolID != "" && teacher.SchoolID != "" && course.SchoolID != teacher.SchoolID {
+		return nil, nil, ErrTeacherCourseAccessDenied
+	}
+
+	allowed, err := s.hasCourseAccess(ctx, teacher.ID, courseID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !allowed {
+		return nil, nil, ErrTeacherCourseAccessDenied
+	}
+
+	return teacher, course, nil
+}
+
+func (s *TeacherPortalService) hasCourseAccess(ctx context.Context, teacherID, courseID string) (bool, error) {
+	if s.courseTeachers != nil {
+		ids, err := s.courseTeachers.ListCourseIDsByTeacher(ctx, teacherID)
+		if err != nil {
+			return false, err
+		}
+		for _, id := range ids {
+			if id == courseID {
+				return true, nil
+			}
+		}
+	}
+
+	if s.schedules != nil {
+		schedules, err := s.schedules.ListByTeacher(ctx, teacherID)
+		if err != nil {
+			return false, err
+		}
+		for _, sch := range schedules {
+			if sch.CourseID == courseID {
+				return true, nil
+			}
+		}
+	}
+
+	return false, nil
 }
 
 func (s *TeacherPortalService) GetAssignedCourses(ctx context.Context, accountID string) ([]domain.Course, error) {
@@ -86,59 +158,219 @@ func (s *TeacherPortalService) GetAssignedCourses(ctx context.Context, accountID
 		return nil, ErrTeacherProfileNotFound
 	}
 
-	schedules, err := s.schedules.ListByTeacher(ctx, teacher.ID)
-	if err != nil {
-		return nil, err
-	}
-
 	courseIDs := make(map[string]bool)
-	for _, sch := range schedules {
-		courseIDs[sch.CourseID] = true
+
+	if s.schedules != nil {
+		schedules, err := s.schedules.ListByTeacher(ctx, teacher.ID)
+		if err != nil {
+			return nil, err
+		}
+		for _, sch := range schedules {
+			courseIDs[sch.CourseID] = true
+		}
 	}
 
-	var ids []string
-	for id := range courseIDs {
-		ids = append(ids, id)
+	if s.courseTeachers != nil {
+		ids, err := s.courseTeachers.ListCourseIDsByTeacher(ctx, teacher.ID)
+		if err != nil {
+			return nil, err
+		}
+		for _, id := range ids {
+			courseIDs[id] = true
+		}
 	}
 
-	if len(ids) == 0 {
+	if len(courseIDs) == 0 {
 		return []domain.Course{}, nil
 	}
 
-	return s.courses.ListByIDs(ctx, ids)
+	flat := make([]string, 0, len(courseIDs))
+	for id := range courseIDs {
+		flat = append(flat, id)
+	}
+
+	return s.courses.ListByIDs(ctx, flat)
 }
 
 func (s *TeacherPortalService) GetCourseClasses(ctx context.Context, accountID, courseID string) ([]domain.Class, error) {
-	teacher, err := s.teachers.GetByAccountID(ctx, accountID)
-	if err != nil {
-		return nil, err
-	}
-	if teacher == nil {
-		return nil, ErrTeacherProfileNotFound
-	}
-
-	schedules, err := s.schedules.ListByTeacher(ctx, teacher.ID)
+	teacher, course, err := s.ensureTeacherCourseAccess(ctx, accountID, courseID)
 	if err != nil {
 		return nil, err
 	}
 
 	classIDs := make(map[string]bool)
-	for _, sch := range schedules {
-		if sch.CourseID == courseID {
-			classIDs[sch.ClassID] = true
+
+	if s.schedules != nil {
+		schedules, err := s.schedules.ListByTeacher(ctx, teacher.ID)
+		if err != nil {
+			return nil, err
+		}
+		for _, sch := range schedules {
+			if sch.CourseID == courseID {
+				classIDs[sch.ClassID] = true
+			}
 		}
 	}
 
-	var ids []string
-	for id := range classIDs {
-		ids = append(ids, id)
+	if s.courseStudents != nil {
+		enrollments, err := s.courseStudents.ListByCourseID(ctx, courseID)
+		if err != nil {
+			return nil, err
+		}
+		studentIDs := make([]string, 0, len(enrollments))
+		for _, e := range enrollments {
+			studentIDs = append(studentIDs, e.StudentID)
+		}
+		if len(studentIDs) > 0 {
+			students, err := s.students.ListByIDs(ctx, studentIDs)
+			if err != nil {
+				return nil, err
+			}
+			for _, st := range students {
+				if st.ClassID != nil {
+					classIDs[*st.ClassID] = true
+				}
+			}
+		}
 	}
 
-	if len(ids) == 0 {
+	flat := make([]string, 0, len(classIDs))
+	for id := range classIDs {
+		flat = append(flat, id)
+	}
+
+	if len(flat) == 0 {
 		return []domain.Class{}, nil
 	}
 
-	return s.classes.ListByIDs(ctx, ids)
+	classes, err := s.classes.ListByIDs(ctx, flat)
+	if err != nil {
+		return nil, err
+	}
+
+	filtered := make([]domain.Class, 0, len(classes))
+	for _, cls := range classes {
+		if cls.SchoolID != "" && course != nil && course.SchoolID != "" && cls.SchoolID != course.SchoolID {
+			continue
+		}
+		filtered = append(filtered, cls)
+	}
+
+	return filtered, nil
+}
+
+// UpdateCourse lets teachers edit basic course metadata when they own/teach it.
+func (s *TeacherPortalService) UpdateCourse(ctx context.Context, accountID, courseID, name, description, imageURL string) (*domain.Course, error) {
+	_, course, err := s.ensureTeacherCourseAccess(ctx, accountID, courseID)
+	if err != nil {
+		return nil, err
+	}
+
+	if course == nil {
+		return nil, repository.ErrNotFound
+	}
+
+	course.Name = name
+	course.Description = description
+	course.ImageURL = imageURL
+	course.UpdatedAt = time.Now()
+
+	if err := s.courses.Update(ctx, course); err != nil {
+		return nil, err
+	}
+
+	return course, nil
+}
+
+// AssignCourseClass enrolls all students of a class into a course.
+func (s *TeacherPortalService) AssignCourseClass(ctx context.Context, accountID, courseID, classID string) error {
+	_, course, err := s.ensureTeacherCourseAccess(ctx, accountID, courseID)
+	if err != nil {
+		return err
+	}
+
+	class, err := s.classes.GetByID(ctx, classID)
+	if err != nil {
+		return err
+	}
+	if class == nil {
+		return ErrInvalidCourseClass
+	}
+	if class.SchoolID != "" && course != nil && course.SchoolID != "" && class.SchoolID != course.SchoolID {
+		return ErrInvalidCourseClass
+	}
+
+	if s.courseStudents == nil {
+		return errors.New("course student repository not configured")
+	}
+
+	students, err := s.students.ListByClassID(ctx, classID)
+	if err != nil {
+		return err
+	}
+
+	existing, err := s.courseStudents.ListByCourseID(ctx, courseID)
+	if err != nil {
+		return err
+	}
+	seen := make(map[string]bool, len(existing))
+	for _, e := range existing {
+		seen[e.StudentID] = true
+	}
+
+	now := time.Now()
+	enrollments := make([]domain.CourseStudent, 0, len(students))
+	for _, st := range students {
+		if seen[st.ID] {
+			continue
+		}
+		enrollments = append(enrollments, domain.CourseStudent{
+			ID:        uuid.NewString(),
+			CourseID:  courseID,
+			StudentID: st.ID,
+			CreatedAt: now,
+		})
+	}
+
+	return s.courseStudents.BatchCreate(ctx, enrollments)
+}
+
+// RemoveCourseClass unenrolls all students of a class from a course.
+func (s *TeacherPortalService) RemoveCourseClass(ctx context.Context, accountID, courseID, classID string) error {
+	_, course, err := s.ensureTeacherCourseAccess(ctx, accountID, courseID)
+	if err != nil {
+		return err
+	}
+
+	class, err := s.classes.GetByID(ctx, classID)
+	if err != nil {
+		return err
+	}
+	if class == nil {
+		return ErrInvalidCourseClass
+	}
+	if class.SchoolID != "" && course != nil && course.SchoolID != "" && class.SchoolID != course.SchoolID {
+		return ErrInvalidCourseClass
+	}
+
+	if s.courseStudents == nil {
+		return errors.New("course student repository not configured")
+	}
+
+	students, err := s.students.ListByClassID(ctx, classID)
+	if err != nil {
+		return err
+	}
+	if len(students) == 0 {
+		return nil
+	}
+
+	studentIDs := make([]string, 0, len(students))
+	for _, st := range students {
+		studentIDs = append(studentIDs, st.ID)
+	}
+
+	return s.courseStudents.DeleteByCourseAndStudent(ctx, courseID, studentIDs)
 }
 
 func (s *TeacherPortalService) GetClassStudents(ctx context.Context, classID string) ([]domain.Student, error) {

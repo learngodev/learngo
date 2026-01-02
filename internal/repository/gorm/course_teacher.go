@@ -46,3 +46,13 @@ func (s *CourseTeacherStore) ListByCourseID(ctx context.Context, courseID string
 	err := s.db.WithContext(ctx).Where("course_id = ?", courseID).Find(&links).Error
 	return links, err
 }
+
+// ListCourseIDsByTeacher returns course IDs bound to the teacher.
+func (s *CourseTeacherStore) ListCourseIDsByTeacher(ctx context.Context, teacherID string) ([]string, error) {
+	var ids []string
+	err := s.db.WithContext(ctx).
+		Model(&domain.CourseTeacher{}).
+		Where("teacher_id = ?", teacherID).
+		Pluck("course_id", &ids).Error
+	return ids, err
+}

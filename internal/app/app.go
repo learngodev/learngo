@@ -112,7 +112,7 @@ func New() (*Application, error) {
 	assignmentService := service.NewAssignmentService(assignmentRepo, submissionRepo, submissionCommentRepo, studentRepo, notificationService, fileService)
 
 	adminService := service.NewAdminService(accountRepo, teacherRepo, studentRepo, departmentRepo, classRepo, teacherStudentRepo, aiModel, aiSettingRepo)
-	teacherPortalService := service.NewTeacherPortalService(teacherRepo, assignmentRepo, submissionRepo, studentRepo, courseSessionRepo, courseRepo, classRepo, courseSlotRepo, accountRepo, courseScheduleRepo, courseChapterRepo)
+	teacherPortalService := service.NewTeacherPortalService(teacherRepo, assignmentRepo, submissionRepo, studentRepo, courseSessionRepo, courseRepo, classRepo, courseSlotRepo, accountRepo, courseScheduleRepo, courseChapterRepo, courseStudentRepo, courseTeacherRepo)
 	studentPortalService := service.NewStudentPortalService(studentRepo, assignmentRepo, submissionRepo, courseRepo, courseChapterRepo, courseSlotRepo, courseSessionRepo, teacherRepo, accountRepo, studentReminderRepo)
 	conversationService := service.NewConversationService(conversationRepo, messageRepo, receiptRepo, accountRepo)
 	noteService := service.NewNoteService(noteRepo, accountRepo)

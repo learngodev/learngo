@@ -180,6 +180,7 @@ type CourseTeacherRepository interface {
 	Add(ctx context.Context, courseID string, teacherIDs []string) error
 	Remove(ctx context.Context, courseID string, teacherIDs []string) error
 	ListByCourseID(ctx context.Context, courseID string) ([]domain.CourseTeacher, error)
+	ListCourseIDsByTeacher(ctx context.Context, teacherID string) ([]string, error)
 }
 
 // CourseChapterRepository manages after-class learning chapters for a course.

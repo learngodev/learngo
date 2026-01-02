@@ -219,6 +219,9 @@ func (h *Handler) RegisterRoutes(r *gin.Engine, adminGuard gin.HandlerFunc, teac
 		teacher.GET("/files/:id/download-url", h.GetDownloadURL)
 		teacher.GET("/courses", h.ListTeacherCourses)
 		teacher.POST("/courses", h.CreateCourse) // Allow teachers to create courses
+		teacher.PATCH("/courses/:id", h.UpdateTeacherCourse)
+		teacher.POST("/courses/:id/classes", h.AssignTeacherCourseClass)
+		teacher.DELETE("/courses/:id/classes/:classID", h.RemoveTeacherCourseClass)
 		teacher.GET("/courses/:id/classes", h.ListTeacherCourseClasses)
 		teacher.GET("/courses/:id/chapters", h.ListTeacherCourseChapters)
 		teacher.POST("/courses/:id/chapters", h.CreateTeacherCourseChapter)
@@ -4135,7 +4138,12 @@ func (h *Handler) ListTeacherCourses(c *gin.Context) {
 	accountID := getAccountID(c)
 	courses, err := h.teacher.GetAssignedCourses(c.Request.Context(), accountID)
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "failed to list courses", err.Error())
+		switch {
+		case errors.Is(err, service.ErrTeacherProfileNotFound):
+			response.Error(c, http.StatusForbidden, "teacher_profile_not_found", nil)
+		default:
+			response.Error(c, http.StatusInternalServerError, "failed to list courses", err.Error())
+		}
 		return
 	}
 	response.Success(c, http.StatusOK, gin.H{"courses": courses})
@@ -4146,7 +4154,16 @@ func (h *Handler) ListTeacherCourseClasses(c *gin.Context) {
 	courseID := c.Param("id")
 	classes, err := h.teacher.GetCourseClasses(c.Request.Context(), accountID, courseID)
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "failed to list classes", err.Error())
+		switch {
+		case errors.Is(err, service.ErrTeacherProfileNotFound):
+			response.Error(c, http.StatusForbidden, "teacher_profile_not_found", nil)
+		case errors.Is(err, service.ErrTeacherAssignmentForbidden):
+			response.Error(c, http.StatusForbidden, "course_not_owned", nil)
+		case errors.Is(err, gorm.ErrRecordNotFound):
+			response.Error(c, http.StatusNotFound, "course_not_found", nil)
+		default:
+			response.Error(c, http.StatusInternalServerError, "failed to list classes", err.Error())
+		}
 		return
 	}
 	response.Success(c, http.StatusOK, gin.H{"classes": classes})
