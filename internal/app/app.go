@@ -138,7 +138,7 @@ func New() (*Application, error) {
 	scheduleService := service.NewScheduleService(timeSlotRepo, courseScheduleRepo, courseSessionRepo, courseRepo, teacherRepo, classroomRepo)
 	classroomService := service.NewClassroomService(classroomRepo)
 
-	handler := apihandlers.NewHandler(authService, adminService, assignmentService, teacherPortalService, studentPortalService, conversationService, noteService, noteCommentService, ossService, systemService, aiSettingsService, aiGradingService, schoolService, courseService, scheduleService, classroomService, fileService, notificationService, streamHub)
+	handler := apihandlers.NewHandler(cfg.JWTSecret, authService, adminService, assignmentService, teacherPortalService, studentPortalService, conversationService, noteService, noteCommentService, ossService, systemService, aiSettingsService, aiGradingService, schoolService, courseService, scheduleService, classroomService, fileService, notificationService, streamHub)
 
 	adminGuard := middleware.JWTAuth(middleware.AuthConfig{Secret: cfg.JWTSecret, AllowedRoles: []string{string(domain.RoleAdmin)}})
 	teacherGuard := middleware.JWTAuth(middleware.AuthConfig{Secret: cfg.JWTSecret, AllowedRoles: []string{string(domain.RoleTeacher), string(domain.RoleAdmin)}})

@@ -28,6 +28,7 @@ import (
 
 // Handler aggregates dependencies for HTTP handlers.
 type Handler struct {
+	jwtSecret     string
 	auth          *service.AuthService
 	admin         *service.AdminService
 	assignments   *service.AssignmentService
@@ -51,8 +52,9 @@ type Handler struct {
 }
 
 // NewHandler constructs a Handler instance.
-func NewHandler(auth *service.AuthService, admin *service.AdminService, assignments *service.AssignmentService, teacher *service.TeacherPortalService, student *service.StudentPortalService, conversations *service.ConversationService, notes *service.NoteService, noteComments *service.NoteCommentService, oss *service.AdminOssService, system *service.AdminSystemService, aiSettings *service.AISettingsService, aiGrading *service.AIGradingService, school *service.SchoolService, courseService *service.CourseService, schedule *service.ScheduleService, classroom *service.ClassroomService, fileService *service.FileService, notifications *service.NotificationService, streamHub *realtime.Hub) *Handler {
+func NewHandler(jwtSecret string, auth *service.AuthService, admin *service.AdminService, assignments *service.AssignmentService, teacher *service.TeacherPortalService, student *service.StudentPortalService, conversations *service.ConversationService, notes *service.NoteService, noteComments *service.NoteCommentService, oss *service.AdminOssService, system *service.AdminSystemService, aiSettings *service.AISettingsService, aiGrading *service.AIGradingService, school *service.SchoolService, courseService *service.CourseService, schedule *service.ScheduleService, classroom *service.ClassroomService, fileService *service.FileService, notifications *service.NotificationService, streamHub *realtime.Hub) *Handler {
 	return &Handler{
+		jwtSecret:     jwtSecret,
 		auth:          auth,
 		admin:         admin,
 		assignments:   assignments,
@@ -78,6 +80,11 @@ func NewHandler(auth *service.AuthService, admin *service.AdminService, assignme
 
 // RegisterRoutes attaches HTTP endpoints to router.
 func (h *Handler) RegisterRoutes(r *gin.Engine, adminGuard gin.HandlerFunc, teacherGuard gin.HandlerFunc, studentGuard gin.HandlerFunc) {
+	// WebSocket IM (Flutter Web) - standalone path (not under /api/v1).
+	// Browser WebSocket clients cannot reliably set Authorization headers; we accept token
+	// via query string or header and validate inside handler.
+	r.GET("/ws/im", h.IMWebSocket)
+
 	api := r.Group("/api/v1")
 	{
 		api.POST("/auth/login", h.Login)
