@@ -12,6 +12,10 @@ import (
 	"github.com/google/uuid"
 )
 
+func normalizeCourseImageURL(imageURL string) string {
+	return strings.TrimSpace(imageURL)
+}
+
 type CourseService struct {
 	courseRepo        repository.CourseRepository
 	courseStudentRepo repository.CourseStudentRepository
@@ -37,6 +41,7 @@ func NewCourseService(
 }
 
 func (s *CourseService) CreateCourse(ctx context.Context, schoolID string, teacherIDs []string, name, description, imageURL string, classIDs []string) (*domain.Course, error) {
+	imageURL = normalizeCourseImageURL(imageURL)
 	course := &domain.Course{
 		ID:             uuid.New().String(),
 		SchoolID:       schoolID,
@@ -86,11 +91,25 @@ func (s *CourseService) generateInvitationCode() string {
 }
 
 func (s *CourseService) ListCourses(ctx context.Context, schoolID string, page, size int) ([]domain.Course, int64, error) {
-	return s.courseRepo.List(ctx, schoolID, page, size)
+	courses, total, err := s.courseRepo.List(ctx, schoolID, page, size)
+	if err != nil {
+		return nil, 0, err
+	}
+	for i := range courses {
+		courses[i].ImageURL = normalizeCourseImageURL(courses[i].ImageURL)
+	}
+	return courses, total, nil
 }
 
 func (s *CourseService) ListStudentCourses(ctx context.Context, studentID string) ([]domain.Course, error) {
-	return s.courseRepo.ListByStudentID(ctx, studentID)
+	courses, err := s.courseRepo.ListByStudentID(ctx, studentID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range courses {
+		courses[i].ImageURL = normalizeCourseImageURL(courses[i].ImageURL)
+	}
+	return courses, nil
 }
 
 func (s *CourseService) ListCourseAssignments(ctx context.Context, schoolID, courseID, departmentID, classID string, onlyAssigned bool, page, size int) ([]domain.CourseAssignmentInfo, int64, error) {
@@ -125,7 +144,7 @@ func (s *CourseService) ListCoursesWithDetails(ctx context.Context, schoolID, de
 			CourseID:    c.ID,
 			CourseName:  c.Name,
 			Description: c.Description,
-			ImageURL:    c.ImageURL,
+			ImageURL:    normalizeCourseImageURL(c.ImageURL),
 		}
 		countedClasses[c.ID] = make(map[string]bool)
 	}
@@ -173,7 +192,41 @@ func (s *CourseService) UpdateCourse(ctx context.Context, id, name, description,
 	}
 	course.Name = name
 	course.Description = description
-	course.ImageURL = imageURL
+	course.ImageURL = normalizeCourseImageURL(imageURL)
+	course.UpdatedAt = time.Now()
+	return s.courseRepo.Update(ctx, course)
+}
+
+func (s *CourseService) UpdateCourseFields(
+	ctx context.Context,
+	id string,
+	name *string,
+	description *string,
+	imageURL *string,
+) error {
+	course, err := s.courseRepo.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	updated := false
+	if name != nil {
+		course.Name = strings.TrimSpace(*name)
+		updated = true
+	}
+	if description != nil {
+		course.Description = strings.TrimSpace(*description)
+		updated = true
+	}
+	if imageURL != nil {
+		course.ImageURL = normalizeCourseImageURL(*imageURL)
+		updated = true
+	}
+
+	if !updated {
+		return nil
+	}
+
 	course.UpdatedAt = time.Now()
 	return s.courseRepo.Update(ctx, course)
 }

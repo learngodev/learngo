@@ -386,6 +386,7 @@ type OssCredential struct {
 	SchoolID             string `gorm:"size:36;index"`
 	Name                 string `gorm:"size:128"`
 	Endpoint             string `gorm:"size:128"`
+	InternalEndpoint     string `gorm:"size:128"`
 	Region               string `gorm:"size:64"`
 	Bucket               string `gorm:"size:128"`
 	AccessKeyID          string `gorm:"size:128"`

@@ -6,6 +6,7 @@ import (
 	"learn-go/internal/domain"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // CourseStudentStore implements repository.CourseStudentRepository.
@@ -23,7 +24,12 @@ func (s *CourseStudentStore) BatchCreate(ctx context.Context, enrollments []doma
 	if len(enrollments) == 0 {
 		return nil
 	}
-	return s.db.WithContext(ctx).Create(&enrollments).Error
+	return s.db.WithContext(ctx).
+		Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "course_id"}, {Name: "student_id"}},
+			DoNothing: true,
+		}).
+		Create(&enrollments).Error
 }
 
 // ListByCourseID retrieves all students enrolled in a course.

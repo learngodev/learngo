@@ -662,6 +662,7 @@ type updateOssCredentialRequest struct {
 	SchoolID             string  `json:"school_id" validate:"required"`
 	Name                 *string `json:"name"`
 	Endpoint             *string `json:"endpoint"`
+	InternalEndpoint     *string `json:"internal_endpoint"`
 	Region               *string `json:"region"`
 	Bucket               *string `json:"bucket"`
 	DirectoryPrefix      *string `json:"directory_prefix"`
@@ -684,6 +685,7 @@ type createOssCredentialRequest struct {
 	SchoolID             string `json:"school_id" validate:"required"`
 	Name                 string `json:"name" validate:"required"`
 	Endpoint             string `json:"endpoint" validate:"required"`
+	InternalEndpoint     string `json:"internal_endpoint"`
 	Region               string `json:"region" validate:"required"`
 	Bucket               string `json:"bucket" validate:"required"`
 	DirectoryPrefix      string `json:"directory_prefix"`
@@ -1356,6 +1358,7 @@ func (h *Handler) CreateOssCredential(c *gin.Context) {
 		SchoolID:             req.SchoolID,
 		Name:                 req.Name,
 		Endpoint:             req.Endpoint,
+		InternalEndpoint:     req.InternalEndpoint,
 		Region:               req.Region,
 		Bucket:               req.Bucket,
 		DirectoryPrefix:      req.DirectoryPrefix,
@@ -1538,6 +1541,7 @@ func (h *Handler) UpdateOssCredential(c *gin.Context) {
 		CredentialID:         credentialID,
 		Name:                 req.Name,
 		Endpoint:             req.Endpoint,
+		InternalEndpoint:     req.InternalEndpoint,
 		Region:               req.Region,
 		Bucket:               req.Bucket,
 		DirectoryPrefix:      req.DirectoryPrefix,

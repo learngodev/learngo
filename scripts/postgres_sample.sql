@@ -71,6 +71,7 @@ CREATE TABLE oss_credentials (
     school_id             CHAR(36) NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
     name                  VARCHAR(128) NOT NULL,
     endpoint              VARCHAR(128) NOT NULL,
+    internal_endpoint     VARCHAR(128) NOT NULL DEFAULT '',
     region                VARCHAR(64) NOT NULL,
     bucket                VARCHAR(128) NOT NULL,
     access_key_id         VARCHAR(128) NOT NULL DEFAULT '',
@@ -216,6 +217,7 @@ CREATE TABLE courses (
     school_id   CHAR(36) NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
     name        VARCHAR(128) NOT NULL,
     description VARCHAR(512),
+    image_url   VARCHAR(512) NOT NULL DEFAULT '',
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -461,11 +463,11 @@ VALUES ('66666666-6666-6666-6666-666666666666', '44444444-4444-4444-4444-4444444
 INSERT INTO class_teachers (id, class_id, teacher_id)
 VALUES ('ct-link-001', '33333333-3333-3333-3333-333333333333', '44444444-4444-4444-4444-444444444444');
 
-INSERT INTO courses (id, school_id, name, description)
+INSERT INTO courses (id, school_id, name, description, image_url)
 VALUES 
-    ('77777777-7777-7777-7777-777777777777', '11111111-1111-1111-1111-111111111111', '计算机网络', '大二核心课程'),
-    ('77777777-7777-7777-7777-777777777778', '11111111-1111-1111-1111-111111111111', '操作系统', '深入理解计算机系统核心'),
-    ('77777777-7777-7777-7777-777777777779', '11111111-1111-1111-1111-111111111111', '数据结构与算法', '编程基础必修课');
+    ('77777777-7777-7777-7777-777777777777', '11111111-1111-1111-1111-111111111111', '计算机网络', '大二核心课程', ''),
+    ('77777777-7777-7777-7777-777777777778', '11111111-1111-1111-1111-111111111111', '操作系统', '深入理解计算机系统核心', ''),
+    ('77777777-7777-7777-7777-777777777779', '11111111-1111-1111-1111-111111111111', '数据结构与算法', '编程基础必修课', '');
 INSERT INTO course_teachers (id, course_id, teacher_id) VALUES
     ('ct-001', '77777777-7777-7777-7777-777777777777', '44444444-4444-4444-4444-444444444444'),
     ('ct-002', '77777777-7777-7777-7777-777777777778', '44444444-4444-4444-4444-444444444444'),

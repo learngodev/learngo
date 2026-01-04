@@ -45,6 +45,7 @@ type AdminOssCredentialView struct {
 	ID                   string     `json:"id"`
 	Name                 string     `json:"name"`
 	Endpoint             string     `json:"endpoint"`
+	InternalEndpoint     string     `json:"internal_endpoint"`
 	Region               string     `json:"region"`
 	Bucket               string     `json:"bucket"`
 	DirectoryPrefix      string     `json:"directory_prefix"`
@@ -83,6 +84,7 @@ type UpdateOssCredentialInput struct {
 	CredentialID         string
 	Name                 *string
 	Endpoint             *string
+	InternalEndpoint     *string
 	Region               *string
 	Bucket               *string
 	DirectoryPrefix      *string
@@ -102,6 +104,7 @@ type CreateOssCredentialInput struct {
 	SchoolID             string
 	Name                 string
 	Endpoint             string
+	InternalEndpoint     string
 	Region               string
 	Bucket               string
 	DirectoryPrefix      string
@@ -171,6 +174,15 @@ func (s *AdminOssService) UpdateCredential(ctx context.Context, input UpdateOssC
 		trimmed := strings.TrimSpace(*input.Endpoint)
 		updates["endpoint"] = trimmed
 		changeSummary = append(changeSummary, fmt.Sprintf("Endpoint→%s", trimmed))
+	}
+	if input.InternalEndpoint != nil {
+		trimmed := strings.TrimSpace(*input.InternalEndpoint)
+		updates["internal_endpoint"] = trimmed
+		if trimmed == "" {
+			changeSummary = append(changeSummary, "清空内网Endpoint")
+		} else {
+			changeSummary = append(changeSummary, fmt.Sprintf("内网Endpoint→%s", trimmed))
+		}
 	}
 	if input.Region != nil {
 		trimmed := strings.TrimSpace(*input.Region)
@@ -294,6 +306,7 @@ func (s *AdminOssService) CreateCredential(ctx context.Context, input CreateOssC
 	if endpoint == "" {
 		return nil, errors.New("endpoint required")
 	}
+	internalEndpoint := strings.TrimSpace(input.InternalEndpoint)
 	region := strings.TrimSpace(input.Region)
 	if region == "" {
 		return nil, errors.New("region required")
@@ -313,6 +326,7 @@ func (s *AdminOssService) CreateCredential(ctx context.Context, input CreateOssC
 		SchoolID:             schoolID,
 		Name:                 name,
 		Endpoint:             endpoint,
+		InternalEndpoint:     internalEndpoint,
 		Region:               region,
 		Bucket:               bucket,
 		DirectoryPrefix:      directoryPrefix,
@@ -346,6 +360,9 @@ func (s *AdminOssService) CreateCredential(ctx context.Context, input CreateOssC
 	detail := []string{fmt.Sprintf("创建访问凭证 %s", stored.Name)}
 	if stored.IsPrimary {
 		detail = append(detail, "设为主凭证")
+	}
+	if strings.TrimSpace(stored.InternalEndpoint) != "" {
+		detail = append(detail, "配置内网Endpoint")
 	}
 	if stored.AllowPublicRead {
 		detail = append(detail, "开启公开只读")
@@ -564,6 +581,7 @@ func toOssCredentialView(cred *domain.OssCredential) AdminOssCredentialView {
 		ID:                   cred.ID,
 		Name:                 cred.Name,
 		Endpoint:             cred.Endpoint,
+		InternalEndpoint:     cred.InternalEndpoint,
 		Region:               cred.Region,
 		Bucket:               cred.Bucket,
 		DirectoryPrefix:      cred.DirectoryPrefix,

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -16,14 +17,14 @@ import (
 type createCourseRequest struct {
 	Name        string   `json:"name" binding:"required"`
 	Description string   `json:"description"`
-	ImageURL    string   `json:"image_url"`
+	ImageURL    *string  `json:"image_url"`
 	ClassIDs    []string `json:"class_ids"`
 }
 
 type updateCourseRequest struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	ImageURL    string `json:"image_url"`
+	Name        *string `json:"name"`
+	Description *string `json:"description"`
+	ImageURL    *string `json:"image_url"`
 }
 
 type joinCourseRequest struct {
@@ -49,7 +50,20 @@ func (h *Handler) CreateCourse(c *gin.Context) {
 		teacherIDs = append(teacherIDs, teacher.ID)
 	}
 
-	course, err := h.courseService.CreateCourse(c.Request.Context(), schoolID, teacherIDs, req.Name, req.Description, req.ImageURL, req.ClassIDs)
+	imageURL := ""
+	if req.ImageURL != nil {
+		imageURL = strings.TrimSpace(*req.ImageURL)
+	}
+
+	course, err := h.courseService.CreateCourse(
+		c.Request.Context(),
+		schoolID,
+		teacherIDs,
+		req.Name,
+		req.Description,
+		imageURL,
+		req.ClassIDs,
+	)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, "failed_to_create_course", err.Error())
 		return
@@ -146,7 +160,7 @@ func (h *Handler) UpdateCourse(c *gin.Context) {
 		return
 	}
 
-	if err := h.courseService.UpdateCourse(c.Request.Context(), id, req.Name, req.Description, req.ImageURL); err != nil {
+	if err := h.courseService.UpdateCourseFields(c.Request.Context(), id, req.Name, req.Description, req.ImageURL); err != nil {
 		response.Error(c, http.StatusInternalServerError, "failed_to_update_course", err.Error())
 		return
 	}
@@ -236,6 +250,11 @@ func (h *Handler) UpdateTeacherCourse(c *gin.Context) {
 
 	accountID := getAccountID(c)
 	courseID := c.Param("id")
+
+	if req.Name == nil && req.Description == nil && req.ImageURL == nil {
+		response.Error(c, http.StatusBadRequest, "no_fields_to_update", nil)
+		return
+	}
 
 	updated, err := h.teacher.UpdateCourse(c.Request.Context(), accountID, courseID, req.Name, req.Description, req.ImageURL)
 	if err != nil {

@@ -37,7 +37,38 @@ func (s *FileService) getPrimaryCredential(ctx context.Context, schoolID string)
 }
 
 func (s *FileService) newClient(cred *domain.OssCredential) (oss.Client, error) {
-	return oss.NewAliyunClient(cred.Endpoint, cred.AccessKeyID, cred.AccessKeySecret, cred.Bucket)
+	return s.newClientWithEndpoint(cred, s.uploadEndpoint(cred))
+}
+
+func (s *FileService) uploadEndpoint(cred *domain.OssCredential) string {
+	if cred == nil {
+		return ""
+	}
+	if ep := strings.TrimSpace(cred.InternalEndpoint); ep != "" {
+		return ep
+	}
+	return strings.TrimSpace(cred.Endpoint)
+}
+
+func (s *FileService) downloadEndpoint(cred *domain.OssCredential) string {
+	if cred == nil {
+		return ""
+	}
+	// Download URLs returned to clients should always use the public endpoint.
+	ep := strings.TrimSpace(cred.Endpoint)
+	if strings.TrimSpace(cred.InternalEndpoint) == "" && strings.Contains(ep, "-internal.") {
+		// Common Aliyun OSS pattern: oss-<region>-internal.aliyuncs.com -> oss-<region>.aliyuncs.com
+		return strings.Replace(ep, "-internal.", ".", 1)
+	}
+	return ep
+}
+
+func (s *FileService) newClientWithEndpoint(cred *domain.OssCredential, endpoint string) (oss.Client, error) {
+	endpoint = strings.TrimSpace(endpoint)
+	if endpoint == "" {
+		return nil, fmt.Errorf("oss endpoint required")
+	}
+	return oss.NewAliyunClient(endpoint, cred.AccessKeyID, cred.AccessKeySecret, cred.Bucket)
 }
 
 func (s *FileService) newFileRecord(schoolID, uploaderID, fileName, fileType string, size int64) *domain.File {
@@ -131,7 +162,7 @@ func (s *FileService) InitUpload(ctx context.Context, schoolID, uploaderID, file
 		return file, "relay", "", nil
 	}
 
-	client, err := s.newClient(cred)
+	client, err := s.newClientWithEndpoint(cred, s.uploadEndpoint(cred))
 	if err != nil {
 		return nil, "", "", err
 	}
@@ -174,7 +205,7 @@ func (s *FileService) GetDownloadInfo(ctx context.Context, schoolID, fileID stri
 		return &file, "relay", "", nil
 	}
 
-	client, err := s.newClient(cred)
+	client, err := s.newClientWithEndpoint(cred, s.downloadEndpoint(cred))
 	if err != nil {
 		return nil, "", "", err
 	}
@@ -199,7 +230,7 @@ func (s *FileService) OpenDownloadStream(ctx context.Context, schoolID, fileID s
 	if err != nil {
 		return nil, nil, err
 	}
-	client, err := s.newClient(cred)
+	client, err := s.newClientWithEndpoint(cred, s.uploadEndpoint(cred))
 	if err != nil {
 		return nil, nil, err
 	}
