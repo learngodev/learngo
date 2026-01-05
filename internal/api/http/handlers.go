@@ -262,6 +262,7 @@ func (h *Handler) RegisterRoutes(r *gin.Engine, adminGuard gin.HandlerFunc, teac
 
 		aiStudent := api.Group("/ai", studentGuard)
 		aiStudent.POST("/check_assignment", h.CheckAssignment)
+		aiStudent.POST("/explain_question", h.ExplainQuestion)
 
 		conversations := api.Group("/conversations", studentGuard)
 		conversations.POST("", h.CreateConversation)

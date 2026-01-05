@@ -51,6 +51,29 @@ type CheckAssignmentResult struct {
 	Overall     string   `json:"overall"`
 }
 
+// ExplainQuestionInput contains data for AI question explanation.
+// It is intended to explain the question like a teacher, without providing the final answer.
+type ExplainQuestionInput struct {
+	SchoolID     string
+	AccountID    string
+	Role         domain.Role
+	Title        string
+	Prompt       string
+	QuestionType string
+	Options      []string
+	ExtraContext string
+}
+
+// ExplainQuestionResult contains AI explanation for a question.
+// NOTE: It must not include the final answer.
+type ExplainQuestionResult struct {
+	Analysis  string   `json:"analysis"`
+	Steps     []string `json:"steps"`
+	KeyPoints []string `json:"key_points"`
+	Pitfalls  []string `json:"pitfalls"`
+	Checklist []string `json:"checklist"`
+}
+
 // GradeAssignmentInput contains data for AI grading.
 type GradeAssignmentInput struct {
 	AccountID   string
@@ -123,6 +146,87 @@ Please return the result in strict JSON format as follows (ensure all text field
 	})
 
 	var result CheckAssignmentResult
+	if err := json.Unmarshal([]byte(cleanJSON(resp.Content)), &result); err != nil {
+		return nil, fmt.Errorf("failed to parse AI response: %w", err)
+	}
+
+	return &result, nil
+}
+
+// ExplainQuestion explains the question like a teacher (in Simplified Chinese), without giving the final answer.
+func (s *AIGradingService) ExplainQuestion(ctx context.Context, input ExplainQuestionInput) (*ExplainQuestionResult, error) {
+	setting, err := s.getAISetting(ctx, input.SchoolID)
+	if err != nil {
+		return nil, err
+	}
+
+	optionsText := "(none)"
+	if len(input.Options) > 0 {
+		// Keep options as plain lines; do not imply any correct option.
+		optionsText = strings.Join(input.Options, "\n")
+	}
+
+	extra := strings.TrimSpace(input.ExtraContext)
+	if extra == "" {
+		extra = "(none)"
+	}
+
+	prompt := fmt.Sprintf(`
+You are an experienced teacher. Please explain the following question to a student in Chinese (Simplified).
+
+IMPORTANT RULES (must follow strictly):
+1) DO NOT provide the final answer, the correct option, or the final numeric result.
+2) DO NOT write a complete, copy-pastable final solution/code. If needed, only provide high-level pseudocode or thinking steps.
+3) Focus on understanding the question, key concepts, reasoning steps, and common pitfalls.
+4) If the question is multiple-choice, explain how to analyze and eliminate options WITHOUT revealing which one is correct.
+5) Keep the tone supportive and teacher-like.
+
+Assignment Title: %s
+Question Type: %s
+
+Question Prompt:
+%s
+
+Options (if any):
+%s
+
+Extra Context (if any):
+%s
+
+Return the result in STRICT JSON format, all fields in Chinese (Simplified):
+{
+  "analysis": "题意解析（用自己的话解释题目在问什么）",
+  "steps": ["思路步骤 1", "思路步骤 2"],
+  "key_points": ["关键知识点 1", "关键知识点 2"],
+  "pitfalls": ["易错点 1", "易错点 2"],
+  "checklist": ["自查项 1", "自查项 2"]
+}
+`, input.Title, input.QuestionType, input.Prompt, optionsText, extra)
+
+	req := AIChatModelRequest{
+		Setting: setting,
+		Message: prompt,
+	}
+
+	resp, err := s.model.GenerateResponse(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	_ = s.logs.Create(ctx, &domain.AIUsageLog{
+		ID:           uuid.NewString(),
+		SchoolID:     input.SchoolID,
+		AccountID:    input.AccountID,
+		Role:         input.Role,
+		Feature:      "question_explain",
+		Model:        setting.Model,
+		PromptTokens: resp.PromptTokens,
+		ResultTokens: resp.ResultTokens,
+		TotalTokens:  resp.PromptTokens + resp.ResultTokens,
+		CreatedAt:    time.Now(),
+	})
+
+	var result ExplainQuestionResult
 	if err := json.Unmarshal([]byte(cleanJSON(resp.Content)), &result); err != nil {
 		return nil, fmt.Errorf("failed to parse AI response: %w", err)
 	}

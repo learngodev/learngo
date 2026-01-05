@@ -17,6 +17,14 @@ type checkAssignmentRequest struct {
 	Content     string `json:"content" validate:"required"`
 }
 
+type explainQuestionRequest struct {
+	Title        string   `json:"title" validate:"required"`
+	Prompt       string   `json:"prompt" validate:"required"`
+	QuestionType string   `json:"question_type"`
+	Options      []string `json:"options"`
+	ExtraContext string   `json:"extra_context"`
+}
+
 // CheckAssignment handles student assignment pre-check.
 func (h *Handler) CheckAssignment(c *gin.Context) {
 	var req checkAssignmentRequest
@@ -53,6 +61,47 @@ func (h *Handler) CheckAssignment(c *gin.Context) {
 	result, err := h.aiGrading.CheckAssignment(c.Request.Context(), input)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, "ai check failed", err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, result)
+}
+
+// ExplainQuestion handles AI question explanation for students.
+func (h *Handler) ExplainQuestion(c *gin.Context) {
+	var req explainQuestionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		return
+	}
+
+	if err := h.validate.Struct(req); err != nil {
+		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		return
+	}
+
+	accountID := getAccountID(c)
+	role := domain.Role(c.GetString(middleware.ContextRole))
+	schoolID, err := h.teacher.GetSchoolID(c.Request.Context(), accountID)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "failed to resolve school context", err.Error())
+		return
+	}
+
+	input := service.ExplainQuestionInput{
+		SchoolID:     schoolID,
+		AccountID:    accountID,
+		Role:         role,
+		Title:        req.Title,
+		Prompt:       req.Prompt,
+		QuestionType: req.QuestionType,
+		Options:      req.Options,
+		ExtraContext: req.ExtraContext,
+	}
+
+	result, err := h.aiGrading.ExplainQuestion(c.Request.Context(), input)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "ai explain failed", err.Error())
 		return
 	}
 
