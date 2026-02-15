@@ -2130,7 +2130,7 @@ func (h *Handler) ListAssignmentSubmissions(c *gin.Context) {
 
 	payload := make([]gin.H, 0, len(details))
 	for _, detail := range details {
-		payload = append(payload, submissionDetailPayload(detail))
+		payload = append(payload, submissionRecordPayload(detail))
 	}
 
 	response.Success(c, http.StatusOK, gin.H{"submissions": payload})
@@ -3152,23 +3152,12 @@ func (h *Handler) GetMySubmission(c *gin.Context) {
 		return
 	}
 
-	// Flatten items for the root level as expected by frontend
-	itemsPayload := make([]gin.H, 0, len(detail.Items))
-	for _, item := range detail.Items {
-		itemsPayload = append(itemsPayload, gin.H{
-			"id":            item.ID,
-			"submission_id": item.SubmissionID,
-			"question_id":   item.QuestionID,
-			"answer":        item.Answer,
-			"score":         item.Score,
-		})
-	}
-
+	responsePayload := submissionDetailWithCommentsPayload(*detail, comments)
 	payload := gin.H{
 		"assignment": assignmentPayload(*assignment, questions, files),
-		"submission": submissionDetailPayload(*detail),
-		"items":      itemsPayload,
-		"comments":   submissionCommentsPayload(comments),
+		"submission": responsePayload["submission"],
+		"items":      responsePayload["items"],
+		"comments":   responsePayload["comments"],
 	}
 	response.Success(c, http.StatusOK, payload)
 }
@@ -3212,11 +3201,7 @@ func (h *Handler) GetAssignmentSubmission(c *gin.Context) {
 		return
 	}
 
-	payload := gin.H{
-		"submission": submissionDetailPayload(*detail),
-		"comments":   submissionCommentsPayload(comments),
-	}
-	response.Success(c, http.StatusOK, payload)
+	response.Success(c, http.StatusOK, submissionDetailWithCommentsPayload(*detail, comments))
 }
 
 func parseLimit(raw string, defVal, maxVal int) int {
@@ -3402,11 +3387,7 @@ func (h *Handler) GradeSubmission(c *gin.Context) {
 		return
 	}
 
-	payload := gin.H{
-		"submission": submissionDetailPayload(*detail),
-		"comments":   submissionCommentsPayload(comments),
-	}
-	response.Success(c, http.StatusOK, payload)
+	response.Success(c, http.StatusOK, submissionDetailWithCommentsPayload(*detail, comments))
 }
 
 type returnSubmissionRequest struct {
@@ -3463,11 +3444,7 @@ func (h *Handler) ReturnSubmission(c *gin.Context) {
 		return
 	}
 
-	payload := gin.H{
-		"submission": submissionDetailPayload(*detail),
-		"comments":   submissionCommentsPayload(comments),
-	}
-	response.Success(c, http.StatusOK, payload)
+	response.Success(c, http.StatusOK, submissionDetailWithCommentsPayload(*detail, comments))
 }
 
 func (h *Handler) CreateNote(c *gin.Context) {
@@ -3988,18 +3965,7 @@ func assignmentQuestionPayload(q domain.AssignmentQuestion) gin.H {
 	}
 }
 
-func submissionDetailPayload(detail service.SubmissionDetail) gin.H {
-	items := make([]gin.H, 0, len(detail.Items))
-	for _, item := range detail.Items {
-		items = append(items, gin.H{
-			"id":            item.ID,
-			"submission_id": item.SubmissionID,
-			"question_id":   item.QuestionID,
-			"answer":        item.Answer,
-			"score":         item.Score,
-		})
-	}
-
+func submissionRecordPayload(detail service.SubmissionDetail) gin.H {
 	return gin.H{
 		"id":            detail.Submission.ID,
 		"assignment_id": detail.Submission.AssignmentID,
@@ -4011,8 +3977,34 @@ func submissionDetailPayload(detail service.SubmissionDetail) gin.H {
 		"submitted_at":  detail.Submission.SubmittedAt,
 		"created_at":    detail.Submission.CreatedAt,
 		"updated_at":    detail.Submission.UpdatedAt,
-		"items":         items,
 	}
+}
+
+func submissionItemsPayload(items []domain.SubmissionItem) []gin.H {
+	payload := make([]gin.H, 0, len(items))
+	for _, item := range items {
+		payload = append(payload, gin.H{
+			"id":            item.ID,
+			"submission_id": item.SubmissionID,
+			"question_id":   item.QuestionID,
+			"answer":        item.Answer,
+			"score":         item.Score,
+		})
+	}
+	return payload
+}
+
+func submissionDetailPayload(detail service.SubmissionDetail) gin.H {
+	return gin.H{
+		"submission": submissionRecordPayload(detail),
+		"items":      submissionItemsPayload(detail.Items),
+	}
+}
+
+func submissionDetailWithCommentsPayload(detail service.SubmissionDetail, comments []domain.SubmissionComment) gin.H {
+	payload := submissionDetailPayload(detail)
+	payload["comments"] = submissionCommentsPayload(comments)
+	return payload
 }
 
 func submissionCommentPayload(comment domain.SubmissionComment) gin.H {
