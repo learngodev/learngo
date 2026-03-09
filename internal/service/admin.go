@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -23,6 +24,7 @@ type AdminService struct {
 	students     repository.StudentRepository
 	departments  repository.DepartmentRepository
 	classes      repository.ClassRepository
+	schedules    repository.CourseScheduleRepository
 	teacherLinks repository.TeacherStudentRepository
 	aiModel      AIChatModel
 	aiSettings   repository.AIAgentSettingRepository
@@ -94,6 +96,7 @@ func NewAdminService(
 	students repository.StudentRepository,
 	departments repository.DepartmentRepository,
 	classes repository.ClassRepository,
+	schedules repository.CourseScheduleRepository,
 	links repository.TeacherStudentRepository,
 	aiModel AIChatModel,
 	aiSettings repository.AIAgentSettingRepository,
@@ -104,6 +107,7 @@ func NewAdminService(
 		students:     students,
 		departments:  departments,
 		classes:      classes,
+		schedules:    schedules,
 		teacherLinks: links,
 		aiModel:      aiModel,
 		aiSettings:   aiSettings,
@@ -269,10 +273,10 @@ type AdminAccountSummary struct {
 	Name         string      `json:"name"`
 	Email        *string     `json:"email,omitempty"`
 	Phone        string      `json:"phone,omitempty"`
-	DepartmentID string      `json:"department_id,omitempty"`
-	Department   string      `json:"department,omitempty"`
-	ClassID      string      `json:"class_id,omitempty"`
-	ClassName    string      `json:"class_name,omitempty"`
+	DepartmentID []string    `json:"department_id,omitempty"`
+	Department   []string    `json:"department,omitempty"`
+	ClassID      []string    `json:"class_id,omitempty"`
+	ClassName    []string    `json:"class_name,omitempty"`
 	Status       string      `json:"status"`
 	LastActiveAt *time.Time  `json:"last_active_at,omitempty"`
 	CreatedAt    time.Time   `json:"created_at"`
@@ -343,6 +347,55 @@ func (s *AdminService) ListAccounts(ctx context.Context, opts ListAccountsOption
 				summary.ProfileID = profile.ID
 				summary.Email = profile.Email
 				summary.Phone = profile.Phone
+
+				classIDs := make(map[string]struct{})
+				departmentIDs := make(map[string]struct{})
+				classNames := make(map[string]struct{})
+				departmentNames := make(map[string]struct{})
+
+				if profile.DepartmentID != nil && *profile.DepartmentID != "" {
+					departmentIDs[*profile.DepartmentID] = struct{}{}
+				}
+
+				if s.schedules != nil {
+					schedules, serr := s.schedules.ListByTeacher(ctx, profile.ID)
+					if serr != nil {
+						return nil, 0, serr
+					}
+
+					for _, sch := range schedules {
+						if sch.ClassID == "" {
+							continue
+						}
+						classIDs[sch.ClassID] = struct{}{}
+					}
+				}
+
+				for classID := range classIDs {
+					class, cerr := s.classes.GetByID(ctx, classID)
+					if cerr != nil || class == nil {
+						continue
+					}
+					if class.Name != "" {
+						classNames[class.Name] = struct{}{}
+					}
+					if class.DepartmentID != "" {
+						departmentIDs[class.DepartmentID] = struct{}{}
+					}
+				}
+
+				for departmentID := range departmentIDs {
+					department, derr := s.departments.GetByID(ctx, departmentID)
+					if derr != nil || department == nil || department.Name == "" {
+						continue
+					}
+					departmentNames[department.Name] = struct{}{}
+				}
+
+				summary.ClassID = mapKeysSorted(classIDs)
+				summary.ClassName = mapKeysSorted(classNames)
+				summary.DepartmentID = mapKeysSorted(departmentIDs)
+				summary.Department = mapKeysSorted(departmentNames)
 			}
 		case domain.RoleStudent:
 			profile, perr := s.students.GetByAccountID(ctx, account.ID)
@@ -354,15 +407,15 @@ func (s *AdminService) ListAccounts(ctx context.Context, opts ListAccountsOption
 				summary.Email = profile.Email
 				summary.Phone = profile.Phone
 				if profile.ClassID != nil {
-					summary.ClassID = *profile.ClassID
+					summary.ClassID = []string{*profile.ClassID}
 
 					class, cerr := s.classes.GetByID(ctx, *profile.ClassID)
 					if cerr == nil && class != nil {
-						summary.ClassName = class.Name
-						summary.DepartmentID = class.DepartmentID
+						summary.ClassName = []string{class.Name}
+						summary.DepartmentID = []string{class.DepartmentID}
 						department, derr := s.departments.GetByID(ctx, class.DepartmentID)
 						if derr == nil && department != nil {
-							summary.Department = department.Name
+							summary.Department = []string{department.Name}
 						}
 					}
 				}
@@ -372,7 +425,7 @@ func (s *AdminService) ListAccounts(ctx context.Context, opts ListAccountsOption
 			continue
 		}
 
-		if opts.ClassScope == AccountClassScopeUnassigned && summary.ClassID != "" {
+		if opts.ClassScope == AccountClassScopeUnassigned && len(summary.ClassID) > 0 {
 			// Skip if we asked for unassigned but got one with a class (defensive)
 			continue
 		}
@@ -380,7 +433,7 @@ func (s *AdminService) ListAccounts(ctx context.Context, opts ListAccountsOption
 		// and teachers (schedule assignment). We should not filter by summary.ClassID here
 		// because teachers don't have a ClassID property on their profile.
 
-		if opts.DepartmentScope == AccountDepartmentScopeUnassigned && summary.DepartmentID != "" {
+		if opts.DepartmentScope == AccountDepartmentScopeUnassigned && len(summary.DepartmentID) > 0 {
 			continue
 		}
 		// Similarly, repository handles DepartmentID filtering.
@@ -394,6 +447,24 @@ func (s *AdminService) ListAccounts(ctx context.Context, opts ListAccountsOption
 	}
 
 	return summaries, filteredTotal, nil
+}
+
+func mapKeysSorted(set map[string]struct{}) []string {
+	if len(set) == 0 {
+		return nil
+	}
+	values := make([]string, 0, len(set))
+	for value := range set {
+		if strings.TrimSpace(value) == "" {
+			continue
+		}
+		values = append(values, value)
+	}
+	if len(values) == 0 {
+		return nil
+	}
+	sort.Strings(values)
+	return values
 }
 
 // BatchOperateAccounts executes a single administrative action across multiple accounts.

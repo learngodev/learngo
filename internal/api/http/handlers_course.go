@@ -125,21 +125,6 @@ func (h *Handler) ListCourses(c *gin.Context) {
 	departmentID := c.Query("department_id")
 	classID := c.Query("class_id")
 
-	// If filters are present or we want enriched data, use ListCourseAssignments
-	// Actually, the frontend will likely always want the enriched data now.
-	// But let's check if we should replace the existing response structure.
-	// The existing response is `items: []Course`.
-	// The new response is `items: []CourseAssignmentInfo`.
-	// This is a breaking change for clients expecting `Course`.
-	// However, `CourseAssignmentInfo` contains `course_id`, `course_name`, `description`.
-	// It is compatible-ish if the client just looks for those fields, but the field names changed (`id` -> `course_id`, `name` -> `course_name`).
-	// To avoid breaking changes, I should probably map it back or use a new endpoint.
-	// But since I am the only developer and I am updating the frontend too, I can change the API.
-	// Or I can keep `ListCourses` for simple listing and add `ListCourseAssignments` for the management view.
-	// The user asked to "improve Course Management info".
-	// So I will update `ListCourses` to return the enriched info.
-	// I will update the frontend to handle the new structure.
-
 	courses, total, err := h.courseService.ListCoursesWithDetails(c.Request.Context(), schoolID, departmentID, classID, page, size)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, "failed_to_list_courses", err.Error())
