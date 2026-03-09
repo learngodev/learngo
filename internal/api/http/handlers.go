@@ -206,7 +206,6 @@ func (h *Handler) RegisterRoutes(r *gin.Engine, adminGuard gin.HandlerFunc, teac
 		student.GET("/courses/:id/chapters", h.ListStudentCourseChapters)
 		student.GET("/courses/:id/chapters/:chapterID", h.GetStudentCourseChapter)
 		student.GET("/schedule", h.ListStudentSchedule)
-		student.GET("/school/members", h.ListSchoolMembers)
 		student.GET("/time-slots", h.ListTimeSlots)
 		student.GET("/agenda", h.ListStudentAgenda)
 		student.GET("/exams", h.ListStudentExams)
@@ -234,7 +233,6 @@ func (h *Handler) RegisterRoutes(r *gin.Engine, adminGuard gin.HandlerFunc, teac
 		teacher.DELETE("/courses/:id/chapters/:chapterID/attachments/:fileID", h.DetachTeacherCourseChapterFile)
 		teacher.GET("/classes/:id/students", h.ListTeacherClassStudents)
 		teacher.GET("/schedule", h.ListTeacherSchedule)
-		teacher.GET("/school/members", h.ListSchoolMembers)
 		teacher.GET("/time-slots", h.ListTimeSlots)
 		teacher.GET("/assignments", h.ListTeacherAssignments)
 		teacher.GET("/exams", h.ListTeacherExams)
@@ -260,6 +258,7 @@ func (h *Handler) RegisterRoutes(r *gin.Engine, adminGuard gin.HandlerFunc, teac
 		aiStudent.POST("/explain_question", h.ExplainQuestion)
 
 		conversations := api.Group("/conversations", studentGuard)
+		conversations.GET("/candidates", h.SearchConversationCandidates)
 		conversations.POST("", h.CreateConversation)
 		conversations.GET("", h.ListConversations)
 		conversations.GET(":id/messages", h.ListMessages)
@@ -2977,6 +2976,12 @@ type createConversationRequest struct {
 	ParticipantIDs []string `json:"participant_ids" validate:"required,min=1,dive,required"`
 }
 
+type conversationCandidate struct {
+	ID          string      `json:"id"`
+	DisplayName string      `json:"display_name"`
+	Role        domain.Role `json:"role"`
+}
+
 type sendMessageRequest struct {
 	Kind     string `json:"kind" validate:"required,oneof=text image video audio file"`
 	Text     string `json:"text"`
@@ -3685,6 +3690,66 @@ func (h *Handler) CreateConversation(c *gin.Context) {
 	}
 
 	response.Success(c, http.StatusCreated, gin.H{"conversation": conversationPayload(*summary)})
+}
+
+func (h *Handler) SearchConversationCandidates(c *gin.Context) {
+	accountID := getAccountID(c)
+	if accountID == "" {
+		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		return
+	}
+
+	account, err := h.auth.GetAccount(c.Request.Context(), accountID)
+	if err != nil {
+		response.Error(c, http.StatusUnauthorized, "invalid account context", nil)
+		return
+	}
+
+	query := strings.TrimSpace(c.Query("query"))
+
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "100"))
+	if limit <= 0 {
+		limit = 100
+	}
+	if limit > 200 {
+		limit = 200
+	}
+
+	roleParam := strings.ToLower(strings.TrimSpace(c.Query("role")))
+	var role domain.Role
+	switch roleParam {
+	case "teacher":
+		role = domain.RoleTeacher
+	case "student":
+		role = domain.RoleStudent
+	}
+
+	accounts, _, err := h.admin.ListAccounts(c.Request.Context(), service.ListAccountsOptions{
+		SchoolID: account.SchoolID,
+		Query:    query,
+		Role:     role,
+		Status:   domain.AccountStatusActive,
+		Page:     1,
+		Size:     limit,
+	})
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "failed_to_search_candidates", err.Error())
+		return
+	}
+
+	candidates := make([]conversationCandidate, 0, len(accounts))
+	for _, item := range accounts {
+		if item.ID == accountID {
+			continue
+		}
+		candidates = append(candidates, conversationCandidate{
+			ID:          item.ID,
+			DisplayName: item.Name,
+			Role:        item.Role,
+		})
+	}
+
+	response.Success(c, http.StatusOK, gin.H{"candidates": candidates})
 }
 
 func (h *Handler) ListConversations(c *gin.Context) {

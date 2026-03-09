@@ -2,15 +2,12 @@ package http
 
 import (
 	"net/http"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
 	"learn-go/internal/domain"
-	"learn-go/internal/service"
 	"learn-go/pkg/middleware"
 	"learn-go/pkg/response"
 )
@@ -180,67 +177,4 @@ func (h *Handler) DeleteTimeSlot(c *gin.Context) {
 	}
 
 	response.Success(c, http.StatusOK, nil)
-}
-
-func (h *Handler) ListSchoolMembers(c *gin.Context) {
-	schoolID := c.GetString("schoolID")
-	if schoolID == "" {
-		user, exists := c.Get("user")
-		if exists {
-			if u, ok := user.(*domain.Account); ok {
-				schoolID = u.SchoolID
-			}
-		}
-	}
-
-	if schoolID == "" {
-		accountID := c.GetString(middleware.ContextAccountID)
-		if accountID != "" {
-			account, err := h.auth.GetAccount(c.Request.Context(), accountID)
-			if err == nil {
-				schoolID = account.SchoolID
-				c.Set("user", account)
-				c.Set("schoolID", schoolID)
-			}
-		}
-	}
-
-	if schoolID == "" {
-		response.Error(c, http.StatusBadRequest, "school_id_required", nil)
-		return
-	}
-
-	query := strings.TrimSpace(c.Query("query"))
-	roleParam := strings.ToLower(strings.TrimSpace(c.Query("role")))
-	var role domain.Role
-	switch roleParam {
-	case "teacher":
-		role = domain.RoleTeacher
-	case "student":
-		role = domain.RoleStudent
-	}
-
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	if page < 1 {
-		page = 1
-	}
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
-	if pageSize < 1 {
-		pageSize = 20
-	}
-
-	accounts, _, err := h.admin.ListAccounts(c.Request.Context(), service.ListAccountsOptions{
-		SchoolID: schoolID,
-		Query:    query,
-		Role:     role,
-		Status:   domain.AccountStatusActive,
-		Page:     page,
-		Size:     pageSize,
-	})
-	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "failed_to_list_members", err.Error())
-		return
-	}
-
-	response.Success(c, http.StatusOK, gin.H{"members": accounts})
 }
