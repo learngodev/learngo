@@ -223,10 +223,7 @@ func (h *Handler) RegisterRoutes(r *gin.Engine, adminGuard gin.HandlerFunc, teac
 		teacher.POST("/files/upload-url", h.GetUploadURL)
 		teacher.GET("/files/:id/download-url", h.GetDownloadURL)
 		teacher.GET("/courses", h.ListTeacherCourses)
-		teacher.POST("/courses", h.CreateCourse) // Allow teachers to create courses
 		teacher.PATCH("/courses/:id", h.UpdateTeacherCourse)
-		teacher.POST("/courses/:id/classes", h.AssignTeacherCourseClass)
-		teacher.DELETE("/courses/:id/classes/:classID", h.RemoveTeacherCourseClass)
 		teacher.GET("/courses/:id/classes", h.ListTeacherCourseClasses)
 		teacher.GET("/courses/:id/chapters", h.ListTeacherCourseChapters)
 		teacher.POST("/courses/:id/chapters", h.CreateTeacherCourseChapter)

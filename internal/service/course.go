@@ -40,7 +40,7 @@ func NewCourseService(
 	}
 }
 
-func (s *CourseService) CreateCourse(ctx context.Context, schoolID string, teacherIDs []string, name, description, imageURL string, classIDs []string) (*domain.Course, error) {
+func (s *CourseService) CreateCourse(ctx context.Context, schoolID string, name, description, imageURL string, classIDs []string) (*domain.Course, error) {
 	imageURL = normalizeCourseImageURL(imageURL)
 	course := &domain.Course{
 		ID:             uuid.New().String(),
@@ -54,12 +54,6 @@ func (s *CourseService) CreateCourse(ctx context.Context, schoolID string, teach
 	}
 	if err := s.courseRepo.Create(ctx, course); err != nil {
 		return nil, err
-	}
-
-	if len(teacherIDs) > 0 {
-		if err := s.courseTeacherRepo.Add(ctx, course.ID, teacherIDs); err != nil {
-			return nil, err
-		}
 	}
 
 	if len(classIDs) > 0 {

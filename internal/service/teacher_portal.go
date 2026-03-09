@@ -9,8 +9,6 @@ import (
 
 	"learn-go/internal/domain"
 	"learn-go/internal/repository"
-
-	"github.com/google/uuid"
 )
 
 // ErrTeacherProfileNotFound indicates missing teacher profile for account.
@@ -21,9 +19,6 @@ var ErrTeacherCourseAccessDenied = errors.New("teacher course access denied")
 
 // ErrTeacherAssignmentForbidden indicates the assignment does not belong to the teacher.
 var ErrTeacherAssignmentForbidden = errors.New("teacher assignment forbidden")
-
-// ErrInvalidCourseClass indicates the class is missing or out of scope for the course.
-var ErrInvalidCourseClass = errors.New("invalid course class")
 
 // TeacherPortalService aggregates schedule and assignment data for teachers.
 type TeacherPortalService struct {
@@ -304,97 +299,6 @@ func (s *TeacherPortalService) UpdateCourse(ctx context.Context, accountID, cour
 	}
 
 	return course, nil
-}
-
-// AssignCourseClass enrolls all students of a class into a course.
-func (s *TeacherPortalService) AssignCourseClass(ctx context.Context, accountID, courseID, classID string) error {
-	_, course, err := s.ensureTeacherCourseAccess(ctx, accountID, courseID)
-	if err != nil {
-		return err
-	}
-
-	class, err := s.classes.GetByID(ctx, classID)
-	if err != nil {
-		return err
-	}
-	if class == nil {
-		return ErrInvalidCourseClass
-	}
-	if class.SchoolID != "" && course != nil && course.SchoolID != "" && class.SchoolID != course.SchoolID {
-		return ErrInvalidCourseClass
-	}
-
-	if s.courseStudents == nil {
-		return errors.New("course student repository not configured")
-	}
-
-	students, err := s.students.ListByClassID(ctx, classID)
-	if err != nil {
-		return err
-	}
-
-	existing, err := s.courseStudents.ListByCourseID(ctx, courseID)
-	if err != nil {
-		return err
-	}
-	seen := make(map[string]bool, len(existing))
-	for _, e := range existing {
-		seen[e.StudentID] = true
-	}
-
-	now := time.Now()
-	enrollments := make([]domain.CourseStudent, 0, len(students))
-	for _, st := range students {
-		if seen[st.ID] {
-			continue
-		}
-		enrollments = append(enrollments, domain.CourseStudent{
-			ID:        uuid.NewString(),
-			CourseID:  courseID,
-			StudentID: st.ID,
-			CreatedAt: now,
-		})
-	}
-
-	return s.courseStudents.BatchCreate(ctx, enrollments)
-}
-
-// RemoveCourseClass unenrolls all students of a class from a course.
-func (s *TeacherPortalService) RemoveCourseClass(ctx context.Context, accountID, courseID, classID string) error {
-	_, course, err := s.ensureTeacherCourseAccess(ctx, accountID, courseID)
-	if err != nil {
-		return err
-	}
-
-	class, err := s.classes.GetByID(ctx, classID)
-	if err != nil {
-		return err
-	}
-	if class == nil {
-		return ErrInvalidCourseClass
-	}
-	if class.SchoolID != "" && course != nil && course.SchoolID != "" && class.SchoolID != course.SchoolID {
-		return ErrInvalidCourseClass
-	}
-
-	if s.courseStudents == nil {
-		return errors.New("course student repository not configured")
-	}
-
-	students, err := s.students.ListByClassID(ctx, classID)
-	if err != nil {
-		return err
-	}
-	if len(students) == 0 {
-		return nil
-	}
-
-	studentIDs := make([]string, 0, len(students))
-	for _, st := range students {
-		studentIDs = append(studentIDs, st.ID)
-	}
-
-	return s.courseStudents.DeleteByCourseAndStudent(ctx, courseID, studentIDs)
 }
 
 func (s *TeacherPortalService) GetClassStudents(ctx context.Context, classID string) ([]domain.Student, error) {

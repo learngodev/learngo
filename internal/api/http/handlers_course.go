@@ -44,12 +44,6 @@ func (h *Handler) CreateCourse(c *gin.Context) {
 		return
 	}
 
-	var teacherIDs []string
-	accountID := getAccountID(c)
-	if teacher, err := h.teacher.GetProfile(c.Request.Context(), accountID); err == nil && teacher != nil {
-		teacherIDs = append(teacherIDs, teacher.ID)
-	}
-
 	imageURL := ""
 	if req.ImageURL != nil {
 		imageURL = strings.TrimSpace(*req.ImageURL)
@@ -58,7 +52,6 @@ func (h *Handler) CreateCourse(c *gin.Context) {
 	course, err := h.courseService.CreateCourse(
 		c.Request.Context(),
 		schoolID,
-		teacherIDs,
 		req.Name,
 		req.Description,
 		imageURL,
@@ -194,10 +187,6 @@ type assignStudentsRequest struct {
 	DepartmentID string `json:"department_id"`
 }
 
-type assignCourseClassRequest struct {
-	ClassID string `json:"class_id" binding:"required"`
-}
-
 func (h *Handler) AssignStudents(c *gin.Context) {
 	courseID := c.Param("id")
 	var req assignStudentsRequest
@@ -257,59 +246,6 @@ func (h *Handler) UpdateTeacherCourse(c *gin.Context) {
 	}
 
 	response.Success(c, http.StatusOK, gin.H{"course": updated})
-}
-
-func (h *Handler) AssignTeacherCourseClass(c *gin.Context) {
-	var req assignCourseClassRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid_request", err.Error())
-		return
-	}
-
-	accountID := getAccountID(c)
-	courseID := c.Param("id")
-
-	if err := h.teacher.AssignCourseClass(c.Request.Context(), accountID, courseID, req.ClassID); err != nil {
-		switch {
-		case errors.Is(err, service.ErrTeacherProfileNotFound):
-			response.Error(c, http.StatusForbidden, "teacher_profile_not_found", nil)
-		case errors.Is(err, service.ErrTeacherAssignmentForbidden):
-			response.Error(c, http.StatusForbidden, "course_not_owned", nil)
-		case errors.Is(err, service.ErrInvalidCourseClass):
-			response.Error(c, http.StatusBadRequest, "invalid_course_class", nil)
-		case errors.Is(err, gorm.ErrRecordNotFound):
-			response.Error(c, http.StatusNotFound, "course_not_found", nil)
-		default:
-			response.Error(c, http.StatusInternalServerError, "failed_to_assign_class", err.Error())
-		}
-		return
-	}
-
-	response.Success(c, http.StatusOK, nil)
-}
-
-func (h *Handler) RemoveTeacherCourseClass(c *gin.Context) {
-	accountID := getAccountID(c)
-	courseID := c.Param("id")
-	classID := c.Param("classID")
-
-	if err := h.teacher.RemoveCourseClass(c.Request.Context(), accountID, courseID, classID); err != nil {
-		switch {
-		case errors.Is(err, service.ErrTeacherProfileNotFound):
-			response.Error(c, http.StatusForbidden, "teacher_profile_not_found", nil)
-		case errors.Is(err, service.ErrTeacherAssignmentForbidden):
-			response.Error(c, http.StatusForbidden, "course_not_owned", nil)
-		case errors.Is(err, service.ErrInvalidCourseClass):
-			response.Error(c, http.StatusBadRequest, "invalid_course_class", nil)
-		case errors.Is(err, gorm.ErrRecordNotFound):
-			response.Error(c, http.StatusNotFound, "course_not_found", nil)
-		default:
-			response.Error(c, http.StatusInternalServerError, "failed_to_remove_class", err.Error())
-		}
-		return
-	}
-
-	response.Success(c, http.StatusOK, nil)
 }
 
 func (h *Handler) getSchoolID(c *gin.Context) string {
