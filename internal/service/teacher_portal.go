@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"sort"
-	"strings"
 	"time"
 
 	"learn-go/internal/domain"
@@ -260,45 +259,6 @@ func (s *TeacherPortalService) GetCourseClasses(ctx context.Context, accountID, 
 	}
 
 	return filtered, nil
-}
-
-// UpdateCourse lets teachers edit basic course metadata when they own/teach it.
-// Pointer fields allow partial updates without unintentionally clearing values.
-func (s *TeacherPortalService) UpdateCourse(ctx context.Context, accountID, courseID string, name, description, imageURL *string) (*domain.Course, error) {
-	_, course, err := s.ensureTeacherCourseAccess(ctx, accountID, courseID)
-	if err != nil {
-		return nil, err
-	}
-
-	if course == nil {
-		return nil, repository.ErrNotFound
-	}
-
-	updated := false
-	if name != nil {
-		course.Name = strings.TrimSpace(*name)
-		updated = true
-	}
-	if description != nil {
-		course.Description = strings.TrimSpace(*description)
-		updated = true
-	}
-	if imageURL != nil {
-		course.ImageURL = normalizeCourseImageURL(*imageURL)
-		updated = true
-	}
-
-	if !updated {
-		return course, nil
-	}
-
-	course.UpdatedAt = time.Now()
-
-	if err := s.courses.Update(ctx, course); err != nil {
-		return nil, err
-	}
-
-	return course, nil
 }
 
 func (s *TeacherPortalService) GetClassStudents(ctx context.Context, classID string) ([]domain.Student, error) {

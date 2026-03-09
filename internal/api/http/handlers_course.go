@@ -1,16 +1,13 @@
 package http
 
 import (
-	"errors"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 
 	"learn-go/internal/domain"
-	"learn-go/internal/service"
 	"learn-go/pkg/response"
 )
 
@@ -213,39 +210,6 @@ func (h *Handler) AssignStudents(c *gin.Context) {
 	}
 
 	response.Success(c, http.StatusOK, nil)
-}
-
-func (h *Handler) UpdateTeacherCourse(c *gin.Context) {
-	var req updateCourseRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid_request", err.Error())
-		return
-	}
-
-	accountID := getAccountID(c)
-	courseID := c.Param("id")
-
-	if req.Name == nil && req.Description == nil && req.ImageURL == nil {
-		response.Error(c, http.StatusBadRequest, "no_fields_to_update", nil)
-		return
-	}
-
-	updated, err := h.teacher.UpdateCourse(c.Request.Context(), accountID, courseID, req.Name, req.Description, req.ImageURL)
-	if err != nil {
-		switch {
-		case errors.Is(err, service.ErrTeacherProfileNotFound):
-			response.Error(c, http.StatusForbidden, "teacher_profile_not_found", nil)
-		case errors.Is(err, service.ErrTeacherAssignmentForbidden):
-			response.Error(c, http.StatusForbidden, "course_not_owned", nil)
-		case errors.Is(err, gorm.ErrRecordNotFound):
-			response.Error(c, http.StatusNotFound, "course_not_found", nil)
-		default:
-			response.Error(c, http.StatusInternalServerError, "failed_to_update_course", err.Error())
-		}
-		return
-	}
-
-	response.Success(c, http.StatusOK, gin.H{"course": updated})
 }
 
 func (h *Handler) getSchoolID(c *gin.Context) string {
