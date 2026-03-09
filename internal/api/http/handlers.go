@@ -128,8 +128,6 @@ func (h *Handler) RegisterRoutes(r *gin.Engine, adminGuard gin.HandlerFunc, teac
 		admin.POST("/classes", h.CreateClass)
 		admin.PATCH("/classes/:id", h.UpdateClass)
 		admin.DELETE("/classes/:id", h.DeleteClass)
-		admin.POST("/classes/:id/teachers", h.AddTeacherToClass)
-		admin.DELETE("/classes/:id/teachers/:accountId", h.RemoveTeacherFromClass)
 		admin.GET("/departments", h.ListDepartments)
 		admin.GET("/departments/:id/classes", h.ListClasses)
 		admin.GET("/accounts", h.ListAccounts)
@@ -840,65 +838,6 @@ func (h *Handler) UpdateAccountStructure(c *gin.Context) {
 
 	if err != nil {
 		h.handleAdminAccountError(c, err, "unable to update account structure")
-		return
-	}
-
-	response.Success(c, http.StatusOK, nil)
-}
-
-func (h *Handler) AddTeacherToClass(c *gin.Context) {
-	classID := strings.TrimSpace(c.Param("id"))
-	if classID == "" {
-		response.Error(c, http.StatusBadRequest, "class id is required", nil)
-		return
-	}
-
-	type request struct {
-		AccountID string `json:"account_id" binding:"required"`
-	}
-	var req request
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
-		return
-	}
-
-	schoolID := strings.TrimSpace(c.Query("school_id"))
-	if schoolID == "" {
-		response.Error(c, http.StatusBadRequest, "school_id required", nil)
-		return
-	}
-
-	err := h.admin.AddTeacherToClass(c.Request.Context(), schoolID, classID, req.AccountID)
-	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "failed to add teacher", err.Error())
-		return
-	}
-
-	response.Success(c, http.StatusOK, nil)
-}
-
-func (h *Handler) RemoveTeacherFromClass(c *gin.Context) {
-	classID := strings.TrimSpace(c.Param("id"))
-	if classID == "" {
-		response.Error(c, http.StatusBadRequest, "class id is required", nil)
-		return
-	}
-
-	accountID := strings.TrimSpace(c.Param("accountId"))
-	if accountID == "" {
-		response.Error(c, http.StatusBadRequest, "account id is required", nil)
-		return
-	}
-
-	schoolID := strings.TrimSpace(c.Query("school_id"))
-	if schoolID == "" {
-		response.Error(c, http.StatusBadRequest, "school_id required", nil)
-		return
-	}
-
-	err := h.admin.RemoveTeacherFromClass(c.Request.Context(), schoolID, classID, accountID)
-	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "failed to remove teacher", err.Error())
 		return
 	}
 

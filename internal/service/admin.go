@@ -898,38 +898,6 @@ func (s *AdminService) UpdateAccountStructure(ctx context.Context, input UpdateA
 	return nil
 }
 
-func (s *AdminService) AddTeacherToClass(ctx context.Context, schoolID, classID, accountID string) error {
-	teacher, err := s.teachers.GetByAccountID(ctx, accountID)
-	if err != nil {
-		return err
-	}
-	if teacher == nil {
-		return errors.New("teacher not found")
-	}
-
-	class, err := s.classes.GetByID(ctx, classID)
-	if err != nil {
-		return err
-	}
-	if class.SchoolID != schoolID {
-		return errors.New("class not found")
-	}
-
-	return s.classes.AddTeacher(ctx, classID, teacher.ID)
-}
-
-func (s *AdminService) RemoveTeacherFromClass(ctx context.Context, schoolID, classID, accountID string) error {
-	teacher, err := s.teachers.GetByAccountID(ctx, accountID)
-	if err != nil {
-		return err
-	}
-	if teacher == nil {
-		return errors.New("teacher not found")
-	}
-
-	return s.classes.RemoveTeacher(ctx, classID, teacher.ID)
-}
-
 // AnalyzeBatchInstruction analyzes natural language instructions and returns proposed operations.
 func (s *AdminService) AnalyzeBatchInstruction(ctx context.Context, schoolID uuid.UUID, instruction string) (*AIAnalyzeResponse, error) {
 	setting, err := s.aiSettings.GetBySchoolID(ctx, schoolID.String())

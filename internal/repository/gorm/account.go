@@ -144,9 +144,10 @@ func (s *AccountStore) ListByRole(
 		if role == domain.RoleTeacher {
 			joinTeachers()
 			base = base.Where(
-				"teachers.id IN (?) OR teachers.id IN (?)",
-				s.db.Table("course_schedules").Select("teacher_id").Where("class_id = ?", classID),
-				s.db.Table("class_teachers").Select("teacher_id").Where("class_id = ?", classID),
+				"teachers.id IN (?)",
+				s.db.Table("course_schedules").
+					Select("teacher_id").
+					Where("class_id = ? AND teacher_id IS NOT NULL", classID),
 			)
 		} else {
 			joinStudents()
@@ -157,15 +158,11 @@ func (s *AccountStore) ListByRole(
 		if role == domain.RoleTeacher {
 			joinTeachers()
 			base = base.Where(
-				"teachers.id IN (?) OR teachers.id IN (?)",
+				"teachers.id IN (?)",
 				s.db.Table("course_schedules").
 					Select("course_schedules.teacher_id").
 					Joins("JOIN classes ON classes.id = course_schedules.class_id").
 					Where("classes.department_id = ? AND course_schedules.teacher_id IS NOT NULL", departmentID),
-				s.db.Table("class_teachers").
-					Select("class_teachers.teacher_id").
-					Joins("JOIN classes ON classes.id = class_teachers.class_id").
-					Where("classes.department_id = ?", departmentID),
 			)
 		} else {
 			joinClasses()
@@ -190,12 +187,10 @@ func (s *AccountStore) ListByRole(
 		if role == domain.RoleTeacher {
 			joinTeachers()
 			base = base.Where(
-				"teachers.id NOT IN (?) AND teachers.id NOT IN (?)",
+				"teachers.id NOT IN (?)",
 				s.db.Table("course_schedules").
 					Select("teacher_id").
 					Where("teacher_id IS NOT NULL AND class_id <> ''"),
-				s.db.Table("class_teachers").
-					Select("teacher_id"),
 			)
 		} else {
 			joinStudents()
@@ -207,15 +202,11 @@ func (s *AccountStore) ListByRole(
 		if role == domain.RoleTeacher {
 			joinTeachers()
 			base = base.Where(
-				"teachers.id NOT IN (?) AND teachers.id NOT IN (?)",
+				"teachers.id NOT IN (?)",
 				s.db.Table("course_schedules").
 					Select("course_schedules.teacher_id").
 					Joins("JOIN classes ON classes.id = course_schedules.class_id").
 					Where("course_schedules.teacher_id IS NOT NULL AND classes.department_id IS NOT NULL AND classes.department_id <> ''"),
-				s.db.Table("class_teachers").
-					Select("class_teachers.teacher_id").
-					Joins("JOIN classes ON classes.id = class_teachers.class_id").
-					Where("classes.department_id IS NOT NULL AND classes.department_id <> ''"),
 			)
 		} else {
 			joinClasses()

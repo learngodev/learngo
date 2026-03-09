@@ -399,8 +399,6 @@ func (f *fakeClassRepo) ListByIDs(ctx context.Context, ids []string) ([]domain.C
 }
 func (f *fakeClassRepo) UpdateName(context.Context, string, string, string) error { return nil }
 func (f *fakeClassRepo) Delete(context.Context, string, string) error             { return nil }
-func (f *fakeClassRepo) AddTeacher(context.Context, string, string) error         { return nil }
-func (f *fakeClassRepo) RemoveTeacher(context.Context, string, string) error      { return nil }
 
 type teacherAccountRepoStub struct {
 	accounts map[string]domain.Account

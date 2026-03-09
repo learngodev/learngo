@@ -237,7 +237,6 @@ func migrate(db *gorm.DB) error {
 		&domain.TeacherStudentLink{},
 		&domain.Department{},
 		&domain.Class{},
-		&domain.ClassTeacher{},
 		&domain.Course{},
 		&domain.CourseChapter{},
 		&domain.CourseChapterAttachment{},

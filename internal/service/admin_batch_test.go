@@ -233,8 +233,6 @@ func (noopClassRepo) GetByID(context.Context, string) (*domain.Class, error) {
 func (noopClassRepo) ListByIDs(context.Context, []string) ([]domain.Class, error) { return nil, nil }
 func (noopClassRepo) UpdateName(context.Context, string, string, string) error    { return nil }
 func (noopClassRepo) Delete(context.Context, string, string) error                { return nil }
-func (noopClassRepo) AddTeacher(context.Context, string, string) error            { return nil }
-func (noopClassRepo) RemoveTeacher(context.Context, string, string) error         { return nil }
 
 var _ repository.ClassRepository = (*noopClassRepo)(nil)
 

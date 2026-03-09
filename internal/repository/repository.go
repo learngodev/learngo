@@ -171,8 +171,6 @@ type ClassRepository interface {
 	ListByIDs(ctx context.Context, ids []string) ([]domain.Class, error)
 	UpdateName(ctx context.Context, id, schoolID, name string) error
 	Delete(ctx context.Context, id, schoolID string) error
-	AddTeacher(ctx context.Context, classID, teacherID string) error
-	RemoveTeacher(ctx context.Context, classID, teacherID string) error
 }
 
 // CourseTeacherRepository handles course-teacher associations.

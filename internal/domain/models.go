@@ -243,14 +243,6 @@ type CourseStudent struct {
 	CreatedAt time.Time
 }
 
-// ClassTeacher links a teacher to a class.
-type ClassTeacher struct {
-	ID        string `gorm:"primaryKey;size:36"`
-	ClassID   string `gorm:"size:36;index"`
-	TeacherID string `gorm:"size:36;index"`
-	CreatedAt time.Time
-}
-
 // CourseTeacher links a teacher to a course.
 type CourseTeacher struct {
 	ID        string `gorm:"primaryKey;size:36"`

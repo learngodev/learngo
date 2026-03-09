@@ -30,7 +30,6 @@ DROP TABLE IF EXISTS courses CASCADE;
 DROP TABLE IF EXISTS course_slots CASCADE;
 DROP TABLE IF EXISTS time_slots CASCADE;
 DROP TABLE IF EXISTS classrooms CASCADE;
-DROP TABLE IF EXISTS class_teachers CASCADE;
 DROP TABLE IF EXISTS teacher_student_links CASCADE;
 DROP TABLE IF EXISTS students CASCADE;
 DROP TABLE IF EXISTS teachers CASCADE;
@@ -190,18 +189,6 @@ ALTER TABLE students
 
 ALTER TABLE students
     ADD CONSTRAINT "uni_students_number" UNIQUE (number);
-
--- Class teacher assignment (many-to-many) -----------------------------------
-CREATE TABLE class_teachers (
-    id         CHAR(36) PRIMARY KEY,
-    class_id   CHAR(36) NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
-    teacher_id CHAR(36) NOT NULL REFERENCES teachers(id) ON DELETE CASCADE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE (class_id, teacher_id)
-);
-
-CREATE INDEX class_teachers_class_id_idx ON class_teachers(class_id);
-CREATE INDEX class_teachers_teacher_id_idx ON class_teachers(teacher_id);
 
 CREATE TABLE teacher_student_links (
     id         CHAR(36) PRIMARY KEY,
@@ -459,9 +446,6 @@ VALUES ('55555555-5555-5555-5555-555555555555', '11111111-1111-1111-1111-1111111
 
 INSERT INTO teacher_student_links (id, teacher_id, student_id)
 VALUES ('66666666-6666-6666-6666-666666666666', '44444444-4444-4444-4444-444444444444', '55555555-5555-5555-5555-555555555555');
-
-INSERT INTO class_teachers (id, class_id, teacher_id)
-VALUES ('ct-link-001', '33333333-3333-3333-3333-333333333333', '44444444-4444-4444-4444-444444444444');
 
 INSERT INTO courses (id, school_id, name, description, image_url)
 VALUES 
