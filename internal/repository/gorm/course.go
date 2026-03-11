@@ -276,6 +276,24 @@ func NewCourseSessionStore(db *gorm.DB) *CourseSessionStore {
 	return &CourseSessionStore{db: db}
 }
 
+// ListBetween returns sessions within the provided time window.
+func (s *CourseSessionStore) ListBetween(ctx context.Context, start, end time.Time) ([]domain.CourseSession, error) {
+	query := s.db.WithContext(ctx)
+	if !end.IsZero() {
+		query = query.Where("starts_at < ?", end)
+	}
+	if !start.IsZero() {
+		query = query.Where("ends_at > ?", start)
+	}
+	query = query.Order("starts_at ASC")
+
+	var sessions []domain.CourseSession
+	if err := query.Find(&sessions).Error; err != nil {
+		return nil, err
+	}
+	return sessions, nil
+}
+
 // ListByClassBetween returns sessions for a class within the provided time window.
 func (s *CourseSessionStore) ListByClassBetween(ctx context.Context, classID string, start, end time.Time) ([]domain.CourseSession, error) {
 	query := s.db.WithContext(ctx).Where("class_id = ?", classID)

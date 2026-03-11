@@ -1,9 +1,11 @@
 package http
 
 import (
+	"errors"
 	"net/http"
 	"time"
 
+	"learn-go/internal/service"
 	"learn-go/pkg/response"
 
 	"github.com/gin-gonic/gin"
@@ -37,7 +39,14 @@ func (h *Handler) CreateSchedule(c *gin.Context) {
 
 	schedule, err := h.schedule.CreateSchedule(c.Request.Context(), req.SchoolID, req.CourseID, req.ClassID, teacherID, req.SlotID, req.DayOfWeek, req.Location, req.ClassroomID, req.StartDate, req.EndDate)
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "Failed to create schedule", err.Error())
+		switch {
+		case errors.Is(err, service.ErrScheduleValidation):
+			response.Error(c, http.StatusBadRequest, "Invalid schedule", err.Error())
+		case errors.Is(err, service.ErrScheduleConflict):
+			response.Error(c, http.StatusConflict, "Schedule conflict", err.Error())
+		default:
+			response.Error(c, http.StatusInternalServerError, "Failed to create schedule", err.Error())
+		}
 		return
 	}
 	response.Success(c, http.StatusCreated, schedule)
@@ -103,7 +112,14 @@ func (h *Handler) GenerateSessions(c *gin.Context) {
 	}
 
 	if err := h.schedule.GenerateSessions(c.Request.Context(), req.SchoolID, req.Start, req.End); err != nil {
-		response.Error(c, http.StatusInternalServerError, "Failed to generate sessions", err.Error())
+		switch {
+		case errors.Is(err, service.ErrScheduleValidation):
+			response.Error(c, http.StatusBadRequest, "Invalid schedule", err.Error())
+		case errors.Is(err, service.ErrScheduleConflict):
+			response.Error(c, http.StatusConflict, "Schedule conflict", err.Error())
+		default:
+			response.Error(c, http.StatusInternalServerError, "Failed to generate sessions", err.Error())
+		}
 		return
 	}
 	response.Success(c, http.StatusOK, nil)
@@ -125,7 +141,14 @@ func (h *Handler) UpdateSession(c *gin.Context) {
 	}
 
 	if err := h.schedule.UpdateSession(c.Request.Context(), id, req.SlotID, req.Date, req.Location); err != nil {
-		response.Error(c, http.StatusInternalServerError, "Failed to update session", err.Error())
+		switch {
+		case errors.Is(err, service.ErrScheduleValidation):
+			response.Error(c, http.StatusBadRequest, "Invalid schedule", err.Error())
+		case errors.Is(err, service.ErrScheduleConflict):
+			response.Error(c, http.StatusConflict, "Schedule conflict", err.Error())
+		default:
+			response.Error(c, http.StatusInternalServerError, "Failed to update session", err.Error())
+		}
 		return
 	}
 	response.Success(c, http.StatusOK, nil)
