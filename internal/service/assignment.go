@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -52,6 +54,9 @@ var ErrSubmissionNotFound = errors.New("submission not found")
 // ErrSubmissionForbidden indicates the caller cannot access the submission.
 var ErrSubmissionForbidden = errors.New("submission forbidden")
 
+// ErrScoreOutOfRange indicates a score exceeds its allowed range.
+var ErrScoreOutOfRange = errors.New("score out of allowed range")
+
 // CreateAssignmentInput contains data for creating an assignment.
 type CreateAssignmentInput struct {
 	CourseID      string
@@ -82,6 +87,9 @@ type QuestionInput struct {
 func (s *AssignmentService) CreateAssignment(ctx context.Context, input CreateAssignmentInput) (*domain.Assignment, error) {
 	if input.CourseID == "" || input.TeacherID == "" || input.ClassID == "" {
 		return nil, errors.New("course, teacher and class are required")
+	}
+	if err := validateAssignmentQuestionScores(input.MaxScore, input.Questions); err != nil {
+		return nil, err
 	}
 
 	assignment := &domain.Assignment{
@@ -167,19 +175,30 @@ func (s *AssignmentService) Submit(ctx context.Context, input SubmitAssignmentIn
 	}
 
 	// Calculate progress
-	_, questions, _, err := s.assignments.Get(ctx, input.AssignmentID)
+	assignment, questions, _, err := s.assignments.Get(ctx, input.AssignmentID)
 	if err != nil {
+		return err
+	}
+	if err := validateBoundedScore(input.Score, assignment.MaxScore); err != nil {
 		return err
 	}
 
 	questionIDs := make(map[string]bool)
+	questionMaxScores := make(map[string]float64, len(questions))
 	for _, q := range questions {
 		questionIDs[q.ID] = true
+		questionMaxScores[q.ID] = q.Score
 	}
 
 	answeredCount := 0
 	seenQuestions := make(map[string]bool)
 	for _, ans := range input.Answers {
+		if err := validateBoundedScore(ans.Score, questionMaxScores[ans.QuestionID]); err != nil {
+			if !questionIDs[ans.QuestionID] {
+				return errors.New("invalid question id")
+			}
+			return err
+		}
 		if questionIDs[ans.QuestionID] && strings.TrimSpace(ans.Answer) != "" {
 			if !seenQuestions[ans.QuestionID] {
 				answeredCount++
@@ -388,12 +407,20 @@ func (s *AssignmentService) GradeSubmission(ctx context.Context, teacherID strin
 		return nil, nil, errors.New("assignment and submission required")
 	}
 
-	assignment, _, _, err := s.GetAssignment(ctx, input.AssignmentID)
+	assignment, questions, _, err := s.GetAssignment(ctx, input.AssignmentID)
 	if err != nil {
 		return nil, nil, err
 	}
 	if assignment.TeacherID != teacherID {
 		return nil, nil, ErrSubmissionForbidden
+	}
+	if err := validateBoundedScore(input.Score, assignment.MaxScore); err != nil {
+		return nil, nil, err
+	}
+
+	questionMaxScores := make(map[string]float64, len(questions))
+	for _, q := range questions {
+		questionMaxScores[q.ID] = q.Score
 	}
 
 	submission, items, err := s.submissions.GetByID(ctx, input.SubmissionID)
@@ -417,6 +444,13 @@ func (s *AssignmentService) GradeSubmission(ctx context.Context, teacherID strin
 		original, ok := itemByID[itemID]
 		if !ok {
 			return nil, nil, errors.New("invalid item id")
+		}
+		maxScore, ok := questionMaxScores[original.QuestionID]
+		if !ok {
+			return nil, nil, errors.New("invalid question id")
+		}
+		if err := validateBoundedScore(score, maxScore); err != nil {
+			return nil, nil, err
 		}
 		original.Score = score
 		updates = append(updates, original)
@@ -553,7 +587,7 @@ func (s *AssignmentService) UpdateAssignment(ctx context.Context, input UpdateAs
 		return nil, errors.New("assignment id and teacher id required")
 	}
 
-	assignment, _, _, err := s.assignments.Get(ctx, input.ID)
+	assignment, questions, _, err := s.assignments.Get(ctx, input.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -575,6 +609,16 @@ func (s *AssignmentService) UpdateAssignment(ctx context.Context, input UpdateAs
 		assignment.DueAt = input.DueAt
 	}
 	if input.MaxScore != nil {
+		if err := validateFiniteNonNegative(*input.MaxScore); err != nil {
+			return nil, err
+		}
+		totalQuestionScore := 0.0
+		for _, q := range questions {
+			totalQuestionScore += q.Score
+		}
+		if totalQuestionScore > *input.MaxScore {
+			return nil, fmt.Errorf("%w: total question score %.2f exceeds assignment max_score %.2f", ErrScoreOutOfRange, totalQuestionScore, *input.MaxScore)
+		}
 		assignment.MaxScore = *input.MaxScore
 	}
 	if input.AllowResubmit != nil {
@@ -587,6 +631,52 @@ func (s *AssignmentService) UpdateAssignment(ctx context.Context, input UpdateAs
 	}
 
 	return assignment, nil
+}
+
+func validateAssignmentQuestionScores(maxScore float64, questions []QuestionInput) error {
+	if err := validateFiniteNonNegative(maxScore); err != nil {
+		return err
+	}
+	total := 0.0
+	for _, q := range questions {
+		if err := validateFiniteNonNegative(q.Score); err != nil {
+			return err
+		}
+		if q.Score > maxScore {
+			return fmt.Errorf("%w: question score %.2f exceeds assignment max_score %.2f", ErrScoreOutOfRange, q.Score, maxScore)
+		}
+		total += q.Score
+	}
+	if total > maxScore {
+		return fmt.Errorf("%w: total question score %.2f exceeds assignment max_score %.2f", ErrScoreOutOfRange, total, maxScore)
+	}
+	return nil
+}
+
+func validateBoundedScore(score *float64, max float64) error {
+	if score == nil {
+		return nil
+	}
+	if err := validateFiniteNonNegative(*score); err != nil {
+		return err
+	}
+	if err := validateFiniteNonNegative(max); err != nil {
+		return err
+	}
+	if *score > max {
+		return fmt.Errorf("%w: score %.2f exceeds max %.2f", ErrScoreOutOfRange, *score, max)
+	}
+	return nil
+}
+
+func validateFiniteNonNegative(v float64) error {
+	if math.IsNaN(v) || math.IsInf(v, 0) {
+		return fmt.Errorf("%w: score must be a finite number", ErrScoreOutOfRange)
+	}
+	if v < 0 {
+		return fmt.Errorf("%w: score must be >= 0", ErrScoreOutOfRange)
+	}
+	return nil
 }
 
 func mergeItems(original []domain.SubmissionItem, updates []domain.SubmissionItem) []domain.SubmissionItem {

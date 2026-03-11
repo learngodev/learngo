@@ -3321,6 +3321,8 @@ func (h *Handler) GradeSubmission(c *gin.Context) {
 			response.Error(c, http.StatusNotFound, "submission not found", nil)
 		case errors.Is(err, service.ErrSubmissionForbidden):
 			response.Error(c, http.StatusForbidden, "submission forbidden", nil)
+		case errors.Is(err, service.ErrScoreOutOfRange):
+			response.Error(c, http.StatusBadRequest, "invalid score", err.Error())
 		default:
 			response.Error(c, http.StatusInternalServerError, "unable to grade submission", err.Error())
 		}
