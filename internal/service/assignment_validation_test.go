@@ -53,8 +53,10 @@ func (f *scoreValidationAssignmentRepo) Update(context.Context, *domain.Assignme
 }
 
 type scoreValidationSubmissionRepo struct {
-	submission *domain.AssignmentSubmission
-	items      []domain.SubmissionItem
+	submission           *domain.AssignmentSubmission
+	items                []domain.SubmissionItem
+	byAssignmentStudent  *domain.AssignmentSubmission
+	byAssignmentStudentI []domain.SubmissionItem
 }
 
 func (f *scoreValidationSubmissionRepo) CreateOrUpdate(context.Context, *domain.AssignmentSubmission, []domain.SubmissionItem) error {
@@ -70,6 +72,9 @@ func (f *scoreValidationSubmissionRepo) ListItemsBySubmissionIDs(context.Context
 }
 
 func (f *scoreValidationSubmissionRepo) GetByAssignmentAndStudent(context.Context, string, string) (*domain.AssignmentSubmission, []domain.SubmissionItem, error) {
+	if f.byAssignmentStudent != nil {
+		return f.byAssignmentStudent, f.byAssignmentStudentI, nil
+	}
 	return nil, nil, gorm.ErrRecordNotFound
 }
 
@@ -176,6 +181,39 @@ func TestSubmitRejectsWhenScoreExceedsAssignmentMax(t *testing.T) {
 	})
 	if !errors.Is(err, ErrScoreOutOfRange) {
 		t.Fatalf("expected ErrScoreOutOfRange, got %v", err)
+	}
+}
+
+func TestSubmitRejectsWhenExistingSubmissionAlreadyGraded(t *testing.T) {
+	repo := &scoreValidationAssignmentRepo{
+		assignment: &domain.Assignment{ID: "assign-1", MaxScore: 100},
+		questions:  []domain.AssignmentQuestion{{ID: "q1", Score: 100}},
+	}
+	subRepo := &scoreValidationSubmissionRepo{
+		byAssignmentStudent: &domain.AssignmentSubmission{
+			ID:           "sub-1",
+			AssignmentID: "assign-1",
+			StudentID:    "stu-1",
+			Status:       "graded",
+		},
+	}
+	svc := NewAssignmentService(
+		repo,
+		subRepo,
+		&scoreValidationCommentRepo{},
+		&fakeStudentRepo{},
+		nil,
+		nil,
+	)
+
+	err := svc.Submit(context.Background(), SubmitAssignmentInput{
+		AssignmentID: "assign-1",
+		StudentID:    "stu-1",
+		Answers:      []AnswerInput{{QuestionID: "q1", Answer: "updated answer"}},
+		Status:       "submitted",
+	})
+	if !errors.Is(err, ErrSubmissionAlreadyGraded) {
+		t.Fatalf("expected ErrSubmissionAlreadyGraded, got %v", err)
 	}
 }
 

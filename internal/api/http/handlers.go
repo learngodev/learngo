@@ -3043,6 +3043,10 @@ func (h *Handler) SubmitAssignment(c *gin.Context) {
 		Status:       req.Status,
 	})
 	if err != nil {
+		if errors.Is(err, service.ErrSubmissionAlreadyGraded) {
+			response.Error(c, http.StatusConflict, "submission already graded", nil)
+			return
+		}
 		response.Error(c, http.StatusBadRequest, "unable to submit assignment", err.Error())
 		return
 	}

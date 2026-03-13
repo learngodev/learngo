@@ -54,6 +54,9 @@ var ErrSubmissionNotFound = errors.New("submission not found")
 // ErrSubmissionForbidden indicates the caller cannot access the submission.
 var ErrSubmissionForbidden = errors.New("submission forbidden")
 
+// ErrSubmissionAlreadyGraded indicates graded submissions cannot be changed by students.
+var ErrSubmissionAlreadyGraded = errors.New("submission already graded")
+
 // ErrScoreOutOfRange indicates a score exceeds its allowed range.
 var ErrScoreOutOfRange = errors.New("score out of allowed range")
 
@@ -235,6 +238,9 @@ func (s *AssignmentService) Submit(ctx context.Context, input SubmitAssignmentIn
 	// Check if submission already exists to preserve ID
 	existing, _, err := s.submissions.GetByAssignmentAndStudent(ctx, input.AssignmentID, input.StudentID)
 	if err == nil && existing != nil {
+		if existing.Status == "graded" {
+			return ErrSubmissionAlreadyGraded
+		}
 		submission.ID = existing.ID
 		submission.CreatedAt = existing.CreatedAt
 	}
