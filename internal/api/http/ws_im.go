@@ -14,6 +14,7 @@ import (
 	"learn-go/internal/api/grpcpb"
 	"learn-go/internal/api/imstream"
 	"learn-go/pkg/middleware"
+	"learn-go/pkg/response"
 )
 
 // IMWebSocket upgrades the connection and runs a conversation bidirectional stream over WebSocket.
@@ -36,18 +37,21 @@ func (h *Handler) IMWebSocket(c *gin.Context) {
 		}
 	}
 	if token == "" {
-		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"success": false, "error": gin.H{"message": "missing authorization"}})
+		response.Error(c, http.StatusUnauthorized, "missing authorization", nil)
+		c.Abort()
 		return
 	}
 
 	accountID, role, err := middleware.ValidateJWT(token, h.jwtSecret)
 	if err != nil || accountID == "" {
-		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"success": false, "error": gin.H{"message": "invalid token"}})
+		response.Error(c, http.StatusUnauthorized, "invalid token", nil)
+		c.Abort()
 		return
 	}
 	role = strings.ToLower(strings.TrimSpace(role))
 	if role != "student" && role != "teacher" && role != "admin" {
-		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"success": false, "error": gin.H{"message": "insufficient role"}})
+		response.Error(c, http.StatusForbidden, "insufficient role", nil)
+		c.Abort()
 		return
 	}
 

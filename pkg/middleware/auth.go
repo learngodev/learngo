@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"strings"
 
+	"learn-go/pkg/response"
+
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -37,7 +39,8 @@ func JWTAuth(cfg AuthConfig) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" || !strings.HasPrefix(strings.ToLower(authHeader), "bearer ") {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"success": false, "error": gin.H{"message": "missing authorization"}})
+			response.Error(c, http.StatusUnauthorized, "missing authorization", nil)
+			c.Abort()
 			return
 		}
 
@@ -45,13 +48,15 @@ func JWTAuth(cfg AuthConfig) gin.HandlerFunc {
 
 		accountID, role, err := ValidateJWT(tokenString, cfg.Secret)
 		if err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+			response.Error(c, http.StatusUnauthorized, err.Error(), nil)
+			c.Abort()
 			return
 		}
 
 		if len(roleSet) > 0 {
 			if _, ok := roleSet[role]; !ok {
-				c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"success": false, "error": gin.H{"message": "insufficient role"}})
+				response.Error(c, http.StatusForbidden, "insufficient role", nil)
+				c.Abort()
 				return
 			}
 		}
