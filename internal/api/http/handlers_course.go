@@ -31,13 +31,13 @@ type joinCourseRequest struct {
 func (h *Handler) CreateCourse(c *gin.Context) {
 	var req createCourseRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid_request", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequest, err.Error())
 		return
 	}
 
 	schoolID := h.getSchoolID(c)
 	if schoolID == "" {
-		response.Error(c, http.StatusBadRequest, "school_id_required", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeSchoolIDRequired, nil)
 		return
 	}
 
@@ -65,14 +65,14 @@ func (h *Handler) CreateCourse(c *gin.Context) {
 func (h *Handler) JoinCourse(c *gin.Context) {
 	var req joinCourseRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid_request", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequest, err.Error())
 		return
 	}
 
 	accountID := getAccountID(c)
 	student, err := h.student.GetStudentByAccountID(c.Request.Context(), accountID)
 	if err != nil {
-		response.Error(c, http.StatusForbidden, "student_profile_not_found", err.Error())
+		response.Error(c, http.StatusForbidden, response.CodeStudentProfileNotFound, err.Error())
 		return
 	}
 
@@ -88,7 +88,7 @@ func (h *Handler) ListStudentCourses(c *gin.Context) {
 	accountID := getAccountID(c)
 	student, err := h.student.GetStudentByAccountID(c.Request.Context(), accountID)
 	if err != nil {
-		response.Error(c, http.StatusForbidden, "student_profile_not_found", err.Error())
+		response.Error(c, http.StatusForbidden, response.CodeStudentProfileNotFound, err.Error())
 		return
 	}
 
@@ -106,7 +106,7 @@ func (h *Handler) ListStudentCourses(c *gin.Context) {
 func (h *Handler) ListCourses(c *gin.Context) {
 	schoolID := h.getSchoolID(c)
 	if schoolID == "" {
-		response.Error(c, http.StatusBadRequest, "school_id_required", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeSchoolIDRequired, nil)
 		return
 	}
 
@@ -131,7 +131,7 @@ func (h *Handler) UpdateCourse(c *gin.Context) {
 	id := c.Param("id")
 	var req updateCourseRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid_request", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequest, err.Error())
 		return
 	}
 
@@ -146,7 +146,7 @@ func (h *Handler) UpdateCourse(c *gin.Context) {
 func (h *Handler) ListAssignments(c *gin.Context) {
 	schoolID := h.getSchoolID(c)
 	if schoolID == "" {
-		response.Error(c, http.StatusBadRequest, "school_id_required", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeSchoolIDRequired, nil)
 		return
 	}
 
@@ -188,7 +188,7 @@ func (h *Handler) AssignStudents(c *gin.Context) {
 	courseID := c.Param("id")
 	var req assignStudentsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid_request", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequest, err.Error())
 		return
 	}
 

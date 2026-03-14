@@ -34,7 +34,7 @@ type UploadRequest struct {
 func (h *Handler) RelayUpload(c *gin.Context) {
 	fileHeader, err := c.FormFile("file")
 	if err != nil {
-		response.Error(c, http.StatusBadRequest, "file is required", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeFileIsRequired, nil)
 		return
 	}
 
@@ -67,11 +67,11 @@ func (h *Handler) RelayUpload(c *gin.Context) {
 			return
 		}
 		if len(fileName) > 256 {
-			response.Error(c, http.StatusBadRequest, "file_name too long", nil)
+			response.Error(c, http.StatusBadRequest, response.CodeFileNameTooLong, nil)
 			return
 		}
 		if len(fileType) > 255 {
-			response.Error(c, http.StatusBadRequest, "file_type too long", nil)
+			response.Error(c, http.StatusBadRequest, response.CodeFileTypeTooLong, nil)
 			return
 		}
 	}
@@ -79,7 +79,7 @@ func (h *Handler) RelayUpload(c *gin.Context) {
 	accountID := c.GetString(middleware.ContextAccountID)
 	account, err := h.auth.GetAccount(c.Request.Context(), accountID)
 	if err != nil {
-		response.Error(c, http.StatusUnauthorized, "account not found", nil)
+		response.Error(c, http.StatusUnauthorized, response.CodeAccountNotFound, nil)
 		return
 	}
 
@@ -99,17 +99,21 @@ func (h *Handler) RelayUpload(c *gin.Context) {
 			fileID,
 		)
 		if err != nil {
-			response.Error(c, http.StatusBadRequest, err.Error(), nil)
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				response.Error(c, http.StatusBadRequest, response.CodeFileNotFound, err.Error())
+				return
+			}
+			response.Error(c, http.StatusBadRequest, response.CodeUnableToLoadFile, err.Error())
 			return
 		}
 
 		// Best-effort safety: prevent mismatched metadata when reusing an existing record.
 		if fileName != "" && len(fileName) > 256 {
-			response.Error(c, http.StatusBadRequest, "file_name too long", nil)
+			response.Error(c, http.StatusBadRequest, response.CodeFileNameTooLong, nil)
 			return
 		}
 		if fileType != "" && len(fileType) > 255 {
-			response.Error(c, http.StatusBadRequest, "file_type too long", nil)
+			response.Error(c, http.StatusBadRequest, response.CodeFileTypeTooLong, nil)
 			return
 		}
 		if strings.TrimSpace(fileName) != "" && strings.TrimSpace(fileName) != strings.TrimSpace(recorded.Name) {
@@ -130,7 +134,7 @@ func (h *Handler) RelayUpload(c *gin.Context) {
 			return
 		}
 		if err := h.fileService.RelayUploadExisting(c.Request.Context(), recorded, opened); err != nil {
-			response.Error(c, http.StatusInternalServerError, err.Error(), nil)
+			response.Error(c, http.StatusInternalServerError, response.CodeUnableToRelayUploadExistingFile, err.Error())
 			return
 		}
 		stored = recorded
@@ -145,7 +149,7 @@ func (h *Handler) RelayUpload(c *gin.Context) {
 			opened,
 		)
 		if err != nil {
-			response.Error(c, http.StatusInternalServerError, err.Error(), nil)
+			response.Error(c, http.StatusInternalServerError, response.CodeUnableToRelayUpload, err.Error())
 			return
 		}
 		stored = recorded
@@ -163,7 +167,7 @@ func (h *Handler) RelayUpload(c *gin.Context) {
 func (h *Handler) GetUploadURL(c *gin.Context) {
 	var req UploadRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, err.Error(), nil)
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
 		return
 	}
 
@@ -173,7 +177,7 @@ func (h *Handler) GetUploadURL(c *gin.Context) {
 		return
 	}
 	if len(req.FileName) > 256 {
-		response.Error(c, http.StatusBadRequest, "file_name too long", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeFileNameTooLong, nil)
 		return
 	}
 
@@ -186,14 +190,14 @@ func (h *Handler) GetUploadURL(c *gin.Context) {
 		req.FileType = mediaType
 	}
 	if len(req.FileType) > 255 {
-		response.Error(c, http.StatusBadRequest, "file_type too long", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeFileTypeTooLong, nil)
 		return
 	}
 
 	accountID := c.GetString(middleware.ContextAccountID)
 	account, err := h.auth.GetAccount(c.Request.Context(), accountID)
 	if err != nil {
-		response.Error(c, http.StatusUnauthorized, "account not found", nil)
+		response.Error(c, http.StatusUnauthorized, response.CodeAccountNotFound, nil)
 		return
 	}
 
@@ -206,7 +210,7 @@ func (h *Handler) GetUploadURL(c *gin.Context) {
 		req.Size,
 	)
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, err.Error(), nil)
+		response.Error(c, http.StatusInternalServerError, response.CodeUnableToInitializeUpload, err.Error())
 		return
 	}
 
@@ -237,17 +241,17 @@ func (h *Handler) GetDownloadURL(c *gin.Context) {
 	accountID := c.GetString(middleware.ContextAccountID)
 	account, err := h.auth.GetAccount(c.Request.Context(), accountID)
 	if err != nil {
-		response.Error(c, http.StatusUnauthorized, "account not found", nil)
+		response.Error(c, http.StatusUnauthorized, response.CodeAccountNotFound, nil)
 		return
 	}
 
 	_, method, directURL, err := h.fileService.GetDownloadInfo(c.Request.Context(), account.SchoolID, fileID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			response.Error(c, http.StatusNotFound, "file not found", nil)
+			response.Error(c, http.StatusNotFound, response.CodeFileNotFound, nil)
 			return
 		}
-		response.Error(c, http.StatusInternalServerError, err.Error(), nil)
+		response.Error(c, http.StatusInternalServerError, response.CodeUnableToGetDownloadInfo, err.Error())
 		return
 	}
 
@@ -288,7 +292,7 @@ func (h *Handler) RelayDownload(c *gin.Context) {
 
 	tokenString := strings.TrimSpace(c.Query("token"))
 	if tokenString == "" {
-		response.Error(c, http.StatusUnauthorized, "missing token", nil)
+		response.Error(c, http.StatusUnauthorized, response.CodeMissingToken, nil)
 		return
 	}
 
@@ -301,13 +305,13 @@ func (h *Handler) RelayDownload(c *gin.Context) {
 		return []byte(cfg.JWTSecret), nil
 	})
 	if err != nil || !parsed.Valid {
-		response.Error(c, http.StatusUnauthorized, "invalid token", nil)
+		response.Error(c, http.StatusUnauthorized, response.CodeInvalidToken, nil)
 		return
 	}
 
 	claimType, _ := claims["typ"].(string)
 	if claimType != "download" {
-		response.Error(c, http.StatusUnauthorized, "invalid token", nil)
+		response.Error(c, http.StatusUnauthorized, response.CodeInvalidToken, nil)
 		return
 	}
 
@@ -315,13 +319,13 @@ func (h *Handler) RelayDownload(c *gin.Context) {
 	schoolID, _ := claims["sid"].(string)
 	claimedFileID, _ := claims["fid"].(string)
 	if sub == "" || schoolID == "" || claimedFileID == "" || claimedFileID != fileID {
-		response.Error(c, http.StatusUnauthorized, "invalid token", nil)
+		response.Error(c, http.StatusUnauthorized, response.CodeInvalidToken, nil)
 		return
 	}
 
 	account, err := h.auth.GetAccount(c.Request.Context(), sub)
 	if err != nil {
-		response.Error(c, http.StatusUnauthorized, "account not found", nil)
+		response.Error(c, http.StatusUnauthorized, response.CodeAccountNotFound, nil)
 		return
 	}
 	if account.SchoolID != schoolID {
@@ -332,10 +336,10 @@ func (h *Handler) RelayDownload(c *gin.Context) {
 	file, rc, err := h.fileService.OpenDownloadStream(c.Request.Context(), schoolID, fileID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			response.Error(c, http.StatusNotFound, "file not found", nil)
+			response.Error(c, http.StatusNotFound, response.CodeFileNotFound, nil)
 			return
 		}
-		response.Error(c, http.StatusInternalServerError, err.Error(), nil)
+		response.Error(c, http.StatusInternalServerError, response.CodeUnableToOpenDownloadStream, err.Error())
 		return
 	}
 	defer rc.Close()

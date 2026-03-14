@@ -32,13 +32,13 @@ type attachTeacherCourseChapterFileRequest struct {
 func (h *Handler) ListTeacherCourseChapters(c *gin.Context) {
 	accountID := getAccountID(c)
 	if accountID == "" {
-		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		response.Error(c, http.StatusUnauthorized, response.CodeMissingAccountContext, nil)
 		return
 	}
 
 	courseID := strings.TrimSpace(c.Param("id"))
 	if courseID == "" {
-		response.Error(c, http.StatusBadRequest, "missing course id", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeMissingCourseID, nil)
 		return
 	}
 
@@ -46,9 +46,9 @@ func (h *Handler) ListTeacherCourseChapters(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrTeacherProfileNotFound):
-			response.Error(c, http.StatusNotFound, "teacher profile not found", nil)
+			response.Error(c, http.StatusNotFound, response.CodeTeacherProfileNotFound, nil)
 		case errors.Is(err, service.ErrTeacherCourseAccessDenied):
-			response.Error(c, http.StatusForbidden, "course access denied", nil)
+			response.Error(c, http.StatusForbidden, response.CodeCourseAccessDenied, nil)
 		default:
 			response.Error(c, http.StatusInternalServerError, "unable to list chapters", err.Error())
 		}
@@ -74,14 +74,14 @@ func (h *Handler) ListTeacherCourseChapters(c *gin.Context) {
 func (h *Handler) GetTeacherCourseChapter(c *gin.Context) {
 	accountID := getAccountID(c)
 	if accountID == "" {
-		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		response.Error(c, http.StatusUnauthorized, response.CodeMissingAccountContext, nil)
 		return
 	}
 
 	courseID := strings.TrimSpace(c.Param("id"))
 	chapterID := strings.TrimSpace(c.Param("chapterID"))
 	if courseID == "" || chapterID == "" {
-		response.Error(c, http.StatusBadRequest, "missing course/chapter id", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeMissingCourseChapterID, nil)
 		return
 	}
 
@@ -89,11 +89,11 @@ func (h *Handler) GetTeacherCourseChapter(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrTeacherProfileNotFound):
-			response.Error(c, http.StatusNotFound, "teacher profile not found", nil)
+			response.Error(c, http.StatusNotFound, response.CodeTeacherProfileNotFound, nil)
 		case errors.Is(err, service.ErrTeacherCourseAccessDenied):
-			response.Error(c, http.StatusForbidden, "course access denied", nil)
+			response.Error(c, http.StatusForbidden, response.CodeCourseAccessDenied, nil)
 		case errors.Is(err, repository.ErrNotFound):
-			response.Error(c, http.StatusNotFound, "chapter not found", nil)
+			response.Error(c, http.StatusNotFound, response.CodeChapterNotFound, nil)
 		default:
 			response.Error(c, http.StatusInternalServerError, "unable to get chapter", err.Error())
 		}
@@ -129,19 +129,19 @@ func (h *Handler) GetTeacherCourseChapter(c *gin.Context) {
 func (h *Handler) CreateTeacherCourseChapter(c *gin.Context) {
 	accountID := getAccountID(c)
 	if accountID == "" {
-		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		response.Error(c, http.StatusUnauthorized, response.CodeMissingAccountContext, nil)
 		return
 	}
 
 	courseID := strings.TrimSpace(c.Param("id"))
 	if courseID == "" {
-		response.Error(c, http.StatusBadRequest, "missing course id", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeMissingCourseID, nil)
 		return
 	}
 
 	var req createTeacherCourseChapterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid request", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequest, err.Error())
 		return
 	}
 	if err := h.validate.Struct(&req); err != nil {
@@ -153,9 +153,9 @@ func (h *Handler) CreateTeacherCourseChapter(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrTeacherProfileNotFound):
-			response.Error(c, http.StatusNotFound, "teacher profile not found", nil)
+			response.Error(c, http.StatusNotFound, response.CodeTeacherProfileNotFound, nil)
 		case errors.Is(err, service.ErrTeacherCourseAccessDenied):
-			response.Error(c, http.StatusForbidden, "course access denied", nil)
+			response.Error(c, http.StatusForbidden, response.CodeCourseAccessDenied, nil)
 		default:
 			response.Error(c, http.StatusInternalServerError, "unable to create chapter", err.Error())
 		}
@@ -177,20 +177,20 @@ func (h *Handler) CreateTeacherCourseChapter(c *gin.Context) {
 func (h *Handler) UpdateTeacherCourseChapter(c *gin.Context) {
 	accountID := getAccountID(c)
 	if accountID == "" {
-		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		response.Error(c, http.StatusUnauthorized, response.CodeMissingAccountContext, nil)
 		return
 	}
 
 	courseID := strings.TrimSpace(c.Param("id"))
 	chapterID := strings.TrimSpace(c.Param("chapterID"))
 	if courseID == "" || chapterID == "" {
-		response.Error(c, http.StatusBadRequest, "missing course/chapter id", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeMissingCourseChapterID, nil)
 		return
 	}
 
 	var req updateTeacherCourseChapterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid request", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequest, err.Error())
 		return
 	}
 
@@ -213,11 +213,11 @@ func (h *Handler) UpdateTeacherCourseChapter(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrTeacherProfileNotFound):
-			response.Error(c, http.StatusNotFound, "teacher profile not found", nil)
+			response.Error(c, http.StatusNotFound, response.CodeTeacherProfileNotFound, nil)
 		case errors.Is(err, service.ErrTeacherCourseAccessDenied):
-			response.Error(c, http.StatusForbidden, "course access denied", nil)
+			response.Error(c, http.StatusForbidden, response.CodeCourseAccessDenied, nil)
 		case errors.Is(err, repository.ErrNotFound):
-			response.Error(c, http.StatusNotFound, "chapter not found", nil)
+			response.Error(c, http.StatusNotFound, response.CodeChapterNotFound, nil)
 		default:
 			response.Error(c, http.StatusInternalServerError, "unable to update chapter", err.Error())
 		}
@@ -239,25 +239,25 @@ func (h *Handler) UpdateTeacherCourseChapter(c *gin.Context) {
 func (h *Handler) DeleteTeacherCourseChapter(c *gin.Context) {
 	accountID := getAccountID(c)
 	if accountID == "" {
-		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		response.Error(c, http.StatusUnauthorized, response.CodeMissingAccountContext, nil)
 		return
 	}
 
 	courseID := strings.TrimSpace(c.Param("id"))
 	chapterID := strings.TrimSpace(c.Param("chapterID"))
 	if courseID == "" || chapterID == "" {
-		response.Error(c, http.StatusBadRequest, "missing course/chapter id", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeMissingCourseChapterID, nil)
 		return
 	}
 
 	if err := h.teacher.DeleteCourseChapter(c.Request.Context(), accountID, courseID, chapterID); err != nil {
 		switch {
 		case errors.Is(err, service.ErrTeacherProfileNotFound):
-			response.Error(c, http.StatusNotFound, "teacher profile not found", nil)
+			response.Error(c, http.StatusNotFound, response.CodeTeacherProfileNotFound, nil)
 		case errors.Is(err, service.ErrTeacherCourseAccessDenied):
-			response.Error(c, http.StatusForbidden, "course access denied", nil)
+			response.Error(c, http.StatusForbidden, response.CodeCourseAccessDenied, nil)
 		case errors.Is(err, repository.ErrNotFound):
-			response.Error(c, http.StatusNotFound, "chapter not found", nil)
+			response.Error(c, http.StatusNotFound, response.CodeChapterNotFound, nil)
 		default:
 			response.Error(c, http.StatusInternalServerError, "unable to delete chapter", err.Error())
 		}
@@ -270,20 +270,20 @@ func (h *Handler) DeleteTeacherCourseChapter(c *gin.Context) {
 func (h *Handler) AttachTeacherCourseChapterFile(c *gin.Context) {
 	accountID := getAccountID(c)
 	if accountID == "" {
-		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		response.Error(c, http.StatusUnauthorized, response.CodeMissingAccountContext, nil)
 		return
 	}
 
 	courseID := strings.TrimSpace(c.Param("id"))
 	chapterID := strings.TrimSpace(c.Param("chapterID"))
 	if courseID == "" || chapterID == "" {
-		response.Error(c, http.StatusBadRequest, "missing course/chapter id", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeMissingCourseChapterID, nil)
 		return
 	}
 
 	var req attachTeacherCourseChapterFileRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid request", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequest, err.Error())
 		return
 	}
 	if err := h.validate.Struct(&req); err != nil {
@@ -294,9 +294,9 @@ func (h *Handler) AttachTeacherCourseChapterFile(c *gin.Context) {
 	if err := h.teacher.AttachCourseChapterFile(c.Request.Context(), accountID, courseID, chapterID, strings.TrimSpace(req.FileID)); err != nil {
 		switch {
 		case errors.Is(err, service.ErrTeacherProfileNotFound):
-			response.Error(c, http.StatusNotFound, "teacher profile not found", nil)
+			response.Error(c, http.StatusNotFound, response.CodeTeacherProfileNotFound, nil)
 		case errors.Is(err, service.ErrTeacherCourseAccessDenied):
-			response.Error(c, http.StatusForbidden, "course access denied", nil)
+			response.Error(c, http.StatusForbidden, response.CodeCourseAccessDenied, nil)
 		case errors.Is(err, repository.ErrNotFound):
 			response.Error(c, http.StatusNotFound, "chapter or file not found", nil)
 		default:
@@ -311,7 +311,7 @@ func (h *Handler) AttachTeacherCourseChapterFile(c *gin.Context) {
 func (h *Handler) DetachTeacherCourseChapterFile(c *gin.Context) {
 	accountID := getAccountID(c)
 	if accountID == "" {
-		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		response.Error(c, http.StatusUnauthorized, response.CodeMissingAccountContext, nil)
 		return
 	}
 
@@ -326,11 +326,11 @@ func (h *Handler) DetachTeacherCourseChapterFile(c *gin.Context) {
 	if err := h.teacher.DetachCourseChapterFile(c.Request.Context(), accountID, courseID, chapterID, fileID); err != nil {
 		switch {
 		case errors.Is(err, service.ErrTeacherProfileNotFound):
-			response.Error(c, http.StatusNotFound, "teacher profile not found", nil)
+			response.Error(c, http.StatusNotFound, response.CodeTeacherProfileNotFound, nil)
 		case errors.Is(err, service.ErrTeacherCourseAccessDenied):
-			response.Error(c, http.StatusForbidden, "course access denied", nil)
+			response.Error(c, http.StatusForbidden, response.CodeCourseAccessDenied, nil)
 		case errors.Is(err, repository.ErrNotFound):
-			response.Error(c, http.StatusNotFound, "chapter not found", nil)
+			response.Error(c, http.StatusNotFound, response.CodeChapterNotFound, nil)
 		default:
 			response.Error(c, http.StatusInternalServerError, "unable to detach file", err.Error())
 		}

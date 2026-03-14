@@ -16,13 +16,13 @@ import (
 func (h *Handler) ListStudentCourseChapters(c *gin.Context) {
 	accountID := getAccountID(c)
 	if accountID == "" {
-		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		response.Error(c, http.StatusUnauthorized, response.CodeMissingAccountContext, nil)
 		return
 	}
 
 	courseID := strings.TrimSpace(c.Param("id"))
 	if courseID == "" {
-		response.Error(c, http.StatusBadRequest, "missing course id", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeMissingCourseID, nil)
 		return
 	}
 
@@ -30,9 +30,9 @@ func (h *Handler) ListStudentCourseChapters(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrStudentProfileNotFound):
-			response.Error(c, http.StatusNotFound, "student profile not found", nil)
+			response.Error(c, http.StatusNotFound, response.CodeStudentProfileNotFound, nil)
 		case errors.Is(err, service.ErrCourseAccessDenied):
-			response.Error(c, http.StatusForbidden, "course access denied", nil)
+			response.Error(c, http.StatusForbidden, response.CodeCourseAccessDenied, nil)
 		default:
 			response.Error(c, http.StatusInternalServerError, "unable to list chapters", err.Error())
 		}
@@ -58,14 +58,14 @@ func (h *Handler) ListStudentCourseChapters(c *gin.Context) {
 func (h *Handler) GetStudentCourseChapter(c *gin.Context) {
 	accountID := getAccountID(c)
 	if accountID == "" {
-		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		response.Error(c, http.StatusUnauthorized, response.CodeMissingAccountContext, nil)
 		return
 	}
 
 	courseID := strings.TrimSpace(c.Param("id"))
 	chapterID := strings.TrimSpace(c.Param("chapterID"))
 	if courseID == "" || chapterID == "" {
-		response.Error(c, http.StatusBadRequest, "missing course/chapter id", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeMissingCourseChapterID, nil)
 		return
 	}
 
@@ -73,11 +73,11 @@ func (h *Handler) GetStudentCourseChapter(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrStudentProfileNotFound):
-			response.Error(c, http.StatusNotFound, "student profile not found", nil)
+			response.Error(c, http.StatusNotFound, response.CodeStudentProfileNotFound, nil)
 		case errors.Is(err, service.ErrCourseAccessDenied):
-			response.Error(c, http.StatusForbidden, "course access denied", nil)
+			response.Error(c, http.StatusForbidden, response.CodeCourseAccessDenied, nil)
 		case errors.Is(err, repository.ErrNotFound):
-			response.Error(c, http.StatusNotFound, "chapter not found", nil)
+			response.Error(c, http.StatusNotFound, response.CodeChapterNotFound, nil)
 		default:
 			response.Error(c, http.StatusInternalServerError, "unable to get chapter", err.Error())
 		}

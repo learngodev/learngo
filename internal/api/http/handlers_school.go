@@ -66,7 +66,7 @@ func (h *Handler) ListTimeSlots(c *gin.Context) {
 	}
 
 	if schoolID == "" {
-		response.Error(c, http.StatusBadRequest, "school_id_required", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeSchoolIDRequired, nil)
 		return
 	}
 
@@ -82,7 +82,7 @@ func (h *Handler) ListTimeSlots(c *gin.Context) {
 func (h *Handler) CreateTimeSlot(c *gin.Context) {
 	var req createTimeSlotRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid_request", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequest, err.Error())
 		return
 	}
 
@@ -117,7 +117,7 @@ func (h *Handler) CreateTimeSlot(c *gin.Context) {
 	}
 
 	if schoolID == "" {
-		response.Error(c, http.StatusBadRequest, "school_id_required", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeSchoolIDRequired, nil)
 		return
 	}
 
@@ -144,7 +144,7 @@ func (h *Handler) UpdateTimeSlot(c *gin.Context) {
 	id := c.Param("id")
 	var req updateTimeSlotRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid_request", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequest, err.Error())
 		return
 	}
 

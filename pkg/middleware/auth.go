@@ -12,9 +12,9 @@ import (
 )
 
 var (
-	errInvalidToken       = errors.New("invalid token")
-	errInvalidTokenClaims = errors.New("invalid token claims")
-	errInvalidTokenSub    = errors.New("invalid token subject")
+	errInvalidToken       = errors.New(response.CodeInvalidToken)
+	errInvalidTokenClaims = errors.New(response.CodeInvalidTokenClaims)
+	errInvalidTokenSub    = errors.New(response.CodeInvalidTokenSubject)
 )
 
 // Context keys.
@@ -39,7 +39,7 @@ func JWTAuth(cfg AuthConfig) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" || !strings.HasPrefix(strings.ToLower(authHeader), "bearer ") {
-			response.Error(c, http.StatusUnauthorized, "missing authorization", nil)
+			response.Error(c, http.StatusUnauthorized, response.CodeMissingAuthorization, nil)
 			c.Abort()
 			return
 		}
@@ -48,14 +48,21 @@ func JWTAuth(cfg AuthConfig) gin.HandlerFunc {
 
 		accountID, role, err := ValidateJWT(tokenString, cfg.Secret)
 		if err != nil {
-			response.Error(c, http.StatusUnauthorized, err.Error(), nil)
+			switch {
+			case errors.Is(err, errInvalidTokenClaims):
+				response.Error(c, http.StatusUnauthorized, response.CodeInvalidTokenClaims, nil)
+			case errors.Is(err, errInvalidTokenSub):
+				response.Error(c, http.StatusUnauthorized, response.CodeInvalidTokenSubject, nil)
+			default:
+				response.Error(c, http.StatusUnauthorized, response.CodeInvalidToken, nil)
+			}
 			c.Abort()
 			return
 		}
 
 		if len(roleSet) > 0 {
 			if _, ok := roleSet[role]; !ok {
-				response.Error(c, http.StatusForbidden, "insufficient role", nil)
+				response.Error(c, http.StatusForbidden, response.CodeInsufficientRole, nil)
 				c.Abort()
 				return
 			}

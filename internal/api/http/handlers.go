@@ -291,11 +291,11 @@ type passwordResetConfirmRequest struct {
 func (h *Handler) Login(c *gin.Context) {
 	var req loginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
 		return
 	}
 	if err := h.validate.Struct(req); err != nil {
-		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeValidationError, err.Error())
 		return
 	}
 
@@ -307,7 +307,7 @@ func (h *Handler) Login(c *gin.Context) {
 		case errors.Is(err, service.ErrPasswordResetRequired):
 			response.Error(c, http.StatusForbidden, "password reset required", nil)
 		case errors.Is(err, service.ErrInvalidCredentials):
-			response.Error(c, http.StatusUnauthorized, "invalid credentials", nil)
+			response.Error(c, http.StatusUnauthorized, response.CodeInvalidCredentials, nil)
 		default:
 			response.Error(c, http.StatusInternalServerError, "login failed", err.Error())
 		}
@@ -330,11 +330,11 @@ func (h *Handler) Login(c *gin.Context) {
 func (h *Handler) RefreshToken(c *gin.Context) {
 	var req refreshTokenRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
 		return
 	}
 	if err := h.validate.Struct(req); err != nil {
-		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeValidationError, err.Error())
 		return
 	}
 
@@ -369,11 +369,11 @@ func (h *Handler) RefreshToken(c *gin.Context) {
 func (h *Handler) RequestPasswordReset(c *gin.Context) {
 	var req passwordResetRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
 		return
 	}
 	if err := h.validate.Struct(req); err != nil {
-		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeValidationError, err.Error())
 		return
 	}
 
@@ -381,7 +381,7 @@ func (h *Handler) RequestPasswordReset(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrInvalidCredentials):
-			response.Error(c, http.StatusUnauthorized, "invalid credentials", nil)
+			response.Error(c, http.StatusUnauthorized, response.CodeInvalidCredentials, nil)
 		case errors.Is(err, service.ErrPasswordResetUnavailable):
 			response.Error(c, http.StatusBadRequest, "password reset unavailable", nil)
 		default:
@@ -399,18 +399,18 @@ func (h *Handler) RequestPasswordReset(c *gin.Context) {
 func (h *Handler) ConfirmPasswordReset(c *gin.Context) {
 	var req passwordResetConfirmRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
 		return
 	}
 	if err := h.validate.Struct(req); err != nil {
-		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeValidationError, err.Error())
 		return
 	}
 
 	if err := h.auth.ResetPassword(c.Request.Context(), req.SchoolID, req.Identifier, req.Token, req.NewPassword); err != nil {
 		switch {
 		case errors.Is(err, service.ErrInvalidCredentials):
-			response.Error(c, http.StatusUnauthorized, "invalid credentials", nil)
+			response.Error(c, http.StatusUnauthorized, response.CodeInvalidCredentials, nil)
 		case errors.Is(err, service.ErrPasswordResetUnavailable):
 			response.Error(c, http.StatusBadRequest, "password reset unavailable", nil)
 		case errors.Is(err, service.ErrPasswordResetTokenInvalid):
@@ -438,11 +438,11 @@ type createTeacherRequest struct {
 func (h *Handler) CreateTeacher(c *gin.Context) {
 	var req createTeacherRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
 		return
 	}
 	if err := h.validate.Struct(req); err != nil {
-		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeValidationError, err.Error())
 		return
 	}
 
@@ -509,11 +509,11 @@ type batchReminderCompletionRequest struct {
 func (h *Handler) CreateStudent(c *gin.Context) {
 	var req createStudentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
 		return
 	}
 	if err := h.validate.Struct(req); err != nil {
-		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeValidationError, err.Error())
 		return
 	}
 
@@ -537,7 +537,7 @@ func (h *Handler) CreateStudent(c *gin.Context) {
 func (h *Handler) ListAccounts(c *gin.Context) {
 	schoolID := strings.TrimSpace(c.Query("school_id"))
 	if schoolID == "" {
-		response.Error(c, http.StatusBadRequest, "school_id required", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeSchoolIDRequired, nil)
 		return
 	}
 
@@ -578,7 +578,7 @@ func (h *Handler) ListAccounts(c *gin.Context) {
 	case string(domain.AccountStatusPasswordResetRequired):
 		status = domain.AccountStatusPasswordResetRequired
 	default:
-		response.Error(c, http.StatusBadRequest, "invalid status", statusParam)
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidStatus, statusParam)
 		return
 	}
 
@@ -736,22 +736,22 @@ type updateAIAgentSettingRequest struct {
 func (h *Handler) ResetAccountPassword(c *gin.Context) {
 	accountID := strings.TrimSpace(c.Param("id"))
 	if accountID == "" {
-		response.Error(c, http.StatusBadRequest, "account id is required", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeAccountIDRequired, nil)
 		return
 	}
 
 	var req accountActionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
 		return
 	}
 	if err := h.validate.Struct(req); err != nil {
-		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeValidationError, err.Error())
 		return
 	}
 
 	if err := h.admin.ResetAccountPassword(c.Request.Context(), req.SchoolID, accountID); err != nil {
-		h.handleAdminAccountError(c, err, "unable to reset password")
+		h.handleAdminAccountError(c, err)
 		return
 	}
 
@@ -764,7 +764,7 @@ func (h *Handler) ResetAccountPassword(c *gin.Context) {
 func (h *Handler) UpdateAccount(c *gin.Context) {
 	accountID := strings.TrimSpace(c.Param("id"))
 	if accountID == "" {
-		response.Error(c, http.StatusBadRequest, "account id is required", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeAccountIDRequired, nil)
 		return
 	}
 
@@ -776,13 +776,13 @@ func (h *Handler) UpdateAccount(c *gin.Context) {
 	}
 	var req updateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
 		return
 	}
 
 	schoolID := strings.TrimSpace(c.Query("school_id"))
 	if schoolID == "" {
-		response.Error(c, http.StatusBadRequest, "school_id required", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeSchoolIDRequired, nil)
 		return
 	}
 
@@ -796,7 +796,7 @@ func (h *Handler) UpdateAccount(c *gin.Context) {
 	})
 
 	if err != nil {
-		h.handleAdminAccountError(c, err, "unable to update account")
+		h.handleAdminAccountError(c, err)
 		return
 	}
 
@@ -806,7 +806,7 @@ func (h *Handler) UpdateAccount(c *gin.Context) {
 func (h *Handler) UpdateAccountStructure(c *gin.Context) {
 	accountID := strings.TrimSpace(c.Param("id"))
 	if accountID == "" {
-		response.Error(c, http.StatusBadRequest, "account id is required", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeAccountIDRequired, nil)
 		return
 	}
 
@@ -815,13 +815,13 @@ func (h *Handler) UpdateAccountStructure(c *gin.Context) {
 	}
 	var req updateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
 		return
 	}
 
 	schoolID := strings.TrimSpace(c.Query("school_id"))
 	if schoolID == "" {
-		response.Error(c, http.StatusBadRequest, "school_id required", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeSchoolIDRequired, nil)
 		return
 	}
 
@@ -832,7 +832,7 @@ func (h *Handler) UpdateAccountStructure(c *gin.Context) {
 	})
 
 	if err != nil {
-		h.handleAdminAccountError(c, err, "unable to update account structure")
+		h.handleAdminAccountError(c, err)
 		return
 	}
 
@@ -842,22 +842,22 @@ func (h *Handler) UpdateAccountStructure(c *gin.Context) {
 func (h *Handler) LockAccount(c *gin.Context) {
 	accountID := strings.TrimSpace(c.Param("id"))
 	if accountID == "" {
-		response.Error(c, http.StatusBadRequest, "account id is required", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeAccountIDRequired, nil)
 		return
 	}
 
 	var req accountActionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
 		return
 	}
 	if err := h.validate.Struct(req); err != nil {
-		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeValidationError, err.Error())
 		return
 	}
 
 	if err := h.admin.LockAccount(c.Request.Context(), req.SchoolID, accountID); err != nil {
-		h.handleAdminAccountError(c, err, "unable to lock account")
+		h.handleAdminAccountError(c, err)
 		return
 	}
 
@@ -870,22 +870,22 @@ func (h *Handler) LockAccount(c *gin.Context) {
 func (h *Handler) UnlockAccount(c *gin.Context) {
 	accountID := strings.TrimSpace(c.Param("id"))
 	if accountID == "" {
-		response.Error(c, http.StatusBadRequest, "account id is required", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeAccountIDRequired, nil)
 		return
 	}
 
 	var req accountActionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
 		return
 	}
 	if err := h.validate.Struct(req); err != nil {
-		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeValidationError, err.Error())
 		return
 	}
 
 	if err := h.admin.UnlockAccount(c.Request.Context(), req.SchoolID, accountID); err != nil {
-		h.handleAdminAccountError(c, err, "unable to unlock account")
+		h.handleAdminAccountError(c, err)
 		return
 	}
 
@@ -898,7 +898,7 @@ func (h *Handler) UnlockAccount(c *gin.Context) {
 func (h *Handler) DeleteAccount(c *gin.Context) {
 	accountID := strings.TrimSpace(c.Param("id"))
 	if accountID == "" {
-		response.Error(c, http.StatusBadRequest, "account id is required", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeAccountIDRequired, nil)
 		return
 	}
 
@@ -906,22 +906,22 @@ func (h *Handler) DeleteAccount(c *gin.Context) {
 	if schoolID == "" {
 		var req accountActionRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			response.Error(c, http.StatusBadRequest, "invalid request payload", err.Error())
+			response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestPayload, err.Error())
 			return
 		}
 		if err := h.validate.Struct(req); err != nil {
-			response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+			response.Error(c, http.StatusBadRequest, response.CodeValidationError, err.Error())
 			return
 		}
 		schoolID = req.SchoolID
 	}
 	if schoolID == "" {
-		response.Error(c, http.StatusBadRequest, "school_id required", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeSchoolIDRequired, nil)
 		return
 	}
 
 	if err := h.admin.DeleteAccount(c.Request.Context(), schoolID, accountID); err != nil {
-		h.handleAdminAccountError(c, err, "unable to delete account")
+		h.handleAdminAccountError(c, err)
 		return
 	}
 
@@ -933,11 +933,11 @@ func (h *Handler) DeleteAccount(c *gin.Context) {
 func (h *Handler) BatchOperateAccounts(c *gin.Context) {
 	var req batchAccountActionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
 		return
 	}
 	if err := h.validate.Struct(req); err != nil {
-		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeValidationError, err.Error())
 		return
 	}
 
@@ -978,11 +978,11 @@ type adminAIExecuteRequest struct {
 func (h *Handler) AdminAIAnalyze(c *gin.Context) {
 	var req adminAIBatchRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
 		return
 	}
 	if err := h.validate.Struct(req); err != nil {
-		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeValidationError, err.Error())
 		return
 	}
 
@@ -1005,11 +1005,11 @@ func (h *Handler) AdminAIAnalyze(c *gin.Context) {
 func (h *Handler) AdminAIExecute(c *gin.Context) {
 	var req adminAIExecuteRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
 		return
 	}
 	if err := h.validate.Struct(req); err != nil {
-		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeValidationError, err.Error())
 		return
 	}
 
@@ -1030,27 +1030,27 @@ func (h *Handler) AdminAIExecute(c *gin.Context) {
 	})
 }
 
-func (h *Handler) handleAdminAccountError(c *gin.Context, err error, message string) {
+func (h *Handler) handleAdminAccountError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, service.ErrAdminAccountNotFound):
-		response.Error(c, http.StatusNotFound, message, err.Error())
+		response.Error(c, http.StatusNotFound, response.CodeAdminAccountNotFound, err.Error())
 	case errors.Is(err, service.ErrAdminAccountRoleNotSupported):
-		response.Error(c, http.StatusBadRequest, message, err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeAdminAccountRoleNotSupported, err.Error())
 	case errors.Is(err, service.ErrAdminAccountAlreadyLocked):
-		response.Error(c, http.StatusConflict, message, err.Error())
+		response.Error(c, http.StatusConflict, response.CodeAdminAccountAlreadyLocked, err.Error())
 	case errors.Is(err, service.ErrAdminAccountNotLocked):
-		response.Error(c, http.StatusConflict, message, err.Error())
+		response.Error(c, http.StatusConflict, response.CodeAdminAccountNotLocked, err.Error())
 	case errors.Is(err, service.ErrAdminPasswordResetPending):
-		response.Error(c, http.StatusConflict, message, err.Error())
+		response.Error(c, http.StatusConflict, response.CodeAdminPasswordResetPending, err.Error())
 	default:
-		response.Error(c, http.StatusInternalServerError, message, err.Error())
+		response.Error(c, http.StatusInternalServerError, response.CodeAdminAccountOperationFailed, err.Error())
 	}
 }
 
 func (h *Handler) GetAIAgentSetting(c *gin.Context) {
 	schoolID := strings.TrimSpace(c.Query("school_id"))
 	if schoolID == "" {
-		response.Error(c, http.StatusBadRequest, "school_id required", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeSchoolIDRequired, nil)
 		return
 	}
 
@@ -1092,7 +1092,7 @@ func (h *Handler) GetAIAgentSetting(c *gin.Context) {
 func (h *Handler) UpdateAIAgentSetting(c *gin.Context) {
 	accountIDValue, exists := c.Get(middleware.ContextAccountID)
 	if !exists {
-		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		response.Error(c, http.StatusUnauthorized, response.CodeMissingAccountContext, nil)
 		return
 	}
 	accountID, _ := accountIDValue.(string)
@@ -1103,11 +1103,11 @@ func (h *Handler) UpdateAIAgentSetting(c *gin.Context) {
 
 	var req updateAIAgentSettingRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
 		return
 	}
 	if err := h.validate.Struct(req); err != nil {
-		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeValidationError, err.Error())
 		return
 	}
 
@@ -1165,7 +1165,7 @@ func (h *Handler) UpdateAIAgentSetting(c *gin.Context) {
 func (h *Handler) ListAIAgentSettingAudits(c *gin.Context) {
 	schoolID := strings.TrimSpace(c.Query("school_id"))
 	if schoolID == "" {
-		response.Error(c, http.StatusBadRequest, "school_id required", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeSchoolIDRequired, nil)
 		return
 	}
 
@@ -1192,11 +1192,11 @@ type createDepartmentRequest struct {
 func (h *Handler) CreateDepartment(c *gin.Context) {
 	var req createDepartmentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
 		return
 	}
 	if err := h.validate.Struct(req); err != nil {
-		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeValidationError, err.Error())
 		return
 	}
 
@@ -1217,17 +1217,17 @@ type updateDepartmentRequest struct {
 func (h *Handler) UpdateDepartment(c *gin.Context) {
 	departmentID := strings.TrimSpace(c.Param("id"))
 	if departmentID == "" {
-		response.Error(c, http.StatusBadRequest, "department id is required", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeDepartmentIDRequired, nil)
 		return
 	}
 
 	var req updateDepartmentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
 		return
 	}
 	if err := h.validate.Struct(req); err != nil {
-		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeValidationError, err.Error())
 		return
 	}
 
@@ -1249,12 +1249,12 @@ func (h *Handler) UpdateDepartment(c *gin.Context) {
 func (h *Handler) DeleteDepartment(c *gin.Context) {
 	departmentID := strings.TrimSpace(c.Param("id"))
 	if departmentID == "" {
-		response.Error(c, http.StatusBadRequest, "department id is required", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeDepartmentIDRequired, nil)
 		return
 	}
 	schoolID := strings.TrimSpace(c.Query("school_id"))
 	if schoolID == "" {
-		response.Error(c, http.StatusBadRequest, "school_id is required", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeSchoolIDIsRequired, nil)
 		return
 	}
 
@@ -1275,11 +1275,11 @@ type createClassRequest struct {
 func (h *Handler) CreateOssCredential(c *gin.Context) {
 	var req createOssCredentialRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
 		return
 	}
 	if err := h.validate.Struct(req); err != nil {
-		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeValidationError, err.Error())
 		return
 	}
 
@@ -1326,17 +1326,17 @@ func (h *Handler) DeleteOssCredential(c *gin.Context) {
 	if schoolID == "" {
 		var req accountActionRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			response.Error(c, http.StatusBadRequest, "invalid request payload", err.Error())
+			response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestPayload, err.Error())
 			return
 		}
 		if err := h.validate.Struct(req); err != nil {
-			response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+			response.Error(c, http.StatusBadRequest, response.CodeValidationError, err.Error())
 			return
 		}
 		schoolID = req.SchoolID
 	}
 	if schoolID == "" {
-		response.Error(c, http.StatusBadRequest, "school_id required", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeSchoolIDRequired, nil)
 		return
 	}
 
@@ -1360,11 +1360,11 @@ func (h *Handler) DeleteOssCredential(c *gin.Context) {
 func (h *Handler) CreateOssPolicy(c *gin.Context) {
 	var req createOssPolicyRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
 		return
 	}
 	if err := h.validate.Struct(req); err != nil {
-		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeValidationError, err.Error())
 		return
 	}
 
@@ -1378,7 +1378,7 @@ func (h *Handler) CreateOssPolicy(c *gin.Context) {
 	case string(domain.OssPolicyStatusDisabled):
 		status = domain.OssPolicyStatusDisabled
 	default:
-		response.Error(c, http.StatusBadRequest, "invalid status", statusValue)
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidStatus, statusValue)
 		return
 	}
 
@@ -1410,17 +1410,17 @@ func (h *Handler) DeleteOssPolicy(c *gin.Context) {
 	if schoolID == "" {
 		var req accountActionRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			response.Error(c, http.StatusBadRequest, "invalid request payload", err.Error())
+			response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestPayload, err.Error())
 			return
 		}
 		if err := h.validate.Struct(req); err != nil {
-			response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+			response.Error(c, http.StatusBadRequest, response.CodeValidationError, err.Error())
 			return
 		}
 		schoolID = req.SchoolID
 	}
 	if schoolID == "" {
-		response.Error(c, http.StatusBadRequest, "school_id required", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeSchoolIDRequired, nil)
 		return
 	}
 
@@ -1440,7 +1440,7 @@ func (h *Handler) DeleteOssPolicy(c *gin.Context) {
 func (h *Handler) ListOssCredentials(c *gin.Context) {
 	schoolID := strings.TrimSpace(c.Query("school_id"))
 	if schoolID == "" {
-		response.Error(c, http.StatusBadRequest, "school_id required", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeSchoolIDRequired, nil)
 		return
 	}
 
@@ -1462,11 +1462,11 @@ func (h *Handler) UpdateOssCredential(c *gin.Context) {
 
 	var req updateOssCredentialRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
 		return
 	}
 	if err := h.validate.Struct(req); err != nil {
-		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeValidationError, err.Error())
 		return
 	}
 
@@ -1501,7 +1501,7 @@ func (h *Handler) UpdateOssCredential(c *gin.Context) {
 func (h *Handler) ListOssPolicies(c *gin.Context) {
 	schoolID := strings.TrimSpace(c.Query("school_id"))
 	if schoolID == "" {
-		response.Error(c, http.StatusBadRequest, "school_id required", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeSchoolIDRequired, nil)
 		return
 	}
 
@@ -1523,11 +1523,11 @@ func (h *Handler) UpdateOssPolicy(c *gin.Context) {
 
 	var req updateOssPolicyRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
 		return
 	}
 	if err := h.validate.Struct(req); err != nil {
-		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeValidationError, err.Error())
 		return
 	}
 
@@ -1541,7 +1541,7 @@ func (h *Handler) UpdateOssPolicy(c *gin.Context) {
 	case string(domain.OssPolicyStatusDisabled):
 		status = domain.OssPolicyStatusDisabled
 	default:
-		response.Error(c, http.StatusBadRequest, "invalid status", statusValue)
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidStatus, statusValue)
 		return
 	}
 
@@ -1562,7 +1562,7 @@ func (h *Handler) UpdateOssPolicy(c *gin.Context) {
 func (h *Handler) ListSystemSwitches(c *gin.Context) {
 	schoolID := strings.TrimSpace(c.Query("school_id"))
 	if schoolID == "" {
-		response.Error(c, http.StatusBadRequest, "school_id required", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeSchoolIDRequired, nil)
 		return
 	}
 	switches, err := h.system.ListSwitches(c.Request.Context(), schoolID)
@@ -1582,11 +1582,11 @@ func (h *Handler) UpdateSystemSwitch(c *gin.Context) {
 
 	var req updateSystemSwitchRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
 		return
 	}
 	if err := h.validate.Struct(req); err != nil {
-		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeValidationError, err.Error())
 		return
 	}
 
@@ -1607,7 +1607,7 @@ func (h *Handler) UpdateSystemSwitch(c *gin.Context) {
 func (h *Handler) ListSystemParameters(c *gin.Context) {
 	schoolID := strings.TrimSpace(c.Query("school_id"))
 	if schoolID == "" {
-		response.Error(c, http.StatusBadRequest, "school_id required", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeSchoolIDRequired, nil)
 		return
 	}
 	params, err := h.system.ListParameters(c.Request.Context(), schoolID)
@@ -1627,11 +1627,11 @@ func (h *Handler) UpdateSystemParameter(c *gin.Context) {
 
 	var req updateSystemParameterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
 		return
 	}
 	if err := h.validate.Struct(req); err != nil {
-		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeValidationError, err.Error())
 		return
 	}
 
@@ -1652,7 +1652,7 @@ func (h *Handler) UpdateSystemParameter(c *gin.Context) {
 func (h *Handler) ListSystemBroadcasts(c *gin.Context) {
 	schoolID := strings.TrimSpace(c.Query("school_id"))
 	if schoolID == "" {
-		response.Error(c, http.StatusBadRequest, "school_id required", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeSchoolIDRequired, nil)
 		return
 	}
 	items, err := h.system.ListBroadcasts(c.Request.Context(), schoolID)
@@ -1672,11 +1672,11 @@ func (h *Handler) UpdateSystemBroadcast(c *gin.Context) {
 
 	var req updateSystemBroadcastRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
 		return
 	}
 	if err := h.validate.Struct(req); err != nil {
-		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeValidationError, err.Error())
 		return
 	}
 
@@ -1694,7 +1694,7 @@ func (h *Handler) UpdateSystemBroadcast(c *gin.Context) {
 			v := service.AdminSystemBroadcastDraft
 			statusPtr = &v
 		default:
-			response.Error(c, http.StatusBadRequest, "invalid status", statusValue)
+			response.Error(c, http.StatusBadRequest, response.CodeInvalidStatus, statusValue)
 			return
 		}
 	}
@@ -1721,7 +1721,7 @@ func (h *Handler) UpdateSystemBroadcast(c *gin.Context) {
 func (h *Handler) ListSystemAuditLogs(c *gin.Context) {
 	schoolID := strings.TrimSpace(c.Query("school_id"))
 	if schoolID == "" {
-		response.Error(c, http.StatusBadRequest, "school_id required", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeSchoolIDRequired, nil)
 		return
 	}
 	limitParam := strings.TrimSpace(c.DefaultQuery("limit", "0"))
@@ -1739,7 +1739,7 @@ func (h *Handler) ListSystemAuditLogs(c *gin.Context) {
 func (h *Handler) ListOssAuditLogs(c *gin.Context) {
 	schoolID := strings.TrimSpace(c.Query("school_id"))
 	if schoolID == "" {
-		response.Error(c, http.StatusBadRequest, "school_id required", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeSchoolIDRequired, nil)
 		return
 	}
 
@@ -1761,11 +1761,11 @@ func (h *Handler) ListOssAuditLogs(c *gin.Context) {
 func (h *Handler) CreateClass(c *gin.Context) {
 	var req createClassRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
 		return
 	}
 	if err := h.validate.Struct(req); err != nil {
-		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeValidationError, err.Error())
 		return
 	}
 
@@ -1792,11 +1792,11 @@ func (h *Handler) UpdateClass(c *gin.Context) {
 
 	var req updateClassRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
 		return
 	}
 	if err := h.validate.Struct(req); err != nil {
-		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeValidationError, err.Error())
 		return
 	}
 
@@ -1824,7 +1824,7 @@ func (h *Handler) DeleteClass(c *gin.Context) {
 	}
 	schoolID := strings.TrimSpace(c.Query("school_id"))
 	if schoolID == "" {
-		response.Error(c, http.StatusBadRequest, "school_id is required", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeSchoolIDIsRequired, nil)
 		return
 	}
 
@@ -1839,7 +1839,7 @@ func (h *Handler) DeleteClass(c *gin.Context) {
 func (h *Handler) ListDepartments(c *gin.Context) {
 	schoolID := strings.TrimSpace(c.Query("school_id"))
 	if schoolID == "" {
-		response.Error(c, http.StatusBadRequest, "school_id is required", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeSchoolIDIsRequired, nil)
 		return
 	}
 
@@ -1868,13 +1868,13 @@ func (h *Handler) ListDepartments(c *gin.Context) {
 func (h *Handler) ListClasses(c *gin.Context) {
 	schoolID := strings.TrimSpace(c.Query("school_id"))
 	if schoolID == "" {
-		response.Error(c, http.StatusBadRequest, "school_id is required", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeSchoolIDIsRequired, nil)
 		return
 	}
 
 	departmentID := strings.TrimSpace(c.Param("id"))
 	if departmentID == "" {
-		response.Error(c, http.StatusBadRequest, "department id is required", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeDepartmentIDRequired, nil)
 		return
 	}
 
@@ -1932,11 +1932,11 @@ type createAssignmentQuestionInput struct {
 func (h *Handler) CreateAssignment(c *gin.Context) {
 	var req createAssignmentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
 		return
 	}
 	if err := h.validate.Struct(req); err != nil {
-		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeValidationError, err.Error())
 		return
 	}
 
@@ -1946,7 +1946,7 @@ func (h *Handler) CreateAssignment(c *gin.Context) {
 	accountID := c.GetString(middleware.ContextAccountID)
 	teacherID, err := h.teacher.GetTeacherID(c.Request.Context(), accountID)
 	if err != nil {
-		response.Error(c, http.StatusForbidden, "teacher profile not found", err.Error())
+		response.Error(c, http.StatusForbidden, response.CodeTeacherProfileNotFound, err.Error())
 		return
 	}
 
@@ -1997,13 +1997,13 @@ type updateAssignmentRequest struct {
 func (h *Handler) UpdateAssignment(c *gin.Context) {
 	assignmentID := strings.TrimSpace(c.Param("id"))
 	if assignmentID == "" {
-		response.Error(c, http.StatusBadRequest, "missing assignment id", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeMissingAssignmentID, nil)
 		return
 	}
 
 	var req updateAssignmentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
 		return
 	}
 
@@ -2031,7 +2031,7 @@ func (h *Handler) UpdateAssignment(c *gin.Context) {
 func (h *Handler) GetAssignment(c *gin.Context) {
 	assignmentID := strings.TrimSpace(c.Param("id"))
 	if assignmentID == "" {
-		response.Error(c, http.StatusBadRequest, "missing assignment id", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeMissingAssignmentID, nil)
 		return
 	}
 
@@ -2039,7 +2039,7 @@ func (h *Handler) GetAssignment(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrAssignmentNotFound):
-			response.Error(c, http.StatusNotFound, "assignment not found", nil)
+			response.Error(c, http.StatusNotFound, response.CodeAssignmentNotFound, nil)
 		default:
 			response.Error(c, http.StatusInternalServerError, "unable to load assignment", err.Error())
 		}
@@ -2052,7 +2052,7 @@ func (h *Handler) GetAssignment(c *gin.Context) {
 func (h *Handler) ListAssignmentSubmissions(c *gin.Context) {
 	assignmentID := strings.TrimSpace(c.Param("id"))
 	if assignmentID == "" {
-		response.Error(c, http.StatusBadRequest, "missing assignment id", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeMissingAssignmentID, nil)
 		return
 	}
 
@@ -2073,7 +2073,7 @@ func (h *Handler) ListAssignmentSubmissions(c *gin.Context) {
 func (h *Handler) ListStudentAssignments(c *gin.Context) {
 	accountID := getAccountID(c)
 	if accountID == "" {
-		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		response.Error(c, http.StatusUnauthorized, response.CodeMissingAccountContext, nil)
 		return
 	}
 
@@ -2083,7 +2083,7 @@ func (h *Handler) ListStudentAssignments(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrStudentProfileNotFound):
-			response.Error(c, http.StatusNotFound, "student profile not found", nil)
+			response.Error(c, http.StatusNotFound, response.CodeStudentProfileNotFound, nil)
 		default:
 			response.Error(c, http.StatusInternalServerError, "unable to fetch assignments", err.Error())
 		}
@@ -2118,7 +2118,7 @@ func (h *Handler) ListStudentAssignments(c *gin.Context) {
 func (h *Handler) ListStudentExams(c *gin.Context) {
 	accountID := getAccountID(c)
 	if accountID == "" {
-		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		response.Error(c, http.StatusUnauthorized, response.CodeMissingAccountContext, nil)
 		return
 	}
 
@@ -2127,7 +2127,7 @@ func (h *Handler) ListStudentExams(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrStudentProfileNotFound):
-			response.Error(c, http.StatusNotFound, "student profile not found", nil)
+			response.Error(c, http.StatusNotFound, response.CodeStudentProfileNotFound, nil)
 		default:
 			response.Error(c, http.StatusInternalServerError, "unable to fetch exams", err.Error())
 		}
@@ -2162,13 +2162,13 @@ func (h *Handler) ListStudentExams(c *gin.Context) {
 func (h *Handler) ListStudentSchedule(c *gin.Context) {
 	accountID := getAccountID(c)
 	if accountID == "" {
-		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		response.Error(c, http.StatusUnauthorized, response.CodeMissingAccountContext, nil)
 		return
 	}
 
 	start, end, err := parseScheduleRange(c.Query("from"), c.Query("to"))
 	if err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid time range", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidTimeRange, err.Error())
 		return
 	}
 
@@ -2176,7 +2176,7 @@ func (h *Handler) ListStudentSchedule(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrStudentProfileNotFound):
-			response.Error(c, http.StatusNotFound, "student profile not found", nil)
+			response.Error(c, http.StatusNotFound, response.CodeStudentProfileNotFound, nil)
 		default:
 			response.Error(c, http.StatusInternalServerError, "unable to fetch schedule", err.Error())
 		}
@@ -2219,13 +2219,13 @@ func (h *Handler) ListStudentSchedule(c *gin.Context) {
 func (h *Handler) ListStudentAgenda(c *gin.Context) {
 	accountID := getAccountID(c)
 	if accountID == "" {
-		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		response.Error(c, http.StatusUnauthorized, response.CodeMissingAccountContext, nil)
 		return
 	}
 
 	start, end, err := parseScheduleRange(c.Query("from"), c.Query("to"))
 	if err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid time range", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidTimeRange, err.Error())
 		return
 	}
 	includeAssignments := parseBool(c.DefaultQuery("include_assignments", "true"), true)
@@ -2234,7 +2234,7 @@ func (h *Handler) ListStudentAgenda(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrStudentProfileNotFound):
-			response.Error(c, http.StatusNotFound, "student profile not found", nil)
+			response.Error(c, http.StatusNotFound, response.CodeStudentProfileNotFound, nil)
 		default:
 			response.Error(c, http.StatusInternalServerError, "unable to fetch agenda", err.Error())
 		}
@@ -2278,7 +2278,7 @@ func (h *Handler) ListStudentAgenda(c *gin.Context) {
 func (h *Handler) ListStudentReminders(c *gin.Context) {
 	accountID := getAccountID(c)
 	if accountID == "" {
-		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		response.Error(c, http.StatusUnauthorized, response.CodeMissingAccountContext, nil)
 		return
 	}
 
@@ -2286,7 +2286,7 @@ func (h *Handler) ListStudentReminders(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrStudentProfileNotFound):
-			response.Error(c, http.StatusNotFound, "student profile not found", nil)
+			response.Error(c, http.StatusNotFound, response.CodeStudentProfileNotFound, nil)
 		default:
 			response.Error(c, http.StatusInternalServerError, "unable to fetch reminders", err.Error())
 		}
@@ -2304,17 +2304,17 @@ func (h *Handler) ListStudentReminders(c *gin.Context) {
 func (h *Handler) CreateStudentReminder(c *gin.Context) {
 	var req createStudentReminderRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
 		return
 	}
 	if err := h.validate.Struct(req); err != nil {
-		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeValidationError, err.Error())
 		return
 	}
 
 	accountID := getAccountID(c)
 	if accountID == "" {
-		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		response.Error(c, http.StatusUnauthorized, response.CodeMissingAccountContext, nil)
 		return
 	}
 
@@ -2330,7 +2330,7 @@ func (h *Handler) CreateStudentReminder(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrStudentProfileNotFound):
-			response.Error(c, http.StatusNotFound, "student profile not found", nil)
+			response.Error(c, http.StatusNotFound, response.CodeStudentProfileNotFound, nil)
 		case errors.Is(err, service.ErrStudentReminderInvalid):
 			response.Error(c, http.StatusBadRequest, "invalid reminder", nil)
 		default:
@@ -2345,19 +2345,19 @@ func (h *Handler) CreateStudentReminder(c *gin.Context) {
 func (h *Handler) UpdateStudentReminder(c *gin.Context) {
 	reminderID := strings.TrimSpace(c.Param("id"))
 	if reminderID == "" {
-		response.Error(c, http.StatusBadRequest, "missing reminder id", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeMissingReminderID, nil)
 		return
 	}
 
 	var req updateStudentReminderRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
 		return
 	}
 
 	accountID := getAccountID(c)
 	if accountID == "" {
-		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		response.Error(c, http.StatusUnauthorized, response.CodeMissingAccountContext, nil)
 		return
 	}
 
@@ -2389,9 +2389,9 @@ func (h *Handler) UpdateStudentReminder(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrStudentProfileNotFound):
-			response.Error(c, http.StatusNotFound, "student profile not found", nil)
+			response.Error(c, http.StatusNotFound, response.CodeStudentProfileNotFound, nil)
 		case errors.Is(err, service.ErrStudentReminderNotFound):
-			response.Error(c, http.StatusNotFound, "reminder not found", nil)
+			response.Error(c, http.StatusNotFound, response.CodeReminderNotFound, nil)
 		case errors.Is(err, service.ErrStudentReminderInvalid):
 			response.Error(c, http.StatusBadRequest, "invalid reminder", nil)
 		default:
@@ -2406,22 +2406,22 @@ func (h *Handler) UpdateStudentReminder(c *gin.Context) {
 func (h *Handler) DeleteStudentReminder(c *gin.Context) {
 	reminderID := strings.TrimSpace(c.Param("id"))
 	if reminderID == "" {
-		response.Error(c, http.StatusBadRequest, "missing reminder id", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeMissingReminderID, nil)
 		return
 	}
 
 	accountID := getAccountID(c)
 	if accountID == "" {
-		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		response.Error(c, http.StatusUnauthorized, response.CodeMissingAccountContext, nil)
 		return
 	}
 
 	if err := h.student.DeleteCustomReminder(c.Request.Context(), accountID, reminderID); err != nil {
 		switch {
 		case errors.Is(err, service.ErrStudentProfileNotFound):
-			response.Error(c, http.StatusNotFound, "student profile not found", nil)
+			response.Error(c, http.StatusNotFound, response.CodeStudentProfileNotFound, nil)
 		case errors.Is(err, service.ErrStudentReminderNotFound):
-			response.Error(c, http.StatusNotFound, "reminder not found", nil)
+			response.Error(c, http.StatusNotFound, response.CodeReminderNotFound, nil)
 		default:
 			response.Error(c, http.StatusInternalServerError, "unable to delete reminder", err.Error())
 		}
@@ -2434,13 +2434,13 @@ func (h *Handler) DeleteStudentReminder(c *gin.Context) {
 func (h *Handler) UpdateStudentReminderCompletion(c *gin.Context) {
 	reminderID := strings.TrimSpace(c.Param("id"))
 	if reminderID == "" {
-		response.Error(c, http.StatusBadRequest, "missing reminder id", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeMissingReminderID, nil)
 		return
 	}
 
 	var req reminderCompletionRequest
 	if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
-		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
 		return
 	}
 	completed := true
@@ -2450,7 +2450,7 @@ func (h *Handler) UpdateStudentReminderCompletion(c *gin.Context) {
 
 	accountID := getAccountID(c)
 	if accountID == "" {
-		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		response.Error(c, http.StatusUnauthorized, response.CodeMissingAccountContext, nil)
 		return
 	}
 
@@ -2458,9 +2458,9 @@ func (h *Handler) UpdateStudentReminderCompletion(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrStudentProfileNotFound):
-			response.Error(c, http.StatusNotFound, "student profile not found", nil)
+			response.Error(c, http.StatusNotFound, response.CodeStudentProfileNotFound, nil)
 		case errors.Is(err, service.ErrStudentReminderNotFound):
-			response.Error(c, http.StatusNotFound, "reminder not found", nil)
+			response.Error(c, http.StatusNotFound, response.CodeReminderNotFound, nil)
 		default:
 			response.Error(c, http.StatusInternalServerError, "unable to update reminder", err.Error())
 		}
@@ -2473,17 +2473,17 @@ func (h *Handler) UpdateStudentReminderCompletion(c *gin.Context) {
 func (h *Handler) BatchUpdateStudentReminderCompletion(c *gin.Context) {
 	var req batchReminderCompletionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
 		return
 	}
 	if err := h.validate.Struct(req); err != nil {
-		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeValidationError, err.Error())
 		return
 	}
 
 	accountID := getAccountID(c)
 	if accountID == "" {
-		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		response.Error(c, http.StatusUnauthorized, response.CodeMissingAccountContext, nil)
 		return
 	}
 
@@ -2508,7 +2508,7 @@ func (h *Handler) BatchUpdateStudentReminderCompletion(c *gin.Context) {
 	if err := h.student.BatchSetReminderCompletion(c.Request.Context(), accountID, ids, completed); err != nil {
 		switch {
 		case errors.Is(err, service.ErrStudentProfileNotFound):
-			response.Error(c, http.StatusNotFound, "student profile not found", nil)
+			response.Error(c, http.StatusNotFound, response.CodeStudentProfileNotFound, nil)
 		case errors.Is(err, service.ErrStudentReminderInvalid):
 			response.Error(c, http.StatusBadRequest, "invalid reminder ids", nil)
 		case errors.Is(err, service.ErrStudentReminderNotFound):
@@ -2525,7 +2525,7 @@ func (h *Handler) BatchUpdateStudentReminderCompletion(c *gin.Context) {
 func (h *Handler) UpdateAllStudentRemindersCompletion(c *gin.Context) {
 	var req reminderCompletionRequest
 	if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
-		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
 		return
 	}
 	completed := true
@@ -2535,14 +2535,14 @@ func (h *Handler) UpdateAllStudentRemindersCompletion(c *gin.Context) {
 
 	accountID := getAccountID(c)
 	if accountID == "" {
-		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		response.Error(c, http.StatusUnauthorized, response.CodeMissingAccountContext, nil)
 		return
 	}
 
 	if err := h.student.SetAllRemindersCompletion(c.Request.Context(), accountID, completed); err != nil {
 		switch {
 		case errors.Is(err, service.ErrStudentProfileNotFound):
-			response.Error(c, http.StatusNotFound, "student profile not found", nil)
+			response.Error(c, http.StatusNotFound, response.CodeStudentProfileNotFound, nil)
 		default:
 			response.Error(c, http.StatusInternalServerError, "unable to update reminders", err.Error())
 		}
@@ -2555,13 +2555,13 @@ func (h *Handler) UpdateAllStudentRemindersCompletion(c *gin.Context) {
 func (h *Handler) ListTeacherSchedule(c *gin.Context) {
 	accountID := getAccountID(c)
 	if accountID == "" {
-		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		response.Error(c, http.StatusUnauthorized, response.CodeMissingAccountContext, nil)
 		return
 	}
 
 	start, end, err := parseScheduleRange(c.Query("from"), c.Query("to"))
 	if err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid time range", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidTimeRange, err.Error())
 		return
 	}
 
@@ -2569,7 +2569,7 @@ func (h *Handler) ListTeacherSchedule(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrTeacherProfileNotFound):
-			response.Error(c, http.StatusNotFound, "teacher profile not found", nil)
+			response.Error(c, http.StatusNotFound, response.CodeTeacherProfileNotFound, nil)
 		default:
 			response.Error(c, http.StatusInternalServerError, "unable to fetch schedule", err.Error())
 		}
@@ -2612,7 +2612,7 @@ func (h *Handler) ListTeacherSchedule(c *gin.Context) {
 func (h *Handler) ListTeacherAssignments(c *gin.Context) {
 	accountID := getAccountID(c)
 	if accountID == "" {
-		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		response.Error(c, http.StatusUnauthorized, response.CodeMissingAccountContext, nil)
 		return
 	}
 
@@ -2624,7 +2624,7 @@ func (h *Handler) ListTeacherAssignments(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrTeacherProfileNotFound):
-			response.Error(c, http.StatusNotFound, "teacher profile not found", nil)
+			response.Error(c, http.StatusNotFound, response.CodeTeacherProfileNotFound, nil)
 		default:
 			response.Error(c, http.StatusInternalServerError, "unable to fetch assignments", err.Error())
 		}
@@ -2639,7 +2639,7 @@ func (h *Handler) ListTeacherAssignments(c *gin.Context) {
 func (h *Handler) ListTeacherExams(c *gin.Context) {
 	accountID := getAccountID(c)
 	if accountID == "" {
-		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		response.Error(c, http.StatusUnauthorized, response.CodeMissingAccountContext, nil)
 		return
 	}
 
@@ -2650,7 +2650,7 @@ func (h *Handler) ListTeacherExams(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrTeacherProfileNotFound):
-			response.Error(c, http.StatusNotFound, "teacher profile not found", nil)
+			response.Error(c, http.StatusNotFound, response.CodeTeacherProfileNotFound, nil)
 		default:
 			response.Error(c, http.StatusInternalServerError, "unable to fetch exams", err.Error())
 		}
@@ -2713,12 +2713,12 @@ func (h *Handler) buildTeacherAssignmentPayloads(items []service.TeacherAssignme
 func (h *Handler) GetTeacherAssignment(c *gin.Context) {
 	accountID := getAccountID(c)
 	if accountID == "" {
-		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		response.Error(c, http.StatusUnauthorized, response.CodeMissingAccountContext, nil)
 		return
 	}
 	assignmentID := c.Param("id")
 	if assignmentID == "" {
-		response.Error(c, http.StatusBadRequest, "missing assignment id", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeMissingAssignmentID, nil)
 		return
 	}
 
@@ -2728,7 +2728,7 @@ func (h *Handler) GetTeacherAssignment(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrTeacherProfileNotFound):
-			response.Error(c, http.StatusNotFound, "teacher profile not found", nil)
+			response.Error(c, http.StatusNotFound, response.CodeTeacherProfileNotFound, nil)
 		case errors.Is(err, service.ErrTeacherAssignmentForbidden):
 			response.Error(c, http.StatusForbidden, "assignment not accessible", nil)
 		default:
@@ -2807,12 +2807,12 @@ func (h *Handler) GetTeacherAssignment(c *gin.Context) {
 func (h *Handler) ExportTeacherAssignmentGrades(c *gin.Context) {
 	accountID := getAccountID(c)
 	if accountID == "" {
-		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		response.Error(c, http.StatusUnauthorized, response.CodeMissingAccountContext, nil)
 		return
 	}
 	assignmentID := c.Param("id")
 	if assignmentID == "" {
-		response.Error(c, http.StatusBadRequest, "missing assignment id", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeMissingAssignmentID, nil)
 		return
 	}
 
@@ -2820,11 +2820,11 @@ func (h *Handler) ExportTeacherAssignmentGrades(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrTeacherProfileNotFound):
-			response.Error(c, http.StatusNotFound, "teacher profile not found", nil)
+			response.Error(c, http.StatusNotFound, response.CodeTeacherProfileNotFound, nil)
 		case errors.Is(err, service.ErrTeacherAssignmentForbidden):
 			response.Error(c, http.StatusForbidden, "assignment not accessible", nil)
 		default:
-			response.Error(c, http.StatusInternalServerError, "unable to export grades", err.Error())
+			response.Error(c, http.StatusInternalServerError, response.CodeUnableToExportGrades, err.Error())
 		}
 		return
 	}
@@ -2833,7 +2833,7 @@ func (h *Handler) ExportTeacherAssignmentGrades(c *gin.Context) {
 	writer := csv.NewWriter(buffer)
 	headers := []string{"student_id", "student_number", "student_name", "status", "score", "submitted_at"}
 	if err := writer.Write(headers); err != nil {
-		response.Error(c, http.StatusInternalServerError, "unable to export grades", err.Error())
+		response.Error(c, http.StatusInternalServerError, response.CodeUnableToExportGrades, err.Error())
 		return
 	}
 
@@ -2855,14 +2855,14 @@ func (h *Handler) ExportTeacherAssignmentGrades(c *gin.Context) {
 			submittedAt,
 		}
 		if err := writer.Write(record); err != nil {
-			response.Error(c, http.StatusInternalServerError, "unable to export grades", err.Error())
+			response.Error(c, http.StatusInternalServerError, response.CodeUnableToExportGrades, err.Error())
 			return
 		}
 	}
 
 	writer.Flush()
 	if err := writer.Error(); err != nil {
-		response.Error(c, http.StatusInternalServerError, "unable to export grades", err.Error())
+		response.Error(c, http.StatusInternalServerError, response.CodeUnableToExportGrades, err.Error())
 		return
 	}
 
@@ -2879,13 +2879,13 @@ func (h *Handler) ExportTeacherAssignmentGrades(c *gin.Context) {
 func (h *Handler) ListTeacherAgenda(c *gin.Context) {
 	accountID := getAccountID(c)
 	if accountID == "" {
-		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		response.Error(c, http.StatusUnauthorized, response.CodeMissingAccountContext, nil)
 		return
 	}
 
 	start, end, err := parseScheduleRange(c.Query("from"), c.Query("to"))
 	if err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid time range", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidTimeRange, err.Error())
 		return
 	}
 	includeAssignments := parseBool(c.DefaultQuery("include_assignments", "true"), true)
@@ -2894,7 +2894,7 @@ func (h *Handler) ListTeacherAgenda(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrTeacherProfileNotFound):
-			response.Error(c, http.StatusNotFound, "teacher profile not found", nil)
+			response.Error(c, http.StatusNotFound, response.CodeTeacherProfileNotFound, nil)
 		default:
 			response.Error(c, http.StatusInternalServerError, "unable to fetch agenda", err.Error())
 		}
@@ -2995,13 +2995,13 @@ type markConversationReadRequest struct {
 func (h *Handler) SubmitAssignment(c *gin.Context) {
 	assignmentID := c.Param("id")
 	if assignmentID == "" {
-		response.Error(c, http.StatusBadRequest, "missing assignment id", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeMissingAssignmentID, nil)
 		return
 	}
 
 	accountID := getAccountID(c)
 	if accountID == "" {
-		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		response.Error(c, http.StatusUnauthorized, response.CodeMissingAccountContext, nil)
 		return
 	}
 
@@ -3017,11 +3017,11 @@ func (h *Handler) SubmitAssignment(c *gin.Context) {
 
 	var req submitAssignmentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
 		return
 	}
 	if err := h.validate.Struct(req); err != nil {
-		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeValidationError, err.Error())
 		return
 	}
 
@@ -3057,13 +3057,13 @@ func (h *Handler) SubmitAssignment(c *gin.Context) {
 func (h *Handler) GetMySubmission(c *gin.Context) {
 	assignmentID := strings.TrimSpace(c.Param("id"))
 	if assignmentID == "" {
-		response.Error(c, http.StatusBadRequest, "missing assignment id", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeMissingAssignmentID, nil)
 		return
 	}
 
 	accountID := getAccountID(c)
 	if accountID == "" {
-		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		response.Error(c, http.StatusUnauthorized, response.CodeMissingAccountContext, nil)
 		return
 	}
 
@@ -3081,9 +3081,9 @@ func (h *Handler) GetMySubmission(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrAssignmentNotFound):
-			response.Error(c, http.StatusNotFound, "assignment not found", nil)
+			response.Error(c, http.StatusNotFound, response.CodeAssignmentNotFound, nil)
 		case errors.Is(err, service.ErrSubmissionNotFound):
-			response.Error(c, http.StatusNotFound, "submission not found", nil)
+			response.Error(c, http.StatusNotFound, response.CodeSubmissionNotFound, nil)
 		default:
 			response.Error(c, http.StatusInternalServerError, "unable to load submission", err.Error())
 		}
@@ -3110,22 +3110,22 @@ func (h *Handler) GetAssignmentSubmission(c *gin.Context) {
 	assignmentID := strings.TrimSpace(c.Param("id"))
 	submissionID := strings.TrimSpace(c.Param("submissionID"))
 	if assignmentID == "" || submissionID == "" {
-		response.Error(c, http.StatusBadRequest, "missing assignment or submission id", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeMissingAssignmentOrSubmissionID, nil)
 		return
 	}
 
 	accountID := getAccountID(c)
 	if accountID == "" {
-		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		response.Error(c, http.StatusUnauthorized, response.CodeMissingAccountContext, nil)
 		return
 	}
 
 	teacherID, err := h.teacher.GetTeacherID(c.Request.Context(), accountID)
 	if err != nil {
 		if errors.Is(err, service.ErrTeacherProfileNotFound) {
-			response.Error(c, http.StatusForbidden, "teacher profile required", nil)
+			response.Error(c, http.StatusForbidden, response.CodeTeacherProfileRequired, nil)
 		} else {
-			response.Error(c, http.StatusInternalServerError, "unable to resolve teacher profile", err.Error())
+			response.Error(c, http.StatusInternalServerError, response.CodeUnableToResolveTeacherProfile, err.Error())
 		}
 		return
 	}
@@ -3134,11 +3134,11 @@ func (h *Handler) GetAssignmentSubmission(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrAssignmentNotFound):
-			response.Error(c, http.StatusNotFound, "assignment not found", nil)
+			response.Error(c, http.StatusNotFound, response.CodeAssignmentNotFound, nil)
 		case errors.Is(err, service.ErrSubmissionNotFound):
-			response.Error(c, http.StatusNotFound, "submission not found", nil)
+			response.Error(c, http.StatusNotFound, response.CodeSubmissionNotFound, nil)
 		case errors.Is(err, service.ErrSubmissionForbidden):
-			response.Error(c, http.StatusForbidden, "submission forbidden", nil)
+			response.Error(c, http.StatusForbidden, response.CodeSubmissionForbidden, nil)
 		default:
 			response.Error(c, http.StatusInternalServerError, "unable to load submission", err.Error())
 		}
@@ -3274,13 +3274,13 @@ func (h *Handler) GradeSubmission(c *gin.Context) {
 	assignmentID := strings.TrimSpace(c.Param("id"))
 	submissionID := strings.TrimSpace(c.Param("submissionID"))
 	if assignmentID == "" || submissionID == "" {
-		response.Error(c, http.StatusBadRequest, "missing assignment or submission id", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeMissingAssignmentOrSubmissionID, nil)
 		return
 	}
 
 	var req gradeSubmissionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
 		return
 	}
 	if req.Comment != nil && strings.TrimSpace(req.Comment.Content) == "" {
@@ -3290,16 +3290,16 @@ func (h *Handler) GradeSubmission(c *gin.Context) {
 
 	accountID := getAccountID(c)
 	if accountID == "" {
-		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		response.Error(c, http.StatusUnauthorized, response.CodeMissingAccountContext, nil)
 		return
 	}
 
 	teacherID, err := h.teacher.GetTeacherID(c.Request.Context(), accountID)
 	if err != nil {
 		if errors.Is(err, service.ErrTeacherProfileNotFound) {
-			response.Error(c, http.StatusForbidden, "teacher profile required", nil)
+			response.Error(c, http.StatusForbidden, response.CodeTeacherProfileRequired, nil)
 		} else {
-			response.Error(c, http.StatusInternalServerError, "unable to resolve teacher profile", err.Error())
+			response.Error(c, http.StatusInternalServerError, response.CodeUnableToResolveTeacherProfile, err.Error())
 		}
 		return
 	}
@@ -3320,11 +3320,11 @@ func (h *Handler) GradeSubmission(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrAssignmentNotFound):
-			response.Error(c, http.StatusNotFound, "assignment not found", nil)
+			response.Error(c, http.StatusNotFound, response.CodeAssignmentNotFound, nil)
 		case errors.Is(err, service.ErrSubmissionNotFound):
-			response.Error(c, http.StatusNotFound, "submission not found", nil)
+			response.Error(c, http.StatusNotFound, response.CodeSubmissionNotFound, nil)
 		case errors.Is(err, service.ErrSubmissionForbidden):
-			response.Error(c, http.StatusForbidden, "submission forbidden", nil)
+			response.Error(c, http.StatusForbidden, response.CodeSubmissionForbidden, nil)
 		case errors.Is(err, service.ErrScoreOutOfRange):
 			response.Error(c, http.StatusBadRequest, "invalid score", err.Error())
 		default:
@@ -3344,28 +3344,28 @@ func (h *Handler) ReturnSubmission(c *gin.Context) {
 	assignmentID := strings.TrimSpace(c.Param("id"))
 	submissionID := strings.TrimSpace(c.Param("submissionID"))
 	if assignmentID == "" || submissionID == "" {
-		response.Error(c, http.StatusBadRequest, "missing assignment or submission id", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeMissingAssignmentOrSubmissionID, nil)
 		return
 	}
 
 	var req returnSubmissionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
 		return
 	}
 
 	accountID := getAccountID(c)
 	if accountID == "" {
-		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		response.Error(c, http.StatusUnauthorized, response.CodeMissingAccountContext, nil)
 		return
 	}
 
 	teacherID, err := h.teacher.GetTeacherID(c.Request.Context(), accountID)
 	if err != nil {
 		if errors.Is(err, service.ErrTeacherProfileNotFound) {
-			response.Error(c, http.StatusForbidden, "teacher profile required", nil)
+			response.Error(c, http.StatusForbidden, response.CodeTeacherProfileRequired, nil)
 		} else {
-			response.Error(c, http.StatusInternalServerError, "unable to resolve teacher profile", err.Error())
+			response.Error(c, http.StatusInternalServerError, response.CodeUnableToResolveTeacherProfile, err.Error())
 		}
 		return
 	}
@@ -3379,11 +3379,11 @@ func (h *Handler) ReturnSubmission(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrAssignmentNotFound):
-			response.Error(c, http.StatusNotFound, "assignment not found", nil)
+			response.Error(c, http.StatusNotFound, response.CodeAssignmentNotFound, nil)
 		case errors.Is(err, service.ErrSubmissionNotFound):
-			response.Error(c, http.StatusNotFound, "submission not found", nil)
+			response.Error(c, http.StatusNotFound, response.CodeSubmissionNotFound, nil)
 		case errors.Is(err, service.ErrSubmissionForbidden):
-			response.Error(c, http.StatusForbidden, "submission forbidden", nil)
+			response.Error(c, http.StatusForbidden, response.CodeSubmissionForbidden, nil)
 		default:
 			response.Error(c, http.StatusInternalServerError, "unable to return submission", err.Error())
 		}
@@ -3396,17 +3396,17 @@ func (h *Handler) ReturnSubmission(c *gin.Context) {
 func (h *Handler) CreateNote(c *gin.Context) {
 	accountID := getAccountID(c)
 	if accountID == "" {
-		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		response.Error(c, http.StatusUnauthorized, response.CodeMissingAccountContext, nil)
 		return
 	}
 
 	var req createNoteRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
 		return
 	}
 	if err := h.validate.Struct(req); err != nil {
-		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeValidationError, err.Error())
 		return
 	}
 
@@ -3427,19 +3427,19 @@ func (h *Handler) CreateNote(c *gin.Context) {
 func (h *Handler) UpdateNote(c *gin.Context) {
 	accountID := getAccountID(c)
 	if accountID == "" {
-		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		response.Error(c, http.StatusUnauthorized, response.CodeMissingAccountContext, nil)
 		return
 	}
 
 	noteID := c.Param("id")
 	if noteID == "" {
-		response.Error(c, http.StatusBadRequest, "missing note id", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeMissingNoteID, nil)
 		return
 	}
 
 	var req updateNoteRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
 		return
 	}
 
@@ -3466,9 +3466,9 @@ func (h *Handler) UpdateNote(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrNoteNotFound):
-			response.Error(c, http.StatusNotFound, "note not found", nil)
+			response.Error(c, http.StatusNotFound, response.CodeNoteNotFound, nil)
 		case errors.Is(err, service.ErrNoteForbidden):
-			response.Error(c, http.StatusForbidden, "not allowed to access note", nil)
+			response.Error(c, http.StatusForbidden, response.CodeNotAllowedToAccessNote, nil)
 		default:
 			response.Error(c, http.StatusBadRequest, "unable to update note", err.Error())
 		}
@@ -3481,7 +3481,7 @@ func (h *Handler) UpdateNote(c *gin.Context) {
 func (h *Handler) ListMyNotes(c *gin.Context) {
 	accountID := getAccountID(c)
 	if accountID == "" {
-		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		response.Error(c, http.StatusUnauthorized, response.CodeMissingAccountContext, nil)
 		return
 	}
 
@@ -3512,7 +3512,7 @@ func (h *Handler) ListMyNotes(c *gin.Context) {
 func (h *Handler) ListPublishedNotes(c *gin.Context) {
 	accountID := getAccountID(c)
 	if accountID == "" {
-		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		response.Error(c, http.StatusUnauthorized, response.CodeMissingAccountContext, nil)
 		return
 	}
 
@@ -3533,22 +3533,22 @@ func (h *Handler) ListPublishedNotes(c *gin.Context) {
 func (h *Handler) DeleteNote(c *gin.Context) {
 	accountID := getAccountID(c)
 	if accountID == "" {
-		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		response.Error(c, http.StatusUnauthorized, response.CodeMissingAccountContext, nil)
 		return
 	}
 
 	noteID := c.Param("id")
 	if noteID == "" {
-		response.Error(c, http.StatusBadRequest, "missing note id", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeMissingNoteID, nil)
 		return
 	}
 
 	if err := h.notes.DeleteNote(c.Request.Context(), accountID, noteID); err != nil {
 		switch {
 		case errors.Is(err, service.ErrNoteNotFound):
-			response.Error(c, http.StatusNotFound, "note not found", nil)
+			response.Error(c, http.StatusNotFound, response.CodeNoteNotFound, nil)
 		case errors.Is(err, service.ErrNoteForbidden):
-			response.Error(c, http.StatusForbidden, "not allowed to access note", nil)
+			response.Error(c, http.StatusForbidden, response.CodeNotAllowedToAccessNote, nil)
 		default:
 			response.Error(c, http.StatusBadRequest, "unable to delete note", err.Error())
 		}
@@ -3561,22 +3561,22 @@ func (h *Handler) DeleteNote(c *gin.Context) {
 func (h *Handler) RestoreNote(c *gin.Context) {
 	accountID := getAccountID(c)
 	if accountID == "" {
-		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		response.Error(c, http.StatusUnauthorized, response.CodeMissingAccountContext, nil)
 		return
 	}
 
 	noteID := c.Param("id")
 	if noteID == "" {
-		response.Error(c, http.StatusBadRequest, "missing note id", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeMissingNoteID, nil)
 		return
 	}
 
 	if err := h.notes.RestoreNote(c.Request.Context(), accountID, noteID); err != nil {
 		switch {
 		case errors.Is(err, service.ErrNoteNotFound):
-			response.Error(c, http.StatusNotFound, "note not found", nil)
+			response.Error(c, http.StatusNotFound, response.CodeNoteNotFound, nil)
 		case errors.Is(err, service.ErrNoteForbidden):
-			response.Error(c, http.StatusForbidden, "not allowed to access note", nil)
+			response.Error(c, http.StatusForbidden, response.CodeNotAllowedToAccessNote, nil)
 		default:
 			response.Error(c, http.StatusBadRequest, "unable to restore note", err.Error())
 		}
@@ -3589,23 +3589,23 @@ func (h *Handler) RestoreNote(c *gin.Context) {
 func (h *Handler) CreateNoteComment(c *gin.Context) {
 	accountID := getAccountID(c)
 	if accountID == "" {
-		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		response.Error(c, http.StatusUnauthorized, response.CodeMissingAccountContext, nil)
 		return
 	}
 
 	noteID := c.Param("id")
 	if noteID == "" {
-		response.Error(c, http.StatusBadRequest, "missing note id", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeMissingNoteID, nil)
 		return
 	}
 
 	var req createNoteCommentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
 		return
 	}
 	if err := h.validate.Struct(req); err != nil {
-		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeValidationError, err.Error())
 		return
 	}
 
@@ -3613,7 +3613,7 @@ func (h *Handler) CreateNoteComment(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrNoteNotFound):
-			response.Error(c, http.StatusNotFound, "note not found", nil)
+			response.Error(c, http.StatusNotFound, response.CodeNoteNotFound, nil)
 		case errors.Is(err, service.ErrNoteCommentNotAllowed):
 			response.Error(c, http.StatusForbidden, "not allowed to comment", nil)
 		default:
@@ -3628,13 +3628,13 @@ func (h *Handler) CreateNoteComment(c *gin.Context) {
 func (h *Handler) ListNoteComments(c *gin.Context) {
 	accountID := getAccountID(c)
 	if accountID == "" {
-		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		response.Error(c, http.StatusUnauthorized, response.CodeMissingAccountContext, nil)
 		return
 	}
 
 	noteID := c.Param("id")
 	if noteID == "" {
-		response.Error(c, http.StatusBadRequest, "missing note id", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeMissingNoteID, nil)
 		return
 	}
 
@@ -3642,7 +3642,7 @@ func (h *Handler) ListNoteComments(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrNoteNotFound):
-			response.Error(c, http.StatusNotFound, "note not found", nil)
+			response.Error(c, http.StatusNotFound, response.CodeNoteNotFound, nil)
 		case errors.Is(err, service.ErrNoteCommentNotAllowed):
 			response.Error(c, http.StatusForbidden, "not allowed to view comments", nil)
 		default:
@@ -3662,17 +3662,17 @@ func (h *Handler) ListNoteComments(c *gin.Context) {
 func (h *Handler) CreateConversation(c *gin.Context) {
 	accountID := getAccountID(c)
 	if accountID == "" {
-		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		response.Error(c, http.StatusUnauthorized, response.CodeMissingAccountContext, nil)
 		return
 	}
 
 	var req createConversationRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
 		return
 	}
 	if err := h.validate.Struct(req); err != nil {
-		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeValidationError, err.Error())
 		return
 	}
 
@@ -3700,7 +3700,7 @@ func (h *Handler) CreateConversation(c *gin.Context) {
 func (h *Handler) SearchConversationCandidates(c *gin.Context) {
 	accountID := getAccountID(c)
 	if accountID == "" {
-		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		response.Error(c, http.StatusUnauthorized, response.CodeMissingAccountContext, nil)
 		return
 	}
 
@@ -3760,7 +3760,7 @@ func (h *Handler) SearchConversationCandidates(c *gin.Context) {
 func (h *Handler) ListConversations(c *gin.Context) {
 	accountID := getAccountID(c)
 	if accountID == "" {
-		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		response.Error(c, http.StatusUnauthorized, response.CodeMissingAccountContext, nil)
 		return
 	}
 
@@ -3781,23 +3781,23 @@ func (h *Handler) ListConversations(c *gin.Context) {
 func (h *Handler) SendMessage(c *gin.Context) {
 	accountID := getAccountID(c)
 	if accountID == "" {
-		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		response.Error(c, http.StatusUnauthorized, response.CodeMissingAccountContext, nil)
 		return
 	}
 
 	conversationID := c.Param("id")
 	if conversationID == "" {
-		response.Error(c, http.StatusBadRequest, "missing conversation id", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeMissingConversationID, nil)
 		return
 	}
 
 	var req sendMessageRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
 		return
 	}
 	if err := h.validate.Struct(req); err != nil {
-		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeValidationError, err.Error())
 		return
 	}
 
@@ -3844,13 +3844,13 @@ func (h *Handler) SendMessage(c *gin.Context) {
 func (h *Handler) ListMessages(c *gin.Context) {
 	accountID := getAccountID(c)
 	if accountID == "" {
-		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		response.Error(c, http.StatusUnauthorized, response.CodeMissingAccountContext, nil)
 		return
 	}
 
 	conversationID := c.Param("id")
 	if conversationID == "" {
-		response.Error(c, http.StatusBadRequest, "missing conversation id", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeMissingConversationID, nil)
 		return
 	}
 
@@ -3889,23 +3889,23 @@ func (h *Handler) ListMessages(c *gin.Context) {
 func (h *Handler) MarkConversationRead(c *gin.Context) {
 	accountID := getAccountID(c)
 	if accountID == "" {
-		response.Error(c, http.StatusUnauthorized, "missing account context", nil)
+		response.Error(c, http.StatusUnauthorized, response.CodeMissingAccountContext, nil)
 		return
 	}
 
 	conversationID := c.Param("id")
 	if conversationID == "" {
-		response.Error(c, http.StatusBadRequest, "missing conversation id", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeMissingConversationID, nil)
 		return
 	}
 
 	var req markConversationReadRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
 		return
 	}
 	if err := h.validate.Struct(req); err != nil {
-		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeValidationError, err.Error())
 		return
 	}
 
@@ -4150,7 +4150,7 @@ func (h *Handler) ListTeacherCourses(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrTeacherProfileNotFound):
-			response.Error(c, http.StatusForbidden, "teacher_profile_not_found", nil)
+			response.Error(c, http.StatusForbidden, response.CodeTeacherProfileNotFound, nil)
 		default:
 			response.Error(c, http.StatusInternalServerError, "failed to list courses", err.Error())
 		}
@@ -4166,7 +4166,7 @@ func (h *Handler) ListTeacherCourseClasses(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrTeacherProfileNotFound):
-			response.Error(c, http.StatusForbidden, "teacher_profile_not_found", nil)
+			response.Error(c, http.StatusForbidden, response.CodeTeacherProfileNotFound, nil)
 		case errors.Is(err, service.ErrTeacherAssignmentForbidden):
 			response.Error(c, http.StatusForbidden, "course_not_owned", nil)
 		case errors.Is(err, gorm.ErrRecordNotFound):

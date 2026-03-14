@@ -29,12 +29,12 @@ type explainQuestionRequest struct {
 func (h *Handler) CheckAssignment(c *gin.Context) {
 	var req checkAssignmentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
 		return
 	}
 
 	if err := h.validate.Struct(req); err != nil {
-		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeValidationError, err.Error())
 		return
 	}
 
@@ -42,7 +42,7 @@ func (h *Handler) CheckAssignment(c *gin.Context) {
 	role := domain.Role(c.GetString(middleware.ContextRole))
 	schoolID, err := h.teacher.GetSchoolID(c.Request.Context(), accountID)
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "failed to resolve school context", err.Error())
+		response.Error(c, http.StatusInternalServerError, response.CodeFailedToResolveSchoolContext, err.Error())
 		return
 	}
 
@@ -71,12 +71,12 @@ func (h *Handler) CheckAssignment(c *gin.Context) {
 func (h *Handler) ExplainQuestion(c *gin.Context) {
 	var req explainQuestionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
 		return
 	}
 
 	if err := h.validate.Struct(req); err != nil {
-		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeValidationError, err.Error())
 		return
 	}
 
@@ -84,7 +84,7 @@ func (h *Handler) ExplainQuestion(c *gin.Context) {
 	role := domain.Role(c.GetString(middleware.ContextRole))
 	schoolID, err := h.teacher.GetSchoolID(c.Request.Context(), accountID)
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "failed to resolve school context", err.Error())
+		response.Error(c, http.StatusInternalServerError, response.CodeFailedToResolveSchoolContext, err.Error())
 		return
 	}
 
@@ -119,12 +119,12 @@ type gradeAssignmentRequest struct {
 func (h *Handler) GradeAssignment(c *gin.Context) {
 	var req gradeAssignmentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
 		return
 	}
 
 	if err := h.validate.Struct(req); err != nil {
-		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeValidationError, err.Error())
 		return
 	}
 
@@ -132,7 +132,7 @@ func (h *Handler) GradeAssignment(c *gin.Context) {
 	role := domain.Role(c.GetString(middleware.ContextRole))
 	schoolID, err := h.teacher.GetSchoolID(c.Request.Context(), accountID)
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "failed to resolve school context", err.Error())
+		response.Error(c, http.StatusInternalServerError, response.CodeFailedToResolveSchoolContext, err.Error())
 		return
 	}
 
@@ -165,12 +165,12 @@ type generateQuestionsRequest struct {
 func (h *Handler) GenerateQuestions(c *gin.Context) {
 	var req generateQuestionsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid request body", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
 		return
 	}
 
 	if err := h.validate.Struct(req); err != nil {
-		response.Error(c, http.StatusBadRequest, "validation error", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeValidationError, err.Error())
 		return
 	}
 
@@ -178,7 +178,7 @@ func (h *Handler) GenerateQuestions(c *gin.Context) {
 	role := domain.Role(c.GetString(middleware.ContextRole))
 	schoolID, err := h.teacher.GetSchoolID(c.Request.Context(), accountID)
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "failed to resolve school context", err.Error())
+		response.Error(c, http.StatusInternalServerError, response.CodeFailedToResolveSchoolContext, err.Error())
 		return
 	}
 

@@ -21,7 +21,7 @@ type UpdateClassroomRequest struct {
 func (h *Handler) CreateClassroom(c *gin.Context) {
 	var req CreateClassroomRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "Invalid request body", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
 		return
 	}
 
@@ -36,7 +36,7 @@ func (h *Handler) CreateClassroom(c *gin.Context) {
 func (h *Handler) ListClassrooms(c *gin.Context) {
 	schoolID := c.Query("school_id")
 	if schoolID == "" {
-		response.Error(c, http.StatusBadRequest, "school_id required", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeSchoolIDRequired, nil)
 		return
 	}
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
@@ -59,7 +59,7 @@ func (h *Handler) UpdateClassroom(c *gin.Context) {
 	id := c.Param("id")
 	var req UpdateClassroomRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "Invalid request body", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
 		return
 	}
 

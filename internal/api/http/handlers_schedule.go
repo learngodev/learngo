@@ -28,7 +28,7 @@ type CreateScheduleRequest struct {
 func (h *Handler) CreateSchedule(c *gin.Context) {
 	var req CreateScheduleRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "Invalid request body", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
 		return
 	}
 
@@ -41,9 +41,9 @@ func (h *Handler) CreateSchedule(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrScheduleValidation):
-			response.Error(c, http.StatusBadRequest, "Invalid schedule", err.Error())
+			response.Error(c, http.StatusBadRequest, response.CodeInvalidSchedule, err.Error())
 		case errors.Is(err, service.ErrScheduleConflict):
-			response.Error(c, http.StatusConflict, "Schedule conflict", err.Error())
+			response.Error(c, http.StatusConflict, response.CodeScheduleConflict, err.Error())
 		default:
 			response.Error(c, http.StatusInternalServerError, "Failed to create schedule", err.Error())
 		}
@@ -70,7 +70,7 @@ func (h *Handler) ListSchedules(c *gin.Context) {
 	schoolID := c.Query("school_id")
 	courseID := c.Query("course_id")
 	if schoolID == "" {
-		response.Error(c, http.StatusBadRequest, "school_id required", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeSchoolIDRequired, nil)
 		return
 	}
 
@@ -85,7 +85,7 @@ func (h *Handler) ListSchedules(c *gin.Context) {
 func (h *Handler) GetScheduleStats(c *gin.Context) {
 	schoolID := c.Query("school_id")
 	if schoolID == "" {
-		response.Error(c, http.StatusBadRequest, "school_id required", nil)
+		response.Error(c, http.StatusBadRequest, response.CodeSchoolIDRequired, nil)
 		return
 	}
 
@@ -107,16 +107,16 @@ type GenerateSessionsRequest struct {
 func (h *Handler) GenerateSessions(c *gin.Context) {
 	var req GenerateSessionsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "Invalid request body", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
 		return
 	}
 
 	if err := h.schedule.GenerateSessions(c.Request.Context(), req.SchoolID, req.Start, req.End); err != nil {
 		switch {
 		case errors.Is(err, service.ErrScheduleValidation):
-			response.Error(c, http.StatusBadRequest, "Invalid schedule", err.Error())
+			response.Error(c, http.StatusBadRequest, response.CodeInvalidSchedule, err.Error())
 		case errors.Is(err, service.ErrScheduleConflict):
-			response.Error(c, http.StatusConflict, "Schedule conflict", err.Error())
+			response.Error(c, http.StatusConflict, response.CodeScheduleConflict, err.Error())
 		default:
 			response.Error(c, http.StatusInternalServerError, "Failed to generate sessions", err.Error())
 		}
@@ -136,16 +136,16 @@ func (h *Handler) UpdateSession(c *gin.Context) {
 	id := c.Param("id")
 	var req UpdateSessionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "Invalid request body", err.Error())
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
 		return
 	}
 
 	if err := h.schedule.UpdateSession(c.Request.Context(), id, req.SlotID, req.Date, req.Location); err != nil {
 		switch {
 		case errors.Is(err, service.ErrScheduleValidation):
-			response.Error(c, http.StatusBadRequest, "Invalid schedule", err.Error())
+			response.Error(c, http.StatusBadRequest, response.CodeInvalidSchedule, err.Error())
 		case errors.Is(err, service.ErrScheduleConflict):
-			response.Error(c, http.StatusConflict, "Schedule conflict", err.Error())
+			response.Error(c, http.StatusConflict, response.CodeScheduleConflict, err.Error())
 		default:
 			response.Error(c, http.StatusInternalServerError, "Failed to update session", err.Error())
 		}
