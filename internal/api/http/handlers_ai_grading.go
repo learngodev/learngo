@@ -29,12 +29,12 @@ type explainQuestionRequest struct {
 func (h *Handler) CheckAssignment(c *gin.Context) {
 	var req checkAssignmentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
+		h.respondServiceError(c, err, http.StatusBadRequest, response.CodeInvalidRequestBody)
 		return
 	}
 
 	if err := h.validate.Struct(req); err != nil {
-		response.Error(c, http.StatusBadRequest, response.CodeValidationError, err.Error())
+		h.respondServiceError(c, err, http.StatusBadRequest, response.CodeValidationError)
 		return
 	}
 
@@ -42,7 +42,7 @@ func (h *Handler) CheckAssignment(c *gin.Context) {
 	role := domain.Role(c.GetString(middleware.ContextRole))
 	schoolID, err := h.teacher.GetSchoolID(c.Request.Context(), accountID)
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, response.CodeFailedToResolveSchoolContext, err.Error())
+		h.respondServiceError(c, err, http.StatusInternalServerError, response.CodeFailedToResolveSchoolContext)
 		return
 	}
 
@@ -60,7 +60,7 @@ func (h *Handler) CheckAssignment(c *gin.Context) {
 
 	result, err := h.aiGrading.CheckAssignment(c.Request.Context(), input)
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "ai check failed", err.Error())
+		h.respondServiceError(c, err, http.StatusInternalServerError, "ai check failed")
 		return
 	}
 
@@ -71,12 +71,12 @@ func (h *Handler) CheckAssignment(c *gin.Context) {
 func (h *Handler) ExplainQuestion(c *gin.Context) {
 	var req explainQuestionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
+		h.respondServiceError(c, err, http.StatusBadRequest, response.CodeInvalidRequestBody)
 		return
 	}
 
 	if err := h.validate.Struct(req); err != nil {
-		response.Error(c, http.StatusBadRequest, response.CodeValidationError, err.Error())
+		h.respondServiceError(c, err, http.StatusBadRequest, response.CodeValidationError)
 		return
 	}
 
@@ -84,7 +84,7 @@ func (h *Handler) ExplainQuestion(c *gin.Context) {
 	role := domain.Role(c.GetString(middleware.ContextRole))
 	schoolID, err := h.teacher.GetSchoolID(c.Request.Context(), accountID)
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, response.CodeFailedToResolveSchoolContext, err.Error())
+		h.respondServiceError(c, err, http.StatusInternalServerError, response.CodeFailedToResolveSchoolContext)
 		return
 	}
 
@@ -101,7 +101,7 @@ func (h *Handler) ExplainQuestion(c *gin.Context) {
 
 	result, err := h.aiGrading.ExplainQuestion(c.Request.Context(), input)
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "ai explain failed", err.Error())
+		h.respondServiceError(c, err, http.StatusInternalServerError, "ai explain failed")
 		return
 	}
 
@@ -119,12 +119,12 @@ type gradeAssignmentRequest struct {
 func (h *Handler) GradeAssignment(c *gin.Context) {
 	var req gradeAssignmentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
+		h.respondServiceError(c, err, http.StatusBadRequest, response.CodeInvalidRequestBody)
 		return
 	}
 
 	if err := h.validate.Struct(req); err != nil {
-		response.Error(c, http.StatusBadRequest, response.CodeValidationError, err.Error())
+		h.respondServiceError(c, err, http.StatusBadRequest, response.CodeValidationError)
 		return
 	}
 
@@ -132,7 +132,7 @@ func (h *Handler) GradeAssignment(c *gin.Context) {
 	role := domain.Role(c.GetString(middleware.ContextRole))
 	schoolID, err := h.teacher.GetSchoolID(c.Request.Context(), accountID)
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, response.CodeFailedToResolveSchoolContext, err.Error())
+		h.respondServiceError(c, err, http.StatusInternalServerError, response.CodeFailedToResolveSchoolContext)
 		return
 	}
 
@@ -148,7 +148,7 @@ func (h *Handler) GradeAssignment(c *gin.Context) {
 
 	result, err := h.aiGrading.GradeAssignment(c.Request.Context(), input)
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "ai grading failed", err.Error())
+		h.respondServiceError(c, err, http.StatusInternalServerError, "ai grading failed")
 		return
 	}
 
@@ -165,12 +165,12 @@ type generateQuestionsRequest struct {
 func (h *Handler) GenerateQuestions(c *gin.Context) {
 	var req generateQuestionsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
+		h.respondServiceError(c, err, http.StatusBadRequest, response.CodeInvalidRequestBody)
 		return
 	}
 
 	if err := h.validate.Struct(req); err != nil {
-		response.Error(c, http.StatusBadRequest, response.CodeValidationError, err.Error())
+		h.respondServiceError(c, err, http.StatusBadRequest, response.CodeValidationError)
 		return
 	}
 
@@ -178,7 +178,7 @@ func (h *Handler) GenerateQuestions(c *gin.Context) {
 	role := domain.Role(c.GetString(middleware.ContextRole))
 	schoolID, err := h.teacher.GetSchoolID(c.Request.Context(), accountID)
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, response.CodeFailedToResolveSchoolContext, err.Error())
+		h.respondServiceError(c, err, http.StatusInternalServerError, response.CodeFailedToResolveSchoolContext)
 		return
 	}
 
@@ -193,7 +193,7 @@ func (h *Handler) GenerateQuestions(c *gin.Context) {
 
 	result, err := h.aiGrading.GenerateQuestions(c.Request.Context(), input)
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "ai generation failed", err.Error())
+		h.respondServiceError(c, err, http.StatusInternalServerError, "ai generation failed")
 		return
 	}
 

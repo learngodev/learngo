@@ -17,7 +17,7 @@ func (h *Handler) ListNotifications(c *gin.Context) {
 
 	notifications, total, err := h.notifications.ListByUser(c.Request.Context(), userID, size, offset)
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "Failed to list notifications", err.Error())
+		h.respondServiceError(c, err, http.StatusInternalServerError, "Failed to list notifications")
 		return
 	}
 
@@ -34,7 +34,7 @@ func (h *Handler) MarkNotificationAsRead(c *gin.Context) {
 	id := c.Param("id")
 
 	if err := h.notifications.MarkAsRead(c.Request.Context(), id, userID); err != nil {
-		response.Error(c, http.StatusInternalServerError, "Failed to mark notification as read", err.Error())
+		h.respondServiceError(c, err, http.StatusInternalServerError, "Failed to mark notification as read")
 		return
 	}
 
@@ -45,7 +45,7 @@ func (h *Handler) MarkAllNotificationsAsRead(c *gin.Context) {
 	userID := c.GetString("userID")
 
 	if err := h.notifications.MarkAllAsRead(c.Request.Context(), userID); err != nil {
-		response.Error(c, http.StatusInternalServerError, "Failed to mark all notifications as read", err.Error())
+		h.respondServiceError(c, err, http.StatusInternalServerError, "Failed to mark all notifications as read")
 		return
 	}
 
@@ -57,7 +57,7 @@ func (h *Handler) CountUnreadNotifications(c *gin.Context) {
 
 	count, err := h.notifications.CountUnread(c.Request.Context(), userID)
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "Failed to count unread notifications", err.Error())
+		h.respondServiceError(c, err, http.StatusInternalServerError, "Failed to count unread notifications")
 		return
 	}
 

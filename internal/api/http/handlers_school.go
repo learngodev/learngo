@@ -72,7 +72,7 @@ func (h *Handler) ListTimeSlots(c *gin.Context) {
 
 	slots, err := h.school.ListTimeSlots(c.Request.Context(), schoolID)
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "failed_to_list_time_slots", err.Error())
+		h.respondServiceError(c, err, http.StatusInternalServerError, "failed_to_list_time_slots")
 		return
 	}
 
@@ -82,7 +82,7 @@ func (h *Handler) ListTimeSlots(c *gin.Context) {
 func (h *Handler) CreateTimeSlot(c *gin.Context) {
 	var req createTimeSlotRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequest, err.Error())
+		h.respondServiceError(c, err, http.StatusBadRequest, response.CodeInvalidRequest)
 		return
 	}
 
@@ -133,7 +133,7 @@ func (h *Handler) CreateTimeSlot(c *gin.Context) {
 	}
 
 	if err := h.school.CreateTimeSlot(c.Request.Context(), slot); err != nil {
-		response.Error(c, http.StatusInternalServerError, "failed_to_create_time_slot", err.Error())
+		h.respondServiceError(c, err, http.StatusInternalServerError, "failed_to_create_time_slot")
 		return
 	}
 
@@ -144,14 +144,14 @@ func (h *Handler) UpdateTimeSlot(c *gin.Context) {
 	id := c.Param("id")
 	var req updateTimeSlotRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequest, err.Error())
+		h.respondServiceError(c, err, http.StatusBadRequest, response.CodeInvalidRequest)
 		return
 	}
 
 	// Fetch existing slot to ensure it exists and preserve SchoolID
 	slot, err := h.school.GetTimeSlot(c.Request.Context(), id)
 	if err != nil {
-		response.Error(c, http.StatusNotFound, "time_slot_not_found", err.Error())
+		h.respondServiceError(c, err, http.StatusNotFound, response.CodeTimeSlotNotFound)
 		return
 	}
 
@@ -162,7 +162,7 @@ func (h *Handler) UpdateTimeSlot(c *gin.Context) {
 	slot.UpdatedAt = time.Now()
 
 	if err := h.school.UpdateTimeSlot(c.Request.Context(), slot); err != nil {
-		response.Error(c, http.StatusInternalServerError, "failed_to_update_time_slot", err.Error())
+		h.respondServiceError(c, err, http.StatusInternalServerError, "failed_to_update_time_slot")
 		return
 	}
 
@@ -172,7 +172,7 @@ func (h *Handler) UpdateTimeSlot(c *gin.Context) {
 func (h *Handler) DeleteTimeSlot(c *gin.Context) {
 	id := c.Param("id")
 	if err := h.school.DeleteTimeSlot(c.Request.Context(), id); err != nil {
-		response.Error(c, http.StatusInternalServerError, "failed_to_delete_time_slot", err.Error())
+		h.respondServiceError(c, err, http.StatusInternalServerError, "failed_to_delete_time_slot")
 		return
 	}
 

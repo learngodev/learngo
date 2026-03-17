@@ -50,7 +50,7 @@ func (h *Handler) ListTeacherCourseChapters(c *gin.Context) {
 		case errors.Is(err, service.ErrTeacherCourseAccessDenied):
 			response.Error(c, http.StatusForbidden, response.CodeCourseAccessDenied, nil)
 		default:
-			response.Error(c, http.StatusInternalServerError, "unable to list chapters", err.Error())
+			h.respondServiceError(c, err, http.StatusInternalServerError, "unable to list chapters")
 		}
 		return
 	}
@@ -95,7 +95,7 @@ func (h *Handler) GetTeacherCourseChapter(c *gin.Context) {
 		case errors.Is(err, repository.ErrNotFound):
 			response.Error(c, http.StatusNotFound, response.CodeChapterNotFound, nil)
 		default:
-			response.Error(c, http.StatusInternalServerError, "unable to get chapter", err.Error())
+			h.respondServiceError(c, err, http.StatusInternalServerError, "unable to get chapter")
 		}
 		return
 	}
@@ -141,11 +141,11 @@ func (h *Handler) CreateTeacherCourseChapter(c *gin.Context) {
 
 	var req createTeacherCourseChapterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequest, err.Error())
+		h.respondServiceError(c, err, http.StatusBadRequest, response.CodeInvalidRequest)
 		return
 	}
 	if err := h.validate.Struct(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "validation failed", err.Error())
+		h.respondServiceError(c, err, http.StatusBadRequest, "validation failed")
 		return
 	}
 
@@ -157,7 +157,7 @@ func (h *Handler) CreateTeacherCourseChapter(c *gin.Context) {
 		case errors.Is(err, service.ErrTeacherCourseAccessDenied):
 			response.Error(c, http.StatusForbidden, response.CodeCourseAccessDenied, nil)
 		default:
-			response.Error(c, http.StatusInternalServerError, "unable to create chapter", err.Error())
+			h.respondServiceError(c, err, http.StatusInternalServerError, "unable to create chapter")
 		}
 		return
 	}
@@ -190,7 +190,7 @@ func (h *Handler) UpdateTeacherCourseChapter(c *gin.Context) {
 
 	var req updateTeacherCourseChapterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequest, err.Error())
+		h.respondServiceError(c, err, http.StatusBadRequest, response.CodeInvalidRequest)
 		return
 	}
 
@@ -219,7 +219,7 @@ func (h *Handler) UpdateTeacherCourseChapter(c *gin.Context) {
 		case errors.Is(err, repository.ErrNotFound):
 			response.Error(c, http.StatusNotFound, response.CodeChapterNotFound, nil)
 		default:
-			response.Error(c, http.StatusInternalServerError, "unable to update chapter", err.Error())
+			h.respondServiceError(c, err, http.StatusInternalServerError, "unable to update chapter")
 		}
 		return
 	}
@@ -259,7 +259,7 @@ func (h *Handler) DeleteTeacherCourseChapter(c *gin.Context) {
 		case errors.Is(err, repository.ErrNotFound):
 			response.Error(c, http.StatusNotFound, response.CodeChapterNotFound, nil)
 		default:
-			response.Error(c, http.StatusInternalServerError, "unable to delete chapter", err.Error())
+			h.respondServiceError(c, err, http.StatusInternalServerError, "unable to delete chapter")
 		}
 		return
 	}
@@ -283,11 +283,11 @@ func (h *Handler) AttachTeacherCourseChapterFile(c *gin.Context) {
 
 	var req attachTeacherCourseChapterFileRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequest, err.Error())
+		h.respondServiceError(c, err, http.StatusBadRequest, response.CodeInvalidRequest)
 		return
 	}
 	if err := h.validate.Struct(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "validation failed", err.Error())
+		h.respondServiceError(c, err, http.StatusBadRequest, "validation failed")
 		return
 	}
 
@@ -300,7 +300,7 @@ func (h *Handler) AttachTeacherCourseChapterFile(c *gin.Context) {
 		case errors.Is(err, repository.ErrNotFound):
 			response.Error(c, http.StatusNotFound, "chapter or file not found", nil)
 		default:
-			response.Error(c, http.StatusInternalServerError, "unable to attach file", err.Error())
+			h.respondServiceError(c, err, http.StatusInternalServerError, "unable to attach file")
 		}
 		return
 	}
@@ -332,7 +332,7 @@ func (h *Handler) DetachTeacherCourseChapterFile(c *gin.Context) {
 		case errors.Is(err, repository.ErrNotFound):
 			response.Error(c, http.StatusNotFound, response.CodeChapterNotFound, nil)
 		default:
-			response.Error(c, http.StatusInternalServerError, "unable to detach file", err.Error())
+			h.respondServiceError(c, err, http.StatusInternalServerError, "unable to detach file")
 		}
 		return
 	}

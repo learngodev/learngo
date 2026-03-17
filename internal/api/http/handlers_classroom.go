@@ -21,13 +21,13 @@ type UpdateClassroomRequest struct {
 func (h *Handler) CreateClassroom(c *gin.Context) {
 	var req CreateClassroomRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
+		h.respondServiceError(c, err, http.StatusBadRequest, response.CodeInvalidRequestBody)
 		return
 	}
 
 	classroom, err := h.classroom.Create(c.Request.Context(), req.SchoolID, req.Location)
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "Failed to create classroom", err.Error())
+		h.respondServiceError(c, err, http.StatusInternalServerError, "Failed to create classroom")
 		return
 	}
 	response.Success(c, http.StatusCreated, classroom)
@@ -44,7 +44,7 @@ func (h *Handler) ListClassrooms(c *gin.Context) {
 
 	classrooms, total, err := h.classroom.List(c.Request.Context(), schoolID, page, size)
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "Failed to list classrooms", err.Error())
+		h.respondServiceError(c, err, http.StatusInternalServerError, "Failed to list classrooms")
 		return
 	}
 	response.Success(c, http.StatusOK, gin.H{
@@ -59,13 +59,13 @@ func (h *Handler) UpdateClassroom(c *gin.Context) {
 	id := c.Param("id")
 	var req UpdateClassroomRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
+		h.respondServiceError(c, err, http.StatusBadRequest, response.CodeInvalidRequestBody)
 		return
 	}
 
 	classroom, err := h.classroom.Update(c.Request.Context(), id, req.Location)
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "Failed to update classroom", err.Error())
+		h.respondServiceError(c, err, http.StatusInternalServerError, "Failed to update classroom")
 		return
 	}
 	response.Success(c, http.StatusOK, classroom)
@@ -74,7 +74,7 @@ func (h *Handler) UpdateClassroom(c *gin.Context) {
 func (h *Handler) DeleteClassroom(c *gin.Context) {
 	id := c.Param("id")
 	if err := h.classroom.Delete(c.Request.Context(), id); err != nil {
-		response.Error(c, http.StatusInternalServerError, "Failed to delete classroom", err.Error())
+		h.respondServiceError(c, err, http.StatusInternalServerError, "Failed to delete classroom")
 		return
 	}
 	response.Success(c, http.StatusOK, nil)

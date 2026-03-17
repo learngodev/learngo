@@ -31,7 +31,7 @@ type joinCourseRequest struct {
 func (h *Handler) CreateCourse(c *gin.Context) {
 	var req createCourseRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequest, err.Error())
+		h.respondServiceError(c, err, http.StatusBadRequest, response.CodeInvalidRequest)
 		return
 	}
 
@@ -55,7 +55,7 @@ func (h *Handler) CreateCourse(c *gin.Context) {
 		req.ClassIDs,
 	)
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "failed_to_create_course", err.Error())
+		h.respondServiceError(c, err, http.StatusInternalServerError, "failed_to_create_course")
 		return
 	}
 
@@ -65,19 +65,19 @@ func (h *Handler) CreateCourse(c *gin.Context) {
 func (h *Handler) JoinCourse(c *gin.Context) {
 	var req joinCourseRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequest, err.Error())
+		h.respondServiceError(c, err, http.StatusBadRequest, response.CodeInvalidRequest)
 		return
 	}
 
 	accountID := getAccountID(c)
 	student, err := h.student.GetStudentByAccountID(c.Request.Context(), accountID)
 	if err != nil {
-		response.Error(c, http.StatusForbidden, response.CodeStudentProfileNotFound, err.Error())
+		h.respondServiceError(c, err, http.StatusForbidden, response.CodeStudentProfileNotFound)
 		return
 	}
 
 	if err := h.courseService.JoinCourseByCode(c.Request.Context(), student.ID, req.Code); err != nil {
-		response.Error(c, http.StatusInternalServerError, "failed_to_join_course", err.Error())
+		h.respondServiceError(c, err, http.StatusInternalServerError, "failed_to_join_course")
 		return
 	}
 
@@ -88,13 +88,13 @@ func (h *Handler) ListStudentCourses(c *gin.Context) {
 	accountID := getAccountID(c)
 	student, err := h.student.GetStudentByAccountID(c.Request.Context(), accountID)
 	if err != nil {
-		response.Error(c, http.StatusForbidden, response.CodeStudentProfileNotFound, err.Error())
+		h.respondServiceError(c, err, http.StatusForbidden, response.CodeStudentProfileNotFound)
 		return
 	}
 
 	courses, err := h.courseService.ListStudentCourses(c.Request.Context(), student.ID)
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "failed_to_list_courses", err.Error())
+		h.respondServiceError(c, err, http.StatusInternalServerError, "failed_to_list_courses")
 		return
 	}
 
@@ -117,7 +117,7 @@ func (h *Handler) ListCourses(c *gin.Context) {
 
 	courses, total, err := h.courseService.ListCoursesWithDetails(c.Request.Context(), schoolID, departmentID, classID, page, size)
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "failed_to_list_courses", err.Error())
+		h.respondServiceError(c, err, http.StatusInternalServerError, "failed_to_list_courses")
 		return
 	}
 
@@ -131,12 +131,12 @@ func (h *Handler) UpdateCourse(c *gin.Context) {
 	id := c.Param("id")
 	var req updateCourseRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequest, err.Error())
+		h.respondServiceError(c, err, http.StatusBadRequest, response.CodeInvalidRequest)
 		return
 	}
 
 	if err := h.courseService.UpdateCourseFields(c.Request.Context(), id, req.Name, req.Description, req.ImageURL); err != nil {
-		response.Error(c, http.StatusInternalServerError, "failed_to_update_course", err.Error())
+		h.respondServiceError(c, err, http.StatusInternalServerError, "failed_to_update_course")
 		return
 	}
 
@@ -159,7 +159,7 @@ func (h *Handler) ListAssignments(c *gin.Context) {
 	// Use ListCourseAssignments which now queries course_schedules
 	assignments, total, err := h.courseService.ListCourseAssignments(c.Request.Context(), schoolID, courseID, departmentID, classID, true, page, size)
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "failed_to_list_assignments", err.Error())
+		h.respondServiceError(c, err, http.StatusInternalServerError, "failed_to_list_assignments")
 		return
 	}
 
@@ -172,7 +172,7 @@ func (h *Handler) ListAssignments(c *gin.Context) {
 func (h *Handler) DeleteCourse(c *gin.Context) {
 	id := c.Param("id")
 	if err := h.courseService.DeleteCourse(c.Request.Context(), id); err != nil {
-		response.Error(c, http.StatusInternalServerError, "failed_to_delete_course", err.Error())
+		h.respondServiceError(c, err, http.StatusInternalServerError, "failed_to_delete_course")
 		return
 	}
 
@@ -188,7 +188,7 @@ func (h *Handler) AssignStudents(c *gin.Context) {
 	courseID := c.Param("id")
 	var req assignStudentsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequest, err.Error())
+		h.respondServiceError(c, err, http.StatusBadRequest, response.CodeInvalidRequest)
 		return
 	}
 
@@ -205,7 +205,7 @@ func (h *Handler) AssignStudents(c *gin.Context) {
 	}
 
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "failed_to_assign_students", err.Error())
+		h.respondServiceError(c, err, http.StatusInternalServerError, "failed_to_assign_students")
 		return
 	}
 

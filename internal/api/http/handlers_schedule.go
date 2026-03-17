@@ -1,11 +1,9 @@
 package http
 
 import (
-	"errors"
 	"net/http"
 	"time"
 
-	"learn-go/internal/service"
 	"learn-go/pkg/response"
 
 	"github.com/gin-gonic/gin"
@@ -28,7 +26,7 @@ type CreateScheduleRequest struct {
 func (h *Handler) CreateSchedule(c *gin.Context) {
 	var req CreateScheduleRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
+		h.respondServiceError(c, err, http.StatusBadRequest, response.CodeInvalidRequestBody)
 		return
 	}
 
@@ -39,14 +37,7 @@ func (h *Handler) CreateSchedule(c *gin.Context) {
 
 	schedule, err := h.schedule.CreateSchedule(c.Request.Context(), req.SchoolID, req.CourseID, req.ClassID, teacherID, req.SlotID, req.DayOfWeek, req.Location, req.ClassroomID, req.StartDate, req.EndDate)
 	if err != nil {
-		switch {
-		case errors.Is(err, service.ErrScheduleValidation):
-			response.Error(c, http.StatusBadRequest, response.CodeInvalidSchedule, err.Error())
-		case errors.Is(err, service.ErrScheduleConflict):
-			response.Error(c, http.StatusConflict, response.CodeScheduleConflict, err.Error())
-		default:
-			response.Error(c, http.StatusInternalServerError, "Failed to create schedule", err.Error())
-		}
+		h.respondServiceError(c, err, http.StatusInternalServerError, "Failed to create schedule")
 		return
 	}
 	response.Success(c, http.StatusCreated, schedule)
@@ -60,7 +51,7 @@ func (h *Handler) DeleteSchedule(c *gin.Context) {
 	}
 
 	if err := h.schedule.DeleteSchedule(c.Request.Context(), id); err != nil {
-		response.Error(c, http.StatusInternalServerError, "Failed to delete schedule", err.Error())
+		h.respondServiceError(c, err, http.StatusInternalServerError, "Failed to delete schedule")
 		return
 	}
 	response.Success(c, http.StatusOK, nil)
@@ -76,7 +67,7 @@ func (h *Handler) ListSchedules(c *gin.Context) {
 
 	schedules, err := h.schedule.ListSchedules(c.Request.Context(), schoolID, courseID)
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "Failed to list schedules", err.Error())
+		h.respondServiceError(c, err, http.StatusInternalServerError, "Failed to list schedules")
 		return
 	}
 	response.Success(c, http.StatusOK, schedules)
@@ -91,7 +82,7 @@ func (h *Handler) GetScheduleStats(c *gin.Context) {
 
 	stats, err := h.schedule.GetScheduleStats(c.Request.Context(), schoolID)
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "Failed to get schedule stats", err.Error())
+		h.respondServiceError(c, err, http.StatusInternalServerError, "Failed to get schedule stats")
 		return
 	}
 	response.Success(c, http.StatusOK, stats)
@@ -107,19 +98,12 @@ type GenerateSessionsRequest struct {
 func (h *Handler) GenerateSessions(c *gin.Context) {
 	var req GenerateSessionsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
+		h.respondServiceError(c, err, http.StatusBadRequest, response.CodeInvalidRequestBody)
 		return
 	}
 
 	if err := h.schedule.GenerateSessions(c.Request.Context(), req.SchoolID, req.Start, req.End); err != nil {
-		switch {
-		case errors.Is(err, service.ErrScheduleValidation):
-			response.Error(c, http.StatusBadRequest, response.CodeInvalidSchedule, err.Error())
-		case errors.Is(err, service.ErrScheduleConflict):
-			response.Error(c, http.StatusConflict, response.CodeScheduleConflict, err.Error())
-		default:
-			response.Error(c, http.StatusInternalServerError, "Failed to generate sessions", err.Error())
-		}
+		h.respondServiceError(c, err, http.StatusInternalServerError, "Failed to generate sessions")
 		return
 	}
 	response.Success(c, http.StatusOK, nil)
@@ -136,19 +120,12 @@ func (h *Handler) UpdateSession(c *gin.Context) {
 	id := c.Param("id")
 	var req UpdateSessionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
+		h.respondServiceError(c, err, http.StatusBadRequest, response.CodeInvalidRequestBody)
 		return
 	}
 
 	if err := h.schedule.UpdateSession(c.Request.Context(), id, req.SlotID, req.Date, req.Location); err != nil {
-		switch {
-		case errors.Is(err, service.ErrScheduleValidation):
-			response.Error(c, http.StatusBadRequest, response.CodeInvalidSchedule, err.Error())
-		case errors.Is(err, service.ErrScheduleConflict):
-			response.Error(c, http.StatusConflict, response.CodeScheduleConflict, err.Error())
-		default:
-			response.Error(c, http.StatusInternalServerError, "Failed to update session", err.Error())
-		}
+		h.respondServiceError(c, err, http.StatusInternalServerError, "Failed to update session")
 		return
 	}
 	response.Success(c, http.StatusOK, nil)

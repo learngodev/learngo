@@ -34,7 +34,7 @@ func (h *Handler) ListStudentCourseChapters(c *gin.Context) {
 		case errors.Is(err, service.ErrCourseAccessDenied):
 			response.Error(c, http.StatusForbidden, response.CodeCourseAccessDenied, nil)
 		default:
-			response.Error(c, http.StatusInternalServerError, "unable to list chapters", err.Error())
+			h.respondServiceError(c, err, http.StatusInternalServerError, "unable to list chapters")
 		}
 		return
 	}
@@ -79,7 +79,7 @@ func (h *Handler) GetStudentCourseChapter(c *gin.Context) {
 		case errors.Is(err, repository.ErrNotFound):
 			response.Error(c, http.StatusNotFound, response.CodeChapterNotFound, nil)
 		default:
-			response.Error(c, http.StatusInternalServerError, "unable to get chapter", err.Error())
+			h.respondServiceError(c, err, http.StatusInternalServerError, "unable to get chapter")
 		}
 		return
 	}

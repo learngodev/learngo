@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
@@ -28,6 +29,23 @@ var (
 	// ErrScheduleConflict indicates schedule conflicts with existing resources.
 	ErrScheduleConflict = errors.New("schedule conflict")
 )
+
+type scheduleConflictDetails struct {
+	ResourceType   string `json:"resource_type"`
+	ResourceID     string `json:"resource_id,omitempty"`
+	Date           string `json:"date"`
+	TimeWindow     string `json:"time_window"`
+	WindowStart    string `json:"window_start"`
+	WindowEnd      string `json:"window_end"`
+	CandidateClass string `json:"candidate_class_id,omitempty"`
+	ExistingClass  string `json:"existing_class_id,omitempty"`
+}
+
+type scheduleValidationDetails struct {
+	Field  string      `json:"field,omitempty"`
+	Reason string      `json:"reason"`
+	Value  interface{} `json:"value,omitempty"`
+}
 
 func NewScheduleService(
 	timeSlotRepo repository.TimeSlotRepository,
@@ -73,10 +91,13 @@ func (s *ScheduleService) ListTimeSlots(ctx context.Context, schoolID string) ([
 
 func (s *ScheduleService) CreateSchedule(ctx context.Context, schoolID, courseID, classID, teacherID, slotID string, dayOfWeek int, location string, classroomID *string, startDate, endDate time.Time) (*domain.CourseSchedule, error) {
 	if dayOfWeek < 1 || dayOfWeek > 7 {
-		return nil, fmt.Errorf("%w: day_of_week must be between 1 and 7", ErrScheduleValidation)
+		return nil, newScheduleValidationError("星期参数无效，应为 1 到 7", "day_of_week", "out_of_range", dayOfWeek)
 	}
 	if !startDate.Before(endDate) {
-		return nil, fmt.Errorf("%w: start_date must be before end_date", ErrScheduleValidation)
+		return nil, newScheduleValidationError("开始日期必须早于结束日期", "date_range", "start_not_before_end", map[string]string{
+			"start_date": startDate.Format("2006-01-02"),
+			"end_date":   endDate.Format("2006-01-02"),
+		})
 	}
 
 	// Validate slot exists and get times
@@ -85,10 +106,10 @@ func (s *ScheduleService) CreateSchedule(ctx context.Context, schoolID, courseID
 		return nil, err
 	}
 	if slot == nil {
-		return nil, fmt.Errorf("%w: time slot not found", ErrScheduleValidation)
+		return nil, newScheduleValidationError("未找到对应时间段", "slot_id", "not_found", slotID)
 	}
 	if slot.SchoolID != schoolID {
-		return nil, fmt.Errorf("%w: time slot does not belong to school", ErrScheduleValidation)
+		return nil, newScheduleValidationError("该时间段不属于当前学校", "slot_id", "school_mismatch", slotID)
 	}
 	newStartMinute, newEndMinute, err := slotRangeMinutes(*slot)
 	if err != nil {
@@ -109,13 +130,13 @@ func (s *ScheduleService) CreateSchedule(ctx context.Context, schoolID, courseID
 		// Check existence
 		classroom, err := s.classroomRepo.GetByID(ctx, *classroomID)
 		if err != nil {
-			return nil, fmt.Errorf("%w: classroom not found", ErrScheduleValidation)
+			return nil, newScheduleValidationError("未找到对应教室", "classroom_id", "not_found", *classroomID)
 		}
 		if classroom == nil {
-			return nil, fmt.Errorf("%w: classroom not found", ErrScheduleValidation)
+			return nil, newScheduleValidationError("未找到对应教室", "classroom_id", "not_found", *classroomID)
 		}
 		if classroom.SchoolID != schoolID {
-			return nil, fmt.Errorf("%w: classroom does not belong to school", ErrScheduleValidation)
+			return nil, newScheduleValidationError("该教室不属于当前学校", "classroom_id", "school_mismatch", *classroomID)
 		}
 		location = classroom.Location
 
@@ -137,10 +158,10 @@ func (s *ScheduleService) CreateSchedule(ctx context.Context, schoolID, courseID
 			// Try as Account ID
 			teacher, err = s.teacherRepo.GetByAccountID(ctx, teacherID)
 			if err != nil {
-				return nil, fmt.Errorf("%w: teacher not found", ErrScheduleValidation)
+				return nil, newScheduleValidationError("未找到对应教师", "teacher_id", "not_found", teacherID)
 			}
 			if teacher == nil {
-				return nil, fmt.Errorf("%w: teacher not found", ErrScheduleValidation)
+				return nil, newScheduleValidationError("未找到对应教师", "teacher_id", "not_found", teacherID)
 			}
 			// Use the resolved Profile ID
 			teacherID = teacher.ID
@@ -254,7 +275,10 @@ func (s *ScheduleService) GetScheduleStats(ctx context.Context, schoolID string)
 
 func (s *ScheduleService) GenerateSessions(ctx context.Context, schoolID string, start, end time.Time) error {
 	if !start.Before(end) {
-		return fmt.Errorf("%w: start time must be before end time", ErrScheduleValidation)
+		return newScheduleValidationError("生成范围开始时间必须早于结束时间", "date_range", "start_not_before_end", map[string]string{
+			"start": start.Format(time.RFC3339),
+			"end":   end.Format(time.RFC3339),
+		})
 	}
 
 	// 1. List all schedules for the school
@@ -301,11 +325,11 @@ func (s *ScheduleService) GenerateSessions(ctx context.Context, schoolID string,
 			// Parse HH:MM
 			startH, startM, err := parseTime(slot.StartTime)
 			if err != nil {
-				return fmt.Errorf("%w: invalid slot start time", ErrScheduleValidation)
+				return newScheduleValidationError("时间段开始时间格式不正确", "start_time", "invalid_time_format", slot.StartTime)
 			}
 			endH, endM, err := parseTime(slot.EndTime)
 			if err != nil {
-				return fmt.Errorf("%w: invalid slot end time", ErrScheduleValidation)
+				return newScheduleValidationError("时间段结束时间格式不正确", "end_time", "invalid_time_format", slot.EndTime)
 			}
 
 			// Create session in the target timezone, then convert to UTC for storage
@@ -366,11 +390,11 @@ func buildSessionsForSchedule(
 ) ([]domain.CourseSession, error) {
 	startH, startM, err := parseTime(slot.StartTime)
 	if err != nil {
-		return nil, fmt.Errorf("%w: invalid slot start time", ErrScheduleValidation)
+		return nil, newScheduleValidationError("时间段开始时间格式不正确", "start_time", "invalid_time_format", slot.StartTime)
 	}
 	endH, endM, err := parseTime(slot.EndTime)
 	if err != nil {
-		return nil, fmt.Errorf("%w: invalid slot end time", ErrScheduleValidation)
+		return nil, newScheduleValidationError("时间段结束时间格式不正确", "end_time", "invalid_time_format", slot.EndTime)
 	}
 
 	sessions := make([]domain.CourseSession, 0)
@@ -428,7 +452,7 @@ func (s *ScheduleService) UpdateSession(ctx context.Context, sessionID string, n
 		return err
 	}
 	if session == nil {
-		return fmt.Errorf("%w: session not found", ErrScheduleValidation)
+		return newScheduleValidationError("未找到对应课次", "session_id", "not_found", sessionID)
 	}
 
 	// Get new slot details
@@ -437,16 +461,16 @@ func (s *ScheduleService) UpdateSession(ctx context.Context, sessionID string, n
 		return err
 	}
 	if slot == nil {
-		return fmt.Errorf("%w: slot not found", ErrScheduleValidation)
+		return newScheduleValidationError("未找到对应时间段", "slot_id", "not_found", newSlotID)
 	}
 
 	startH, startM, err := parseTime(slot.StartTime)
 	if err != nil {
-		return fmt.Errorf("%w: invalid slot start time", ErrScheduleValidation)
+		return newScheduleValidationError("时间段开始时间格式不正确", "start_time", "invalid_time_format", slot.StartTime)
 	}
 	endH, endM, err := parseTime(slot.EndTime)
 	if err != nil {
-		return fmt.Errorf("%w: invalid slot end time", ErrScheduleValidation)
+		return newScheduleValidationError("时间段结束时间格式不正确", "end_time", "invalid_time_format", slot.EndTime)
 	}
 
 	startsAt := time.Date(newDate.Year(), newDate.Month(), newDate.Day(), startH, startM, 0, 0, newDate.Location())
@@ -502,7 +526,45 @@ func (s *ScheduleService) ensureNoScheduleConflict(
 			return err
 		}
 		if timeRangesOverlapMinute(newStartMinute, newEndMinute, startMinute, endMinute) {
-			return fmt.Errorf("%w: %s is already booked for overlapping time", ErrScheduleConflict, scope)
+			overlapStart, overlapEnd := overlapDateRange(startDate, endDate, sch.StartDate, sch.EndDate)
+			resourceLabel := "资源"
+			resourceType := "resource"
+			resourceID := ""
+			switch scope {
+			case "teacher":
+				resourceLabel = "教师"
+				resourceType = "teacher"
+				if sch.TeacherID != nil {
+					resourceID = *sch.TeacherID
+				}
+			case "class":
+				resourceLabel = "班级"
+				resourceType = "class"
+				resourceID = sch.ClassID
+			case "classroom":
+				resourceLabel = "教室"
+				resourceType = "classroom"
+				if sch.ClassroomID != nil {
+					resourceID = *sch.ClassroomID
+				}
+			}
+			message := fmt.Sprintf(
+				"%s在%s %s-%s（%s 至 %s）已有排课",
+				resourceLabel,
+				weekdayLabel(dayOfWeek),
+				minuteToClock(startMinute),
+				minuteToClock(endMinute),
+				overlapStart.Format("2006-01-02"),
+				overlapEnd.Format("2006-01-02"),
+			)
+			return newScheduleConflictError(message, scheduleConflictDetails{
+				ResourceType: resourceType,
+				ResourceID:   resourceID,
+				Date:         overlapStart.Format("2006-01-02"),
+				TimeWindow:   fmt.Sprintf("%s-%s", minuteToClock(startMinute), minuteToClock(endMinute)),
+				WindowStart:  overlapStart.Format(time.RFC3339),
+				WindowEnd:    overlapEnd.Format(time.RFC3339),
+			})
 		}
 	}
 	return nil
@@ -521,14 +583,56 @@ func (s *ScheduleService) ensureNoSessionConflict(ctx context.Context, session d
 		if !timeRangesOverlapTime(session.StartsAt, session.EndsAt, existing.StartsAt, existing.EndsAt) {
 			continue
 		}
+		timeWindow := fmt.Sprintf(
+			"%s %s-%s",
+			session.StartsAt.Format("2006-01-02"),
+			session.StartsAt.Format("15:04"),
+			session.EndsAt.Format("15:04"),
+		)
 		if existing.ClassID == session.ClassID {
-			return fmt.Errorf("%w: class is already booked for overlapping time", ErrScheduleConflict)
+			return newScheduleConflictError(
+				fmt.Sprintf("班级在%s已有课程安排", timeWindow),
+				scheduleConflictDetails{
+					ResourceType:   "class",
+					ResourceID:     session.ClassID,
+					Date:           session.StartsAt.Format("2006-01-02"),
+					TimeWindow:     fmt.Sprintf("%s-%s", session.StartsAt.Format("15:04"), session.EndsAt.Format("15:04")),
+					WindowStart:    session.StartsAt.Format(time.RFC3339),
+					WindowEnd:      session.EndsAt.Format(time.RFC3339),
+					CandidateClass: session.ClassID,
+					ExistingClass:  existing.ClassID,
+				},
+			)
 		}
 		if session.TeacherID != nil && existing.TeacherID != nil && *session.TeacherID == *existing.TeacherID {
-			return fmt.Errorf("%w: teacher is already booked for overlapping time", ErrScheduleConflict)
+			return newScheduleConflictError(
+				fmt.Sprintf("教师在%s已有课程安排", timeWindow),
+				scheduleConflictDetails{
+					ResourceType:   "teacher",
+					ResourceID:     *session.TeacherID,
+					Date:           session.StartsAt.Format("2006-01-02"),
+					TimeWindow:     fmt.Sprintf("%s-%s", session.StartsAt.Format("15:04"), session.EndsAt.Format("15:04")),
+					WindowStart:    session.StartsAt.Format(time.RFC3339),
+					WindowEnd:      session.EndsAt.Format(time.RFC3339),
+					CandidateClass: session.ClassID,
+					ExistingClass:  existing.ClassID,
+				},
+			)
 		}
 		if session.ClassroomID != nil && existing.ClassroomID != nil && *session.ClassroomID == *existing.ClassroomID {
-			return fmt.Errorf("%w: classroom is already booked for overlapping time", ErrScheduleConflict)
+			return newScheduleConflictError(
+				fmt.Sprintf("教室在%s已被占用", timeWindow),
+				scheduleConflictDetails{
+					ResourceType:   "classroom",
+					ResourceID:     *session.ClassroomID,
+					Date:           session.StartsAt.Format("2006-01-02"),
+					TimeWindow:     fmt.Sprintf("%s-%s", session.StartsAt.Format("15:04"), session.EndsAt.Format("15:04")),
+					WindowStart:    session.StartsAt.Format(time.RFC3339),
+					WindowEnd:      session.EndsAt.Format(time.RFC3339),
+					CandidateClass: session.ClassID,
+					ExistingClass:  existing.ClassID,
+				},
+			)
 		}
 	}
 
@@ -544,7 +648,7 @@ func (s *ScheduleService) resolveSlot(ctx context.Context, slotID string, slotMa
 		return domain.TimeSlot{}, err
 	}
 	if resolved == nil {
-		return domain.TimeSlot{}, fmt.Errorf("%w: time slot not found", ErrScheduleValidation)
+		return domain.TimeSlot{}, newScheduleValidationError("未找到对应时间段", "slot_id", "not_found", slotID)
 	}
 	slotMap[slotID] = *resolved
 	return *resolved, nil
@@ -553,18 +657,55 @@ func (s *ScheduleService) resolveSlot(ctx context.Context, slotID string, slotMa
 func slotRangeMinutes(slot domain.TimeSlot) (int, int, error) {
 	startH, startM, err := parseTime(slot.StartTime)
 	if err != nil {
-		return 0, 0, fmt.Errorf("%w: invalid slot start time", ErrScheduleValidation)
+		return 0, 0, newScheduleValidationError("时间段开始时间格式不正确", "start_time", "invalid_time_format", slot.StartTime)
 	}
 	endH, endM, err := parseTime(slot.EndTime)
 	if err != nil {
-		return 0, 0, fmt.Errorf("%w: invalid slot end time", ErrScheduleValidation)
+		return 0, 0, newScheduleValidationError("时间段结束时间格式不正确", "end_time", "invalid_time_format", slot.EndTime)
 	}
 	startMinute := startH*60 + startM
 	endMinute := endH*60 + endM
 	if endMinute <= startMinute {
-		return 0, 0, fmt.Errorf("%w: slot end time must be after start time", ErrScheduleValidation)
+		return 0, 0, newScheduleValidationError("时间段结束时间必须晚于开始时间", "time_range", "end_not_after_start", map[string]string{
+			"start_time": slot.StartTime,
+			"end_time":   slot.EndTime,
+		})
 	}
 	return startMinute, endMinute, nil
+}
+
+func overlapDateRange(aStart, aEnd, bStart, bEnd time.Time) (time.Time, time.Time) {
+	start := aStart
+	if bStart.After(start) {
+		start = bStart
+	}
+	end := aEnd
+	if bEnd.Before(end) {
+		end = bEnd
+	}
+	return start, end
+}
+
+func weekdayLabel(day int) string {
+	labels := map[int]string{
+		1: "周一",
+		2: "周二",
+		3: "周三",
+		4: "周四",
+		5: "周五",
+		6: "周六",
+		7: "周日",
+	}
+	if v, ok := labels[day]; ok {
+		return v
+	}
+	return fmt.Sprintf("周%d", day)
+}
+
+func minuteToClock(v int) string {
+	h := v / 60
+	m := v % 60
+	return fmt.Sprintf("%02d:%02d", h, m)
 }
 
 func dateRangesOverlap(aStart, aEnd, bStart, bEnd time.Time) bool {
@@ -577,4 +718,28 @@ func timeRangesOverlapMinute(aStart, aEnd, bStart, bEnd int) bool {
 
 func timeRangesOverlapTime(aStart, aEnd, bStart, bEnd time.Time) bool {
 	return aStart.Before(bEnd) && bStart.Before(aEnd)
+}
+
+func newScheduleConflictError(message string, details scheduleConflictDetails) error {
+	return &AppError{
+		Code:    ErrScheduleConflict.Error(),
+		Status:  http.StatusConflict,
+		Message: message,
+		Details: details,
+		Cause:   ErrScheduleConflict,
+	}
+}
+
+func newScheduleValidationError(message, field, reason string, value interface{}) error {
+	return &AppError{
+		Code:    ErrScheduleValidation.Error(),
+		Status:  http.StatusBadRequest,
+		Message: message,
+		Details: scheduleValidationDetails{
+			Field:  field,
+			Reason: reason,
+			Value:  value,
+		},
+		Cause: ErrScheduleValidation,
+	}
 }

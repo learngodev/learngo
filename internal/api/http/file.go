@@ -85,7 +85,7 @@ func (h *Handler) RelayUpload(c *gin.Context) {
 
 	opened, err := fileHeader.Open()
 	if err != nil {
-		response.Error(c, http.StatusBadRequest, "unable to open uploaded file", err.Error())
+		h.respondServiceError(c, err, http.StatusBadRequest, "unable to open uploaded file")
 		return
 	}
 	defer opened.Close()
@@ -100,10 +100,10 @@ func (h *Handler) RelayUpload(c *gin.Context) {
 		)
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
-				response.Error(c, http.StatusBadRequest, response.CodeFileNotFound, err.Error())
+				h.respondServiceError(c, err, http.StatusBadRequest, response.CodeFileNotFound)
 				return
 			}
-			response.Error(c, http.StatusBadRequest, response.CodeUnableToLoadFile, err.Error())
+			h.respondServiceError(c, err, http.StatusBadRequest, response.CodeUnableToLoadFile)
 			return
 		}
 
@@ -134,7 +134,7 @@ func (h *Handler) RelayUpload(c *gin.Context) {
 			return
 		}
 		if err := h.fileService.RelayUploadExisting(c.Request.Context(), recorded, opened); err != nil {
-			response.Error(c, http.StatusInternalServerError, response.CodeUnableToRelayUploadExistingFile, err.Error())
+			h.respondServiceError(c, err, http.StatusInternalServerError, response.CodeUnableToRelayUploadExistingFile)
 			return
 		}
 		stored = recorded
@@ -149,7 +149,7 @@ func (h *Handler) RelayUpload(c *gin.Context) {
 			opened,
 		)
 		if err != nil {
-			response.Error(c, http.StatusInternalServerError, response.CodeUnableToRelayUpload, err.Error())
+			h.respondServiceError(c, err, http.StatusInternalServerError, response.CodeUnableToRelayUpload)
 			return
 		}
 		stored = recorded
@@ -167,7 +167,7 @@ func (h *Handler) RelayUpload(c *gin.Context) {
 func (h *Handler) GetUploadURL(c *gin.Context) {
 	var req UploadRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, response.CodeInvalidRequestBody, err.Error())
+		h.respondServiceError(c, err, http.StatusBadRequest, response.CodeInvalidRequestBody)
 		return
 	}
 
@@ -210,7 +210,7 @@ func (h *Handler) GetUploadURL(c *gin.Context) {
 		req.Size,
 	)
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, response.CodeUnableToInitializeUpload, err.Error())
+		h.respondServiceError(c, err, http.StatusInternalServerError, response.CodeUnableToInitializeUpload)
 		return
 	}
 
@@ -251,7 +251,7 @@ func (h *Handler) GetDownloadURL(c *gin.Context) {
 			response.Error(c, http.StatusNotFound, response.CodeFileNotFound, nil)
 			return
 		}
-		response.Error(c, http.StatusInternalServerError, response.CodeUnableToGetDownloadInfo, err.Error())
+		h.respondServiceError(c, err, http.StatusInternalServerError, response.CodeUnableToGetDownloadInfo)
 		return
 	}
 
@@ -270,7 +270,7 @@ func (h *Handler) GetDownloadURL(c *gin.Context) {
 		tok := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 		signed, err := tok.SignedString([]byte(cfg.JWTSecret))
 		if err != nil {
-			response.Error(c, http.StatusInternalServerError, "failed to sign download token", nil)
+			response.Error(c, http.StatusInternalServerError, response.CodeUnableToSignDownloadToken, nil)
 			return
 		}
 		base := requestBaseURL(c)
@@ -339,7 +339,7 @@ func (h *Handler) RelayDownload(c *gin.Context) {
 			response.Error(c, http.StatusNotFound, response.CodeFileNotFound, nil)
 			return
 		}
-		response.Error(c, http.StatusInternalServerError, response.CodeUnableToOpenDownloadStream, err.Error())
+		h.respondServiceError(c, err, http.StatusInternalServerError, response.CodeUnableToOpenDownloadStream)
 		return
 	}
 	defer rc.Close()
