@@ -87,6 +87,9 @@ func (s *ScheduleService) CreateSchedule(ctx context.Context, schoolID, courseID
 	if slot == nil {
 		return nil, fmt.Errorf("%w: time slot not found", ErrScheduleValidation)
 	}
+	if slot.SchoolID != schoolID {
+		return nil, fmt.Errorf("%w: time slot does not belong to school", ErrScheduleValidation)
+	}
 	newStartMinute, newEndMinute, err := slotRangeMinutes(*slot)
 	if err != nil {
 		return nil, err
@@ -107,6 +110,12 @@ func (s *ScheduleService) CreateSchedule(ctx context.Context, schoolID, courseID
 		classroom, err := s.classroomRepo.GetByID(ctx, *classroomID)
 		if err != nil {
 			return nil, fmt.Errorf("%w: classroom not found", ErrScheduleValidation)
+		}
+		if classroom == nil {
+			return nil, fmt.Errorf("%w: classroom not found", ErrScheduleValidation)
+		}
+		if classroom.SchoolID != schoolID {
+			return nil, fmt.Errorf("%w: classroom does not belong to school", ErrScheduleValidation)
 		}
 		location = classroom.Location
 
@@ -159,6 +168,28 @@ func (s *ScheduleService) CreateSchedule(ctx context.Context, schoolID, courseID
 		}
 	}
 
+	candidateSessions, err := buildSessionsForSchedule(
+		courseID,
+		classID,
+		tid,
+		slotID,
+		classroomID,
+		dayOfWeek,
+		location,
+		startDate,
+		endDate,
+		*slot,
+	)
+	if err != nil {
+		return nil, err
+	}
+	for i := range candidateSessions {
+		if err := s.ensureNoSessionConflict(ctx, candidateSessions[i], ""); err != nil {
+			return nil, err
+		}
+	}
+
+	now := time.Now()
 	schedule := &domain.CourseSchedule{
 		ID:          uuid.New().String(),
 		SchoolID:    schoolID,
@@ -171,54 +202,20 @@ func (s *ScheduleService) CreateSchedule(ctx context.Context, schoolID, courseID
 		Location:    location,
 		StartDate:   startDate,
 		EndDate:     endDate,
-		CreatedAt:   time.Now(),
-		UpdatedAt:   time.Now(),
+		CreatedAt:   now,
+		UpdatedAt:   now,
 	}
 	if err := s.scheduleRepo.Create(ctx, schedule); err != nil {
 		return nil, err
 	}
 
-	// Generate sessions for this schedule
-	startH, startM, err := parseTime(slot.StartTime)
-	if err != nil {
-		return nil, fmt.Errorf("%w: invalid slot start time", ErrScheduleValidation)
-	}
-	endH, endM, err := parseTime(slot.EndTime)
-	if err != nil {
-		return nil, fmt.Errorf("%w: invalid slot end time", ErrScheduleValidation)
-	}
-
-	for d := startDate; d.Before(endDate) || d.Equal(endDate); d = d.AddDate(0, 0, 1) {
-		weekday := int(d.Weekday())
-		if weekday == 0 {
-			weekday = 7
-		}
-		if weekday != dayOfWeek {
-			continue
-		}
-
-		startsAt := time.Date(d.Year(), d.Month(), d.Day(), startH, startM, 0, 0, d.Location())
-		endsAt := time.Date(d.Year(), d.Month(), d.Day(), endH, endM, 0, 0, d.Location())
-
-		session := &domain.CourseSession{
-			ID:          uuid.New().String(),
-			CourseID:    courseID,
-			ClassID:     classID,
-			TeacherID:   tid,
-			SlotID:      slotID,
-			ClassroomID: classroomID,
-			StartsAt:    startsAt,
-			EndsAt:      endsAt,
-			Location:    location,
-			Source:      "system",
-			CreatedAt:   time.Now(),
-			UpdatedAt:   time.Now(),
-		}
-		if err := s.ensureNoSessionConflict(ctx, *session, ""); err != nil {
-			return nil, err
-		}
-		if err := s.sessionRepo.Create(ctx, session); err != nil {
-			return nil, fmt.Errorf("failed to create session for %s: %v", startsAt, err)
+	for i := range candidateSessions {
+		session := candidateSessions[i]
+		session.ID = uuid.New().String()
+		session.CreatedAt = now
+		session.UpdatedAt = now
+		if err := s.sessionRepo.Create(ctx, &session); err != nil {
+			return nil, fmt.Errorf("failed to create session for %s: %v", session.StartsAt, err)
 		}
 	}
 
@@ -355,6 +352,74 @@ func parseTime(t string) (int, int, error) {
 	return h, m, err
 }
 
+func buildSessionsForSchedule(
+	courseID string,
+	classID string,
+	teacherID *string,
+	slotID string,
+	classroomID *string,
+	dayOfWeek int,
+	location string,
+	startDate time.Time,
+	endDate time.Time,
+	slot domain.TimeSlot,
+) ([]domain.CourseSession, error) {
+	startH, startM, err := parseTime(slot.StartTime)
+	if err != nil {
+		return nil, fmt.Errorf("%w: invalid slot start time", ErrScheduleValidation)
+	}
+	endH, endM, err := parseTime(slot.EndTime)
+	if err != nil {
+		return nil, fmt.Errorf("%w: invalid slot end time", ErrScheduleValidation)
+	}
+
+	sessions := make([]domain.CourseSession, 0)
+	for d := startDate; d.Before(endDate) || d.Equal(endDate); d = d.AddDate(0, 0, 1) {
+		weekday := int(d.Weekday())
+		if weekday == 0 {
+			weekday = 7
+		}
+		if weekday != dayOfWeek {
+			continue
+		}
+
+		startsAt := time.Date(
+			d.Year(),
+			d.Month(),
+			d.Day(),
+			startH,
+			startM,
+			0,
+			0,
+			d.Location(),
+		)
+		endsAt := time.Date(
+			d.Year(),
+			d.Month(),
+			d.Day(),
+			endH,
+			endM,
+			0,
+			0,
+			d.Location(),
+		)
+
+		sessions = append(sessions, domain.CourseSession{
+			CourseID:    courseID,
+			ClassID:     classID,
+			TeacherID:   teacherID,
+			SlotID:      slotID,
+			ClassroomID: classroomID,
+			StartsAt:    startsAt,
+			EndsAt:      endsAt,
+			Location:    location,
+			Source:      "system",
+		})
+	}
+
+	return sessions, nil
+}
+
 // Teacher Adjustment
 
 func (s *ScheduleService) UpdateSession(ctx context.Context, sessionID string, newSlotID string, newDate time.Time, newLocation string) error {
@@ -449,7 +514,6 @@ func (s *ScheduleService) ensureNoSessionConflict(ctx context.Context, session d
 		return err
 	}
 
-	targetLocation := strings.TrimSpace(strings.ToLower(session.Location))
 	for _, existing := range allSessions {
 		if existing.ID == excludeSessionID {
 			continue
@@ -464,9 +528,6 @@ func (s *ScheduleService) ensureNoSessionConflict(ctx context.Context, session d
 			return fmt.Errorf("%w: teacher is already booked for overlapping time", ErrScheduleConflict)
 		}
 		if session.ClassroomID != nil && existing.ClassroomID != nil && *session.ClassroomID == *existing.ClassroomID {
-			return fmt.Errorf("%w: classroom is already booked for overlapping time", ErrScheduleConflict)
-		}
-		if targetLocation != "" && strings.TrimSpace(strings.ToLower(existing.Location)) == targetLocation {
 			return fmt.Errorf("%w: classroom is already booked for overlapping time", ErrScheduleConflict)
 		}
 	}
@@ -507,7 +568,7 @@ func slotRangeMinutes(slot domain.TimeSlot) (int, int, error) {
 }
 
 func dateRangesOverlap(aStart, aEnd, bStart, bEnd time.Time) bool {
-	return aStart.Before(bEnd) && bStart.Before(aEnd)
+	return !aStart.After(bEnd) && !bStart.After(aEnd)
 }
 
 func timeRangesOverlapMinute(aStart, aEnd, bStart, bEnd int) bool {
