@@ -276,7 +276,40 @@ func migrate(db *gorm.DB) error {
 		return err
 	}
 
+	if err := ensureAccountStatusIntegrity(db); err != nil {
+		return err
+	}
+
 	return ensurePartialUniqueIndexes(db)
+}
+
+func ensureAccountStatusIntegrity(db *gorm.DB) error {
+	dialect := db.Dialector.Name()
+
+	// Normalize legacy/invalid values before enforcing constraints.
+	if err := db.Exec(
+		"UPDATE accounts SET status = 'active' WHERE status IS NULL OR TRIM(status) = '' OR status NOT IN ('active','locked','password_reset_required')",
+	).Error; err != nil {
+		return err
+	}
+
+	switch dialect {
+	case "postgres":
+		if err := db.Exec("ALTER TABLE accounts ALTER COLUMN status SET DEFAULT 'active'").Error; err != nil {
+			return err
+		}
+		if err := db.Exec("ALTER TABLE accounts ALTER COLUMN status SET NOT NULL").Error; err != nil {
+			return err
+		}
+		if err := db.Exec("ALTER TABLE accounts DROP CONSTRAINT IF EXISTS accounts_status_check").Error; err != nil {
+			return err
+		}
+		if err := db.Exec("ALTER TABLE accounts ADD CONSTRAINT accounts_status_check CHECK (status IN ('active','locked','password_reset_required'))").Error; err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func ensurePartialUniqueIndexes(db *gorm.DB) error {

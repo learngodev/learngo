@@ -50,12 +50,14 @@ CREATE TABLE accounts (
     id            CHAR(36) PRIMARY KEY,
     school_id     CHAR(36) NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
     role          VARCHAR(16) NOT NULL,
+    status        VARCHAR(32) NOT NULL DEFAULT 'active',
     identifier    VARCHAR(64) NOT NULL,
     password_hash VARCHAR(128) NOT NULL,
     display_name  VARCHAR(128) NOT NULL,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    deleted_at    TIMESTAMPTZ
+    deleted_at    TIMESTAMPTZ,
+    CONSTRAINT accounts_status_check CHECK (status IN ('active', 'locked', 'password_reset_required'))
 );
 
 ALTER TABLE accounts
@@ -422,14 +424,14 @@ CREATE TABLE note_comments (
 INSERT INTO schools (id, name) VALUES
     ('11111111-1111-1111-1111-111111111111', 'Horizon International School');
 
-INSERT INTO accounts (id, school_id, role, identifier, password_hash, display_name)
+INSERT INTO accounts (id, school_id, role, status, identifier, password_hash, display_name)
 VALUES
     -- admin001 / Admin@123
-    ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '11111111-1111-1111-1111-111111111111', 'admin',   'admin001',   '$2a$10$r55hZB6LyJ6858Y7V31ReOp.E7zQ/uVnmT0rok7UG3WiH6iH4mNbW', '校区管理员'),
+    ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '11111111-1111-1111-1111-111111111111', 'admin',   'active', 'admin001',   '$2a$10$r55hZB6LyJ6858Y7V31ReOp.E7zQ/uVnmT0rok7UG3WiH6iH4mNbW', '校区管理员'),
     -- tch-1001 / Teacher@123
-    ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', '11111111-1111-1111-1111-111111111111', 'teacher', 'tch-1001',   '$2a$10$HsCf6BKbYMzXQR.VXtE9Z.9hry4fFdiPotuLxW9o./KCfB2kOvnDm', '李老师'),
+    ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', '11111111-1111-1111-1111-111111111111', 'teacher', 'active', 'tch-1001',   '$2a$10$HsCf6BKbYMzXQR.VXtE9Z.9hry4fFdiPotuLxW9o./KCfB2kOvnDm', '李老师'),
     -- stu-2025001 / Student@123
-    ('cccccccc-cccc-cccc-cccc-cccccccccccc', '11111111-1111-1111-1111-111111111111', 'student', 'stu-2025001', '$2a$10$8/0qgqABMO7pYcPxTVGHX.S6ezGYUFuIUgzvQVNMDAxHcYexgBhz2', '张三');
+    ('cccccccc-cccc-cccc-cccc-cccccccccccc', '11111111-1111-1111-1111-111111111111', 'student', 'active', 'stu-2025001', '$2a$10$8/0qgqABMO7pYcPxTVGHX.S6ezGYUFuIUgzvQVNMDAxHcYexgBhz2', '张三');
 
 INSERT INTO departments (id, school_id, name) VALUES
     ('22222222-2222-2222-2222-222222222222', '11111111-1111-1111-1111-111111111111', '信息工程系');

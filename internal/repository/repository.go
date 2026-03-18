@@ -120,6 +120,7 @@ type CourseStudentRepository interface {
 type CourseScheduleRepository interface {
 	Create(ctx context.Context, schedule *domain.CourseSchedule) error
 	Update(ctx context.Context, schedule *domain.CourseSchedule) error
+	GetByID(ctx context.Context, id string) (*domain.CourseSchedule, error)
 	Delete(ctx context.Context, id string) error
 	ListByCourse(ctx context.Context, courseID string) ([]domain.CourseSchedule, error)
 	ListBySchool(ctx context.Context, schoolID string) ([]domain.CourseSchedule, error)
@@ -143,6 +144,7 @@ type ClassroomRepository interface {
 type CourseSessionRepository interface {
 	Create(ctx context.Context, session *domain.CourseSession) error
 	Update(ctx context.Context, session *domain.CourseSession) error
+	DeleteByIDs(ctx context.Context, ids []string) error
 	GetByID(ctx context.Context, id string) (*domain.CourseSession, error)
 	ListBetween(ctx context.Context, start, end time.Time) ([]domain.CourseSession, error)
 	ListByClassBetween(ctx context.Context, classID string, start, end time.Time) ([]domain.CourseSession, error)

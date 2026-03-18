@@ -244,6 +244,18 @@ func (s *ScheduleService) CreateSchedule(ctx context.Context, schoolID, courseID
 }
 
 func (s *ScheduleService) DeleteSchedule(ctx context.Context, id string) error {
+	schedule, err := s.scheduleRepo.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if schedule == nil {
+		return nil
+	}
+
+	if err := s.deleteGeneratedSessionsBySchedule(ctx, *schedule); err != nil {
+		return err
+	}
+
 	return s.scheduleRepo.Delete(ctx, id)
 }
 
@@ -637,6 +649,65 @@ func (s *ScheduleService) ensureNoSessionConflict(ctx context.Context, session d
 	}
 
 	return nil
+}
+
+func (s *ScheduleService) deleteGeneratedSessionsBySchedule(ctx context.Context, schedule domain.CourseSchedule) error {
+	loc := schedule.StartDate.Location()
+	startDate := dateAtLocation(schedule.StartDate, loc)
+	endDate := dateAtLocation(schedule.EndDate, loc)
+
+	start := startDate.AddDate(0, 0, -2)
+	end := endDate.AddDate(0, 0, 3)
+	existingSessions, err := s.sessionRepo.ListBetween(ctx, start, end)
+	if err != nil {
+		return err
+	}
+	if len(existingSessions) == 0 {
+		return nil
+	}
+
+	idsToDelete := make([]string, 0)
+	for _, session := range existingSessions {
+		if session.Source != "system" {
+			continue
+		}
+		if session.CourseID != schedule.CourseID || session.ClassID != schedule.ClassID || session.SlotID != schedule.SlotID {
+			continue
+		}
+		if !sameOptionalString(session.TeacherID, schedule.TeacherID) {
+			continue
+		}
+		if !sameOptionalString(session.ClassroomID, schedule.ClassroomID) {
+			continue
+		}
+
+		sessionDate := dateAtLocation(session.StartsAt, loc)
+		if sessionDate.Before(startDate) || sessionDate.After(endDate) {
+			continue
+		}
+		weekday := int(session.StartsAt.In(loc).Weekday())
+		if weekday == 0 {
+			weekday = 7
+		}
+		if weekday != schedule.DayOfWeek {
+			continue
+		}
+		idsToDelete = append(idsToDelete, session.ID)
+	}
+
+	return s.sessionRepo.DeleteByIDs(ctx, idsToDelete)
+}
+
+func dateAtLocation(ts time.Time, loc *time.Location) time.Time {
+	inLoc := ts.In(loc)
+	return time.Date(inLoc.Year(), inLoc.Month(), inLoc.Day(), 0, 0, 0, 0, loc)
+}
+
+func sameOptionalString(a, b *string) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return *a == *b
 }
 
 func (s *ScheduleService) resolveSlot(ctx context.Context, slotID string, slotMap map[string]domain.TimeSlot) (domain.TimeSlot, error) {

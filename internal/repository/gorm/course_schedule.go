@@ -2,6 +2,7 @@ package gormrepo
 
 import (
 	"context"
+	"errors"
 
 	"learn-go/internal/domain"
 
@@ -22,6 +23,18 @@ func (s *CourseScheduleStore) Create(ctx context.Context, schedule *domain.Cours
 
 func (s *CourseScheduleStore) Update(ctx context.Context, schedule *domain.CourseSchedule) error {
 	return s.db.WithContext(ctx).Save(schedule).Error
+}
+
+func (s *CourseScheduleStore) GetByID(ctx context.Context, id string) (*domain.CourseSchedule, error) {
+	var schedule domain.CourseSchedule
+	err := s.db.WithContext(ctx).First(&schedule, "id = ?", id).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &schedule, nil
 }
 
 func (s *CourseScheduleStore) Delete(ctx context.Context, id string) error {

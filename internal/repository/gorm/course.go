@@ -350,6 +350,13 @@ func (s *CourseSessionStore) Update(ctx context.Context, session *domain.CourseS
 	return s.db.WithContext(ctx).Save(session).Error
 }
 
+func (s *CourseSessionStore) DeleteByIDs(ctx context.Context, ids []string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	return s.db.WithContext(ctx).Where("id IN ?", ids).Delete(&domain.CourseSession{}).Error
+}
+
 func (s *CourseSessionStore) GetByID(ctx context.Context, id string) (*domain.CourseSession, error) {
 	var session domain.CourseSession
 	if err := s.db.WithContext(ctx).First(&session, "id = ?", id).Error; err != nil {
