@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -186,16 +187,18 @@ func (h *Handler) RegisterRoutes(r *gin.Engine, adminGuard gin.HandlerFunc, teac
 
 		assignments := api.Group("/assignments", teacherGuard)
 		assignments.POST("", h.CreateAssignment)
-		assignments.PATCH(":id", h.UpdateAssignment)
-		assignments.GET(":id/submissions", h.ListAssignmentSubmissions)
-		assignments.GET(":id/submissions/:submissionID", h.GetAssignmentSubmission)
-		assignments.PATCH(":id/submissions/:submissionID/grade", h.GradeSubmission)
-		assignments.POST(":id/submissions/:submissionID/return", h.ReturnSubmission)
+		assignments.PATCH("", h.UpdateAssignment)
+		assignments.PATCH("/:id", h.UpdateAssignment)
+		assignments.GET("/:id/submissions", h.ListAssignmentSubmissions)
+		assignments.GET("/:id/submissions/:submissionID", h.GetAssignmentSubmission)
+		assignments.PATCH("/:id/submissions/:submissionID/grade", h.GradeSubmission)
+		assignments.POST("/:id/submissions/:submissionID/return", h.ReturnSubmission)
 
 		submissions := api.Group("/assignments", studentGuard)
-		submissions.POST(":id/submissions", h.SubmitAssignment)
-		submissions.GET(":id", h.GetAssignment)
-		submissions.GET(":id/submissions/me", h.GetMySubmission)
+		submissions.POST("/submissions", h.SubmitAssignment)
+		submissions.POST("/:id/submissions", h.SubmitAssignment)
+		submissions.GET("/:id", h.GetAssignment)
+		submissions.GET("/:id/submissions/me", h.GetMySubmission)
 
 		student := api.Group("/student", studentGuard)
 		student.POST("/files/upload-url", h.GetUploadURL)
@@ -744,7 +747,7 @@ func (h *Handler) UpdateAccount(c *gin.Context) {
 		return
 	}
 
-	schoolID := strings.TrimSpace(c.Query("school_id"))
+	schoolID := getSchoolIDFromRequest(c)
 	if schoolID == "" {
 		response.Error(c, http.StatusBadRequest, response.CodeSchoolIDRequired, nil)
 		return
@@ -866,18 +869,20 @@ func (h *Handler) DeleteAccount(c *gin.Context) {
 		return
 	}
 
-	schoolID := strings.TrimSpace(c.Query("school_id"))
+	schoolID := getSchoolIDFromRequest(c)
 	if schoolID == "" {
-		var req accountActionRequest
-		if err := c.ShouldBindJSON(&req); err != nil {
-			h.respondServiceError(c, err, http.StatusBadRequest, response.CodeInvalidRequestPayload)
-			return
+		if c.Request != nil && c.Request.ContentLength > 0 {
+			var req accountActionRequest
+			if err := c.ShouldBindJSON(&req); err != nil {
+				h.respondServiceError(c, err, http.StatusBadRequest, response.CodeInvalidRequestPayload)
+				return
+			}
+			if err := h.validate.Struct(req); err != nil {
+				h.respondServiceError(c, err, http.StatusBadRequest, response.CodeValidationError)
+				return
+			}
+			schoolID = strings.TrimSpace(req.SchoolID)
 		}
-		if err := h.validate.Struct(req); err != nil {
-			h.respondServiceError(c, err, http.StatusBadRequest, response.CodeValidationError)
-			return
-		}
-		schoolID = req.SchoolID
 	}
 	if schoolID == "" {
 		response.Error(c, http.StatusBadRequest, response.CodeSchoolIDRequired, nil)
@@ -1189,7 +1194,7 @@ func (h *Handler) DeleteDepartment(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, response.CodeDepartmentIDRequired, nil)
 		return
 	}
-	schoolID := strings.TrimSpace(c.Query("school_id"))
+	schoolID := getSchoolIDFromRequest(c)
 	if schoolID == "" {
 		response.Error(c, http.StatusBadRequest, response.CodeSchoolIDIsRequired, nil)
 		return
@@ -1759,7 +1764,7 @@ func (h *Handler) DeleteClass(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, "class id is required", nil)
 		return
 	}
-	schoolID := strings.TrimSpace(c.Query("school_id"))
+	schoolID := getSchoolIDFromRequest(c)
 	if schoolID == "" {
 		response.Error(c, http.StatusBadRequest, response.CodeSchoolIDIsRequired, nil)
 		return
@@ -1883,6 +1888,10 @@ func (h *Handler) CreateAssignment(c *gin.Context) {
 	accountID := c.GetString(middleware.ContextAccountID)
 	teacherID, err := h.teacher.GetTeacherID(c.Request.Context(), accountID)
 	if err != nil {
+		if errors.Is(err, service.ErrTeacherProfileNotFound) {
+			response.Error(c, http.StatusForbidden, response.CodeTeacherProfileNotFound, nil)
+			return
+		}
 		h.respondServiceError(c, err, http.StatusForbidden, response.CodeTeacherProfileNotFound)
 		return
 	}
@@ -2930,7 +2939,7 @@ type markConversationReadRequest struct {
 }
 
 func (h *Handler) SubmitAssignment(c *gin.Context) {
-	assignmentID := c.Param("id")
+	assignmentID := strings.TrimSpace(c.Param("id"))
 	if assignmentID == "" {
 		response.Error(c, http.StatusBadRequest, response.CodeMissingAssignmentID, nil)
 		return
@@ -4054,6 +4063,51 @@ func getAccountID(c *gin.Context) string {
 	return c.GetString(middleware.ContextAccountID)
 }
 
+func getSchoolIDFromRequest(c *gin.Context) string {
+	if c == nil {
+		return ""
+	}
+	if schoolID := strings.TrimSpace(c.Query("school_id")); schoolID != "" {
+		return schoolID
+	}
+
+	if c.Request == nil {
+		return ""
+	}
+
+	rawQuery := strings.TrimSpace(c.Request.URL.RawQuery)
+	if rawQuery == "" {
+		requestURI := strings.TrimSpace(c.Request.RequestURI)
+		if idx := strings.Index(requestURI, "?"); idx >= 0 && idx+1 < len(requestURI) {
+			rawQuery = requestURI[idx+1:]
+		}
+	}
+	if rawQuery == "" {
+		return ""
+	}
+
+	for _, part := range strings.Split(rawQuery, "&") {
+		if part == "" {
+			continue
+		}
+		kv := strings.SplitN(part, "=", 2)
+		key, err := url.QueryUnescape(strings.TrimSpace(kv[0]))
+		if err != nil || key != "school_id" {
+			continue
+		}
+		if len(kv) < 2 {
+			return ""
+		}
+		value, err := url.QueryUnescape(strings.TrimSpace(kv[1]))
+		if err != nil {
+			return ""
+		}
+		return strings.TrimSpace(value)
+	}
+
+	return ""
+}
+
 func convertToTime(t *service.TimeISO8601) *time.Time {
 	if t == nil {
 		return nil
@@ -4118,9 +4172,19 @@ func (h *Handler) ListTeacherCourseClasses(c *gin.Context) {
 
 func (h *Handler) ListTeacherClassStudents(c *gin.Context) {
 	classID := c.Param("id")
-	students, err := h.teacher.GetClassStudents(c.Request.Context(), classID)
+	accountID := getAccountID(c)
+	students, err := h.teacher.GetClassStudents(c.Request.Context(), accountID, classID)
 	if err != nil {
-		h.respondServiceError(c, err, http.StatusInternalServerError, "failed to list students")
+		switch {
+		case errors.Is(err, service.ErrTeacherProfileNotFound):
+			response.Error(c, http.StatusForbidden, response.CodeTeacherProfileNotFound, nil)
+		case errors.Is(err, service.ErrTeacherCourseAccessDenied):
+			response.Error(c, http.StatusForbidden, response.CodeCourseNotOwned, nil)
+		case errors.Is(err, gorm.ErrRecordNotFound):
+			response.Error(c, http.StatusNotFound, response.CodeResourceNotFound, nil)
+		default:
+			h.respondServiceError(c, err, http.StatusInternalServerError, "failed to list students")
+		}
 		return
 	}
 	response.Success(c, http.StatusOK, gin.H{"students": students})

@@ -261,7 +261,40 @@ func (s *TeacherPortalService) GetCourseClasses(ctx context.Context, accountID, 
 	return filtered, nil
 }
 
-func (s *TeacherPortalService) GetClassStudents(ctx context.Context, classID string) ([]domain.Student, error) {
+func (s *TeacherPortalService) GetClassStudents(ctx context.Context, accountID, classID string) ([]domain.Student, error) {
+	teacher, err := s.teachers.GetByAccountID(ctx, accountID)
+	if err != nil {
+		return nil, err
+	}
+	if teacher == nil {
+		return nil, ErrTeacherProfileNotFound
+	}
+
+	class, err := s.classes.GetByID(ctx, classID)
+	if err != nil {
+		return nil, err
+	}
+	if class.SchoolID != "" && teacher.SchoolID != "" && class.SchoolID != teacher.SchoolID {
+		return nil, ErrTeacherCourseAccessDenied
+	}
+
+	allowed := false
+	if s.schedules != nil {
+		schedules, err := s.schedules.ListByTeacher(ctx, teacher.ID)
+		if err != nil {
+			return nil, err
+		}
+		for _, sch := range schedules {
+			if sch.ClassID == classID {
+				allowed = true
+				break
+			}
+		}
+	}
+	if !allowed {
+		return nil, ErrTeacherCourseAccessDenied
+	}
+
 	return s.students.ListByClassID(ctx, classID)
 }
 

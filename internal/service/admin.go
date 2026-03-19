@@ -184,6 +184,18 @@ func (s *AdminService) CreateStudent(ctx context.Context, input CreateStudentInp
 	if input.DefaultPwd == "" {
 		return nil, errors.New("default password required")
 	}
+	if strings.TrimSpace(input.SchoolID) == "" {
+		return nil, errors.New("school_id required")
+	}
+	if strings.TrimSpace(input.ClassID) != "" {
+		class, err := s.classes.GetByID(ctx, input.ClassID)
+		if err != nil {
+			return nil, err
+		}
+		if class == nil || class.SchoolID != input.SchoolID {
+			return nil, errors.New("class does not belong to school")
+		}
+	}
 
 	hash, err := crypto.HashPassword(input.DefaultPwd)
 	if err != nil {
@@ -616,6 +628,24 @@ func (s *AdminService) CreateDepartment(ctx context.Context, schoolID, name stri
 
 // CreateClass registers a class under department.
 func (s *AdminService) CreateClass(ctx context.Context, schoolID, departmentID, name string) (*domain.Class, error) {
+	if strings.TrimSpace(schoolID) == "" {
+		return nil, errors.New("school_id required")
+	}
+	if strings.TrimSpace(departmentID) == "" {
+		return nil, errors.New("department_id required")
+	}
+	if strings.TrimSpace(name) == "" {
+		return nil, errors.New("class name required")
+	}
+
+	department, err := s.departments.GetByID(ctx, departmentID)
+	if err != nil {
+		return nil, err
+	}
+	if department == nil || department.SchoolID != schoolID {
+		return nil, errors.New("department does not belong to school")
+	}
+
 	class := &domain.Class{
 		ID:           uuid.NewString(),
 		SchoolID:     schoolID,
