@@ -1,7 +1,7 @@
 package realtime
 
 import (
-	"learn-go/internal/api/grpcpb"
+	"learn-go/api/grpcpb"
 	"sync"
 )
 

@@ -3,7 +3,7 @@ package realtime
 import (
 	"sync"
 
-	"learn-go/internal/api/grpcpb"
+	"learn-go/api/grpcpb"
 )
 
 // StreamClient represents an active gRPC stream subscription for a conversation.
