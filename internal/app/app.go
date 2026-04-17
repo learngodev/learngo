@@ -102,6 +102,9 @@ func New() (*Application, error) {
 	courseScheduleRepo := gormrepo.NewCourseScheduleStore(db)
 	classroomRepo := gormrepo.NewClassroomRepository(db)
 	notificationRepo := gormrepo.NewNotificationStore(db)
+	resourceRepo := gormrepo.NewResourceStore(db)
+	resourceFileRepo := gormrepo.NewResourceFileStore(db)
+	resourceFavoriteRepo := gormrepo.NewResourceFavoriteStore(db)
 
 	authService := service.NewAuthService(accountRepo, passwordResetRepo, cfg)
 	aiModel := service.NewOpenAIChatModel()
@@ -137,8 +140,9 @@ func New() (*Application, error) {
 	courseService := service.NewCourseService(courseRepo, courseStudentRepo, courseTeacherRepo, studentRepo, teacherRepo)
 	scheduleService := service.NewScheduleService(timeSlotRepo, courseScheduleRepo, courseSessionRepo, courseRepo, teacherRepo, classroomRepo)
 	classroomService := service.NewClassroomService(classroomRepo)
+	resourceService := service.NewResourceService(resourceRepo, resourceFileRepo, resourceFavoriteRepo, teacherRepo, fileService, departmentRepo, db)
 
-	handler := apihandlers.NewHandler(cfg.JWTSecret, authService, adminService, assignmentService, teacherPortalService, studentPortalService, conversationService, noteService, noteCommentService, ossService, systemService, aiSettingsService, aiGradingService, schoolService, courseService, scheduleService, classroomService, fileService, notificationService, streamHub)
+	handler := apihandlers.NewHandler(cfg.JWTSecret, authService, adminService, assignmentService, teacherPortalService, studentPortalService, conversationService, noteService, noteCommentService, ossService, systemService, aiSettingsService, aiGradingService, schoolService, courseService, scheduleService, classroomService, fileService, notificationService, streamHub, resourceService)
 
 	adminGuard := middleware.JWTAuth(middleware.AuthConfig{Secret: cfg.JWTSecret, AllowedRoles: []string{string(domain.RoleAdmin)}})
 	teacherGuard := middleware.JWTAuth(middleware.AuthConfig{Secret: cfg.JWTSecret, AllowedRoles: []string{string(domain.RoleTeacher), string(domain.RoleAdmin)}})
@@ -272,6 +276,10 @@ func migrate(db *gorm.DB) error {
 		&domain.File{},
 		&domain.AssignmentAttachment{},
 		&domain.SubmissionAttachment{},
+		&domain.Notification{},
+		&domain.Resource{},
+		&domain.ResourceFile{},
+		&domain.ResourceFavorite{},
 	); err != nil {
 		return err
 	}

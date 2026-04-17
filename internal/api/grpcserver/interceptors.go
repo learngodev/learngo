@@ -43,7 +43,7 @@ func StreamAuthInterceptor(secret string, allowedRoles []string) grpc.StreamServ
 			return status.Error(codes.Unauthenticated, "missing bearer token")
 		}
 
-		accountID, role, err := middleware.ValidateJWT(token, secret)
+		accountID, role, _, err := middleware.ValidateJWT(token, secret)
 		if err != nil {
 			return status.Error(codes.Unauthenticated, "invalid token")
 		}

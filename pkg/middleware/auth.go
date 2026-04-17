@@ -21,6 +21,7 @@ var (
 const (
 	ContextAccountID = "accountID"
 	ContextRole      = "role"
+	ContextSchoolID  = "schoolID"
 )
 
 // AuthConfig holds secret used to verify JWT.
@@ -46,7 +47,7 @@ func JWTAuth(cfg AuthConfig) gin.HandlerFunc {
 
 		tokenString := strings.TrimSpace(authHeader[7:])
 
-		accountID, role, err := ValidateJWT(tokenString, cfg.Secret)
+		accountID, role, schoolID, err := ValidateJWT(tokenString, cfg.Secret)
 		if err != nil {
 			switch {
 			case errors.Is(err, errInvalidTokenClaims):
@@ -70,14 +71,15 @@ func JWTAuth(cfg AuthConfig) gin.HandlerFunc {
 
 		c.Set(ContextAccountID, accountID)
 		c.Set(ContextRole, role)
+		c.Set(ContextSchoolID, schoolID)
 		c.Next()
 	}
 }
 
-// ValidateJWT parses and validates the JWT token, returning account ID and role if successful.
-func ValidateJWT(tokenString, secret string) (string, string, error) {
+// ValidateJWT parses and validates the JWT token, returning account ID, role, and school ID if successful.
+func ValidateJWT(tokenString, secret string) (string, string, string, error) {
 	if strings.TrimSpace(tokenString) == "" {
-		return "", "", errInvalidToken
+		return "", "", "", errInvalidToken
 	}
 
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
@@ -87,19 +89,20 @@ func ValidateJWT(tokenString, secret string) (string, string, error) {
 		return []byte(secret), nil
 	})
 	if err != nil || !token.Valid {
-		return "", "", errInvalidToken
+		return "", "", "", errInvalidToken
 	}
 
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok {
-		return "", "", errInvalidTokenClaims
+		return "", "", "", errInvalidTokenClaims
 	}
 
 	accountID, _ := claims["sub"].(string)
 	role, _ := claims["role"].(string)
+	schoolID, _ := claims["school_id"].(string)
 	if accountID == "" {
-		return "", "", errInvalidTokenSub
+		return "", "", "", errInvalidTokenSub
 	}
 
-	return accountID, role, nil
+	return accountID, role, schoolID, nil
 }

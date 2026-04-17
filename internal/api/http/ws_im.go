@@ -42,7 +42,7 @@ func (h *Handler) IMWebSocket(c *gin.Context) {
 		return
 	}
 
-	accountID, role, err := middleware.ValidateJWT(token, h.jwtSecret)
+	accountID, role, _, err := middleware.ValidateJWT(token, h.jwtSecret)
 	if err != nil || accountID == "" {
 		response.Error(c, http.StatusUnauthorized, "invalid token", nil)
 		c.Abort()

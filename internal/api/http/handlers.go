@@ -29,53 +29,55 @@ import (
 
 // Handler aggregates dependencies for HTTP handlers.
 type Handler struct {
-	jwtSecret     string
-	auth          *service.AuthService
-	admin         *service.AdminService
-	assignments   *service.AssignmentService
-	teacher       *service.TeacherPortalService
-	student       *service.StudentPortalService
-	notes         *service.NoteService
-	noteComments  *service.NoteCommentService
-	conversations *service.ConversationService
-	oss           *service.AdminOssService
-	system        *service.AdminSystemService
-	aiSettings    *service.AISettingsService
-	aiGrading     *service.AIGradingService
-	school        *service.SchoolService
-	courseService *service.CourseService
-	schedule      *service.ScheduleService
-	classroom     *service.ClassroomService
-	fileService   *service.FileService
-	notifications *service.NotificationService
-	streamHub     *realtime.Hub
-	validate      *validator.Validate
+	jwtSecret       string
+	auth            *service.AuthService
+	admin           *service.AdminService
+	assignments     *service.AssignmentService
+	teacher         *service.TeacherPortalService
+	student         *service.StudentPortalService
+	notes           *service.NoteService
+	noteComments    *service.NoteCommentService
+	conversations   *service.ConversationService
+	oss             *service.AdminOssService
+	system          *service.AdminSystemService
+	aiSettings      *service.AISettingsService
+	aiGrading       *service.AIGradingService
+	school          *service.SchoolService
+	courseService   *service.CourseService
+	schedule        *service.ScheduleService
+	classroom       *service.ClassroomService
+	fileService     *service.FileService
+	notifications   *service.NotificationService
+	resourceService *service.ResourceService
+	streamHub       *realtime.Hub
+	validate        *validator.Validate
 }
 
 // NewHandler constructs a Handler instance.
-func NewHandler(jwtSecret string, auth *service.AuthService, admin *service.AdminService, assignments *service.AssignmentService, teacher *service.TeacherPortalService, student *service.StudentPortalService, conversations *service.ConversationService, notes *service.NoteService, noteComments *service.NoteCommentService, oss *service.AdminOssService, system *service.AdminSystemService, aiSettings *service.AISettingsService, aiGrading *service.AIGradingService, school *service.SchoolService, courseService *service.CourseService, schedule *service.ScheduleService, classroom *service.ClassroomService, fileService *service.FileService, notifications *service.NotificationService, streamHub *realtime.Hub) *Handler {
+func NewHandler(jwtSecret string, auth *service.AuthService, admin *service.AdminService, assignments *service.AssignmentService, teacher *service.TeacherPortalService, student *service.StudentPortalService, conversations *service.ConversationService, notes *service.NoteService, noteComments *service.NoteCommentService, oss *service.AdminOssService, system *service.AdminSystemService, aiSettings *service.AISettingsService, aiGrading *service.AIGradingService, school *service.SchoolService, courseService *service.CourseService, schedule *service.ScheduleService, classroom *service.ClassroomService, fileService *service.FileService, notifications *service.NotificationService, streamHub *realtime.Hub, resourceService *service.ResourceService) *Handler {
 	return &Handler{
-		jwtSecret:     jwtSecret,
-		auth:          auth,
-		admin:         admin,
-		assignments:   assignments,
-		teacher:       teacher,
-		student:       student,
-		notes:         notes,
-		noteComments:  noteComments,
-		conversations: conversations,
-		oss:           oss,
-		system:        system,
-		aiSettings:    aiSettings,
-		aiGrading:     aiGrading,
-		school:        school,
-		courseService: courseService,
-		schedule:      schedule,
-		classroom:     classroom,
-		fileService:   fileService,
-		notifications: notifications,
-		streamHub:     streamHub,
-		validate:      validator.New(),
+		jwtSecret:       jwtSecret,
+		auth:            auth,
+		admin:           admin,
+		assignments:     assignments,
+		teacher:         teacher,
+		student:         student,
+		notes:           notes,
+		noteComments:    noteComments,
+		conversations:   conversations,
+		oss:             oss,
+		system:          system,
+		aiSettings:      aiSettings,
+		aiGrading:       aiGrading,
+		school:          school,
+		courseService:   courseService,
+		schedule:        schedule,
+		classroom:       classroom,
+		fileService:     fileService,
+		notifications:   notifications,
+		resourceService: resourceService,
+		streamHub:       streamHub,
+		validate:        validator.New(),
 	}
 }
 
@@ -266,6 +268,9 @@ func (h *Handler) RegisterRoutes(r *gin.Engine, adminGuard gin.HandlerFunc, teac
 		conversations.GET(":id/messages", h.ListMessages)
 		conversations.POST(":id/messages", h.SendMessage)
 		conversations.POST(":id/read", h.MarkConversationRead)
+
+		// Resource routes
+		h.RegisterResourceRoutes(api, teacherGuard, studentGuard)
 	}
 }
 
@@ -4067,6 +4072,13 @@ func getSchoolIDFromRequest(c *gin.Context) string {
 	if c == nil {
 		return ""
 	}
+
+	// First try to get from context (set by JWT middleware)
+	if schoolID := c.GetString(middleware.ContextSchoolID); schoolID != "" {
+		return schoolID
+	}
+
+	// Fallback to query parameter for backward compatibility
 	if schoolID := strings.TrimSpace(c.Query("school_id")); schoolID != "" {
 		return schoolID
 	}

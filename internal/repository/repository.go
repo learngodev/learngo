@@ -378,3 +378,33 @@ type TimeSlotRepository interface {
 type CourseSlotRepository interface {
 	ListByIDs(ctx context.Context, ids []string) ([]domain.CourseSlot, error)
 }
+
+// ResourceRepository manages teaching resources.
+type ResourceRepository interface {
+	Create(ctx context.Context, resource *domain.Resource) error
+	Update(ctx context.Context, resource *domain.Resource) error
+	Delete(ctx context.Context, id, schoolID string) error
+	GetByID(ctx context.Context, id, schoolID string) (*domain.Resource, error)
+	ListByTeacher(ctx context.Context, schoolID, teacherID string, departmentID string, page, size int) ([]domain.Resource, int64, error)
+	Browse(ctx context.Context, schoolID, query, departmentID, fileType, sort string, page, size int) ([]domain.Resource, int64, error)
+	IncrementViewCount(ctx context.Context, id string) error
+	IncrementDownloadCount(ctx context.Context, id string) error
+}
+
+// ResourceFileRepository manages resource-file associations.
+type ResourceFileRepository interface {
+	Create(ctx context.Context, link *domain.ResourceFile) error
+	Delete(ctx context.Context, resourceID, fileID string) error
+	ListByResourceID(ctx context.Context, resourceID string) ([]domain.ResourceFile, error)
+	ValidateResourceFile(ctx context.Context, resourceID, fileID string) (bool, error)
+}
+
+// ResourceFavoriteRepository manages resource favorites.
+type ResourceFavoriteRepository interface {
+	Create(ctx context.Context, favorite *domain.ResourceFavorite) error
+	Delete(ctx context.Context, resourceID, accountID string) error
+	Exists(ctx context.Context, resourceID, accountID string) (bool, error)
+	ListByAccount(ctx context.Context, accountID string, page, size int) ([]string, int64, error)
+	BatchCheckFavorited(ctx context.Context, resourceIDs []string, accountID string) (map[string]bool, error)
+	CountByResourceID(ctx context.Context, resourceID string) (int64, error)
+}
