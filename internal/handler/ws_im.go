@@ -17,20 +17,20 @@ import (
 	"learn-go/pkg/response"
 )
 
-// IMWebSocket upgrades the connection and runs a conversation bidirectional stream over WebSocket.
+// IMWebSocket 将连接升级为 WebSocket，并在其上运行会话双向流。
 //
-// Protocol:
-// - Client MUST send binary protobuf ConversationStreamRequest.
-// - First message MUST be JoinConversation payload.
-// - Server pushes protobuf ConversationStreamResponse as binary frames.
+// 协议：
+// - 客户端必须发送二进制 protobuf 格式的 ConversationStreamRequest。
+// - 第一条消息必须是 JoinConversation 负载。
+// - 服务端以二进制帧推送 protobuf 格式的 ConversationStreamResponse。
 func (h *Handler) IMWebSocket(c *gin.Context) {
 	token := strings.TrimSpace(c.GetHeader("Authorization"))
 	if strings.HasPrefix(strings.ToLower(token), "bearer ") {
 		token = strings.TrimSpace(token[7:])
 	}
 	if token == "" {
-		// Browser WebSocket cannot set custom headers; allow token in query.
-		// NOTE: this may be logged by proxies; for production prefer secure cookie or a short-lived WS ticket.
+		// 浏览器的 WebSocket 无法设置自定义请求头，因此允许通过查询参数传递 token。
+		// 注意：代理可能会记录该参数；生产环境建议使用安全 cookie 或短期有效的 WS 票据。
 		token = strings.TrimSpace(c.Query("token"))
 		if token == "" {
 			token = strings.TrimSpace(c.Query("access_token"))
@@ -96,7 +96,7 @@ func (h *Handler) IMWebSocket(c *gin.Context) {
 				if err == nil {
 					return
 				}
-				// Context cancellation is normal on client close.
+				// 客户端关闭时 context 被取消属于正常情况。
 				if errors.Is(err, context.Canceled) {
 					return
 				}
@@ -107,7 +107,7 @@ func (h *Handler) IMWebSocket(c *gin.Context) {
 
 		typ, data, err := conn.Read(ctx)
 		if err != nil {
-			// Normal close or context cancel.
+			// 正常关闭或 context 被取消。
 			return
 		}
 		if typ != websocket.MessageBinary {
@@ -126,7 +126,7 @@ func (h *Handler) IMWebSocket(c *gin.Context) {
 			var se *imstream.StreamError
 			if errors.As(err, &se) {
 				_ = writeResp(imstream.ErrorResponse(se.Message))
-				// If we cannot join, close to keep the protocol simple.
+				// 加入失败时直接关闭连接，以保持协议简单。
 				if !session.Joined() {
 					sendClose(websocket.StatusPolicyViolation, se.Message)
 					return

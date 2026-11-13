@@ -12,22 +12,22 @@ import (
 	"strings"
 	"time"
 
-	"learn-go/internal/domain"
+	"learn-go/internal/domain/aiagent"
 )
 
-// AIChatModel abstracts provider-specific chat generation.
+// AIChatModel 抽象各提供商的对话生成能力。
 type AIChatModel interface {
 	GenerateResponse(ctx context.Context, req AIChatModelRequest) (*AIChatModelResponse, error)
 	StreamResponse(ctx context.Context, req AIChatModelRequest, onChunk func(chunk string) error) (*AIChatModelResponse, error)
 }
 
-// AIChatModelRequest carries the context for generating an assistant reply.
+// AIChatModelRequest 携带生成助手回复所需的上下文。
 type AIChatModelRequest struct {
-	Setting *domain.AIAgentSetting
+	Setting *aiagent.AIAgentSetting
 	Message string
 }
 
-// AIChatModelResponse contains the assistant output and usage metadata.
+// AIChatModelResponse 包含助手输出及用量信息。
 type AIChatModelResponse struct {
 	Content      string
 	PromptTokens int
@@ -36,7 +36,7 @@ type AIChatModelResponse struct {
 	Reason       ProviderErrorReason
 }
 
-// ProviderErrorReason indicates why a provider call failed.
+// ProviderErrorReason 表示提供商调用失败的原因。
 type ProviderErrorReason string
 
 const (
@@ -49,7 +49,7 @@ const (
 	ProviderErrorReasonTransport ProviderErrorReason = "transport"
 )
 
-// ProviderError categorizes external provider failures.
+// ProviderError 对外部提供商的失败进行分类。
 type ProviderError struct {
 	Reason  ProviderErrorReason
 	Message string
@@ -76,7 +76,7 @@ func (e *ProviderError) Unwrap() error {
 	return e.Err
 }
 
-// NormalizeProviderError converts an arbitrary error into a ProviderError.
+// NormalizeProviderError 将任意错误转换为 ProviderError。
 func NormalizeProviderError(err error) *ProviderError {
 	if err == nil {
 		return nil
@@ -88,12 +88,12 @@ func NormalizeProviderError(err error) *ProviderError {
 	return &ProviderError{Reason: ProviderErrorReasonUnknown, Err: err}
 }
 
-// OpenAIChatModel implements AIChatModel using OpenAI-compatible API.
+// OpenAIChatModel 基于 OpenAI 兼容接口实现 AIChatModel。
 type OpenAIChatModel struct {
 	client *http.Client
 }
 
-// NewOpenAIChatModel constructs the OpenAI-compatible model.
+// NewOpenAIChatModel 构造 OpenAI 兼容模型。
 func NewOpenAIChatModel() AIChatModel {
 	return &OpenAIChatModel{
 		client: &http.Client{
@@ -102,7 +102,7 @@ func NewOpenAIChatModel() AIChatModel {
 	}
 }
 
-// GenerateResponse calls the configured provider API.
+// GenerateResponse 调用已配置的提供商接口。
 func (m *OpenAIChatModel) GenerateResponse(ctx context.Context, req AIChatModelRequest) (*AIChatModelResponse, error) {
 	start := time.Now()
 
@@ -116,9 +116,9 @@ func (m *OpenAIChatModel) GenerateResponse(ctx context.Context, req AIChatModelR
 	baseURL := strings.TrimRight(req.Setting.BaseURL, "/")
 	if baseURL == "" {
 		switch req.Setting.Provider {
-		case domain.AIProviderQwen:
+		case aiagent.AIProviderQwen:
 			baseURL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-		case domain.AIProviderDeepSeek:
+		case aiagent.AIProviderDeepSeek:
 			baseURL = "https://api.deepseek.com"
 		default:
 			return nil, &ProviderError{Reason: ProviderErrorReasonInput, Message: "base url required for custom provider"}
@@ -203,11 +203,11 @@ func (m *OpenAIChatModel) GenerateResponse(ctx context.Context, req AIChatModelR
 		PromptTokens: chatResp.Usage.PromptTokens,
 		ResultTokens: chatResp.Usage.CompletionTokens,
 		Latency:      time.Since(start),
-		Reason:       ProviderErrorReasonUnknown, // Success
+		Reason:       ProviderErrorReasonUnknown, // 成功
 	}, nil
 }
 
-// StreamResponse calls the configured provider API with streaming enabled.
+// StreamResponse 以流式方式调用已配置的提供商接口。
 func (m *OpenAIChatModel) StreamResponse(ctx context.Context, req AIChatModelRequest, onChunk func(chunk string) error) (*AIChatModelResponse, error) {
 	start := time.Now()
 
@@ -221,9 +221,9 @@ func (m *OpenAIChatModel) StreamResponse(ctx context.Context, req AIChatModelReq
 	baseURL := strings.TrimRight(req.Setting.BaseURL, "/")
 	if baseURL == "" {
 		switch req.Setting.Provider {
-		case domain.AIProviderQwen:
+		case aiagent.AIProviderQwen:
 			baseURL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-		case domain.AIProviderDeepSeek:
+		case aiagent.AIProviderDeepSeek:
 			baseURL = "https://api.deepseek.com"
 		default:
 			return nil, &ProviderError{Reason: ProviderErrorReasonInput, Message: "base url required for custom provider"}
@@ -236,7 +236,7 @@ func (m *OpenAIChatModel) StreamResponse(ctx context.Context, req AIChatModelReq
 		messages = append(messages, openAIMessage{Role: "system", Content: req.Setting.SystemPrompt})
 	}
 
-	// Add history messages
+	// 添加历史消息
 
 	messages = append(messages, openAIMessage{Role: "user", Content: req.Message})
 
@@ -337,13 +337,13 @@ func (m *OpenAIChatModel) StreamResponse(ctx context.Context, req AIChatModelReq
 	}
 
 	content := fullContent.String()
-	// Note: Stream response usually doesn't include usage stats in the last chunk for all providers.
-	// We might need to estimate or just return 0.
+	// 注意：并非所有提供商都会在流式响应的最后一块中返回用量统计。
+	// 可能需要估算，或直接返回 0。
 
 	return &AIChatModelResponse{
 		Content:      content,
-		PromptTokens: 0, // Unknown in stream
-		ResultTokens: 0, // Unknown in stream
+		PromptTokens: 0, // 流式模式下未知
+		ResultTokens: 0, // 流式模式下未知
 		Latency:      time.Since(start),
 		Reason:       ProviderErrorReasonUnknown,
 	}, nil
@@ -402,15 +402,15 @@ type openAIErrorDetail struct {
 	Code    interface{} `json:"code"`
 }
 
-// EchoAIChatModel is a placeholder model that echoes user intent for development purposes.
+// EchoAIChatModel 是开发用的占位模型，会回显用户意图。
 type EchoAIChatModel struct{}
 
-// NewEchoAIChatModel constructs the default stub model.
+// NewEchoAIChatModel 构造默认的桩模型。
 func NewEchoAIChatModel() AIChatModel {
 	return &EchoAIChatModel{}
 }
 
-// GenerateResponse implements AIChatModel by returning a canned response.
+// GenerateResponse 通过返回固定回复实现 AIChatModel。
 func (m *EchoAIChatModel) GenerateResponse(ctx context.Context, req AIChatModelRequest) (*AIChatModelResponse, error) {
 	start := time.Now()
 
@@ -433,7 +433,7 @@ func (m *EchoAIChatModel) GenerateResponse(ctx context.Context, req AIChatModelR
 	}, nil
 }
 
-// StreamResponse implements AIChatModel by simulating streaming.
+// StreamResponse 通过模拟流式输出实现 AIChatModel。
 func (m *EchoAIChatModel) StreamResponse(ctx context.Context, req AIChatModelRequest, onChunk func(chunk string) error) (*AIChatModelResponse, error) {
 	start := time.Now()
 
@@ -444,7 +444,7 @@ func (m *EchoAIChatModel) StreamResponse(ctx context.Context, req AIChatModelReq
 
 	content := fmt.Sprintf("这是一个示例回答，用于说明 AI 接口尚未接入。你刚才的问题是：%s", trimmed)
 
-	// Simulate streaming
+	// 模拟流式输出
 	runes := []rune(content)
 	chunkSize := 5
 	for i := 0; i < len(runes); i += chunkSize {
@@ -472,7 +472,7 @@ func (m *EchoAIChatModel) StreamResponse(ctx context.Context, req AIChatModelReq
 }
 
 func estimateTokens(text string) int {
-	// Rough heuristic: assume 4 characters per token.
+	// 粗略估算：按每 4 个字符 1 个 token 计算。
 	length := len([]rune(strings.TrimSpace(text)))
 	if length == 0 {
 		return 1

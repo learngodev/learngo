@@ -2,13 +2,13 @@ package handler
 
 import (
 	"errors"
+	"learn-go/internal/domain"
 	nethttp "net/http"
 
 	"learn-go/internal/usecase"
 	"learn-go/pkg/response"
 
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 )
 
 type mappedError struct {
@@ -143,7 +143,7 @@ func mapServiceError(err error) (mappedError, bool) {
 	case errors.Is(err, usecase.ErrSystemBroadcastNotFound):
 		return mappedError{status: nethttp.StatusNotFound, code: response.CodeSystemBroadcastNotFound}, true
 
-	case errors.Is(err, gorm.ErrRecordNotFound):
+	case errors.Is(err, domain.ErrNotFound):
 		return mappedError{status: nethttp.StatusNotFound, code: response.CodeResourceNotFound}, true
 	}
 

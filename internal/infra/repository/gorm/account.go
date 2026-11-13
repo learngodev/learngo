@@ -2,49 +2,49 @@ package gormrepo
 
 import (
 	"context"
+	"learn-go/internal/domain"
 	"strings"
 
-	"learn-go/internal/domain"
-	"learn-go/internal/infra/repository"
+	"learn-go/internal/domain/identity"
 
 	"gorm.io/gorm"
 )
 
-// AccountStore implements repository.AccountRepository using GORM.
+// AccountStore 基于 GORM 实现 identity.AccountRepository。
 type AccountStore struct {
 	db *gorm.DB
 }
 
-// NewAccountStore creates a new AccountStore.
+// NewAccountStore 创建 AccountStore。
 func NewAccountStore(db *gorm.DB) *AccountStore {
 	return &AccountStore{db: db}
 }
 
-func (s *AccountStore) Create(ctx context.Context, account *domain.Account) error {
+func (s *AccountStore) Create(ctx context.Context, account *identity.Account) error {
 	return s.db.WithContext(ctx).Create(account).Error
 }
 
-func (s *AccountStore) Update(ctx context.Context, account *domain.Account) error {
+func (s *AccountStore) Update(ctx context.Context, account *identity.Account) error {
 	return s.db.WithContext(ctx).Save(account).Error
 }
 
-func (s *AccountStore) FindByIdentifier(ctx context.Context, schoolID, identifier string) (*domain.Account, error) {
-	var account domain.Account
+func (s *AccountStore) FindByIdentifier(ctx context.Context, schoolID, identifier string) (*identity.Account, error) {
+	var account identity.Account
 	if err := s.db.WithContext(ctx).Where("school_id = ? AND identifier = ?", schoolID, identifier).First(&account).Error; err != nil {
-		return nil, err
+		return nil, notFound(err)
 	}
 	return &account, nil
 }
 
-func (s *AccountStore) FindByID(ctx context.Context, id string) (*domain.Account, error) {
-	var account domain.Account
+func (s *AccountStore) FindByID(ctx context.Context, id string) (*identity.Account, error) {
+	var account identity.Account
 	if err := s.db.WithContext(ctx).First(&account, "id = ?", id).Error; err != nil {
-		return nil, err
+		return nil, notFound(err)
 	}
 	return &account, nil
 }
 
-func (s *AccountStore) ListByIDs(ctx context.Context, ids []string) ([]domain.Account, error) {
+func (s *AccountStore) ListByIDs(ctx context.Context, ids []string) ([]identity.Account, error) {
 	if len(ids) == 0 {
 		return nil, nil
 	}
@@ -67,7 +67,7 @@ func (s *AccountStore) ListByIDs(ctx context.Context, ids []string) ([]domain.Ac
 		return nil, nil
 	}
 
-	var accounts []domain.Account
+	var accounts []identity.Account
 	if err := s.db.WithContext(ctx).Where("id IN ?", uniq).Find(&accounts).Error; err != nil {
 		return nil, err
 	}
@@ -77,8 +77,8 @@ func (s *AccountStore) ListByIDs(ctx context.Context, ids []string) ([]domain.Ac
 func (s *AccountStore) ListByRole(
 	ctx context.Context,
 	schoolID string,
-	role domain.Role,
-	status domain.AccountStatus,
+	role identity.Role,
+	status identity.AccountStatus,
 	departmentID string,
 	classID string,
 	courseID string,
@@ -87,9 +87,9 @@ func (s *AccountStore) ListByRole(
 	page int,
 	size int,
 	search string,
-) ([]domain.Account, int64, error) {
+) ([]identity.Account, int64, error) {
 	var (
-		accounts []domain.Account
+		accounts []identity.Account
 		total    int64
 	)
 
@@ -100,7 +100,7 @@ func (s *AccountStore) ListByRole(
 	if role != "" {
 		base = base.Where("accounts.role = ?", role)
 	} else {
-		base = base.Where("accounts.role IN ?", []domain.Role{domain.RoleTeacher, domain.RoleStudent})
+		base = base.Where("accounts.role IN ?", []identity.Role{identity.RoleTeacher, identity.RoleStudent})
 	}
 
 	if status != "" {
@@ -141,7 +141,7 @@ func (s *AccountStore) ListByRole(
 	}
 
 	if classID != "" {
-		if role == domain.RoleTeacher {
+		if role == identity.RoleTeacher {
 			joinTeachers()
 			base = base.Where(
 				"teachers.id IN (?)",
@@ -155,7 +155,7 @@ func (s *AccountStore) ListByRole(
 		}
 	}
 	if departmentID != "" {
-		if role == domain.RoleTeacher {
+		if role == identity.RoleTeacher {
 			joinTeachers()
 			base = base.Where(
 				"teachers.id IN (?)",
@@ -170,7 +170,7 @@ func (s *AccountStore) ListByRole(
 		}
 	}
 	if courseID != "" {
-		if role == domain.RoleTeacher {
+		if role == identity.RoleTeacher {
 			joinTeachers()
 			base = base.Where(
 				"teachers.id IN (?)",
@@ -184,7 +184,7 @@ func (s *AccountStore) ListByRole(
 	}
 
 	if onlyClassless {
-		if role == domain.RoleTeacher {
+		if role == identity.RoleTeacher {
 			joinTeachers()
 			base = base.Where(
 				"teachers.id NOT IN (?)",
@@ -199,7 +199,7 @@ func (s *AccountStore) ListByRole(
 	}
 
 	if onlyDepartmentless {
-		if role == domain.RoleTeacher {
+		if role == identity.RoleTeacher {
 			joinTeachers()
 			base = base.Where(
 				"teachers.id NOT IN (?)",
@@ -233,30 +233,30 @@ func (s *AccountStore) ListByRole(
 	return accounts, total, nil
 }
 
-func (s *AccountStore) UpdateStatus(ctx context.Context, accountID, schoolID string, status domain.AccountStatus) error {
+func (s *AccountStore) UpdateStatus(ctx context.Context, accountID, schoolID string, status identity.AccountStatus) error {
 	result := s.db.WithContext(ctx).
-		Model(&domain.Account{}).
+		Model(&identity.Account{}).
 		Where("id = ? AND school_id = ?", accountID, schoolID).
 		Updates(map[string]any{"status": status})
 	if result.Error != nil {
 		return result.Error
 	}
 	if result.RowsAffected == 0 {
-		return gorm.ErrRecordNotFound
+		return domain.ErrNotFound
 	}
 	return nil
 }
 
 func (s *AccountStore) UpdatePasswordHash(ctx context.Context, accountID string, passwordHash string) error {
 	result := s.db.WithContext(ctx).
-		Model(&domain.Account{}).
+		Model(&identity.Account{}).
 		Where("id = ?", accountID).
 		Updates(map[string]any{"password_hash": passwordHash})
 	if result.Error != nil {
 		return result.Error
 	}
 	if result.RowsAffected == 0 {
-		return gorm.ErrRecordNotFound
+		return domain.ErrNotFound
 	}
 	return nil
 }
@@ -264,14 +264,14 @@ func (s *AccountStore) UpdatePasswordHash(ctx context.Context, accountID string,
 func (s *AccountStore) Delete(ctx context.Context, accountID, schoolID string) error {
 	result := s.db.WithContext(ctx).
 		Where("id = ? AND school_id = ?", accountID, schoolID).
-		Delete(&domain.Account{})
+		Delete(&identity.Account{})
 	if result.Error != nil {
 		return result.Error
 	}
 	if result.RowsAffected == 0 {
-		return gorm.ErrRecordNotFound
+		return domain.ErrNotFound
 	}
 	return nil
 }
 
-var _ repository.AccountRepository = (*AccountStore)(nil)
+var _ identity.AccountRepository = (*AccountStore)(nil)

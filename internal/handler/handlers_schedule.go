@@ -9,7 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// CreateScheduleRequest defines payload for creating a schedule rule.
+// CreateScheduleRequest 定义创建排课规则的请求体。
 type CreateScheduleRequest struct {
 	SchoolID    string    `json:"school_id" binding:"required"`
 	CourseID    string    `json:"course_id" binding:"required"`
@@ -88,7 +88,7 @@ func (h *Handler) GetScheduleStats(c *gin.Context) {
 	response.Success(c, http.StatusOK, stats)
 }
 
-// GenerateSessionsRequest defines payload for generating sessions.
+// GenerateSessionsRequest 定义生成课次的请求体。
 type GenerateSessionsRequest struct {
 	SchoolID string    `json:"school_id" binding:"required"`
 	Start    time.Time `json:"start" binding:"required"`
@@ -109,7 +109,7 @@ func (h *Handler) GenerateSessions(c *gin.Context) {
 	response.Success(c, http.StatusOK, nil)
 }
 
-// UpdateSessionRequest defines payload for updating a session (teacher adjustment).
+// UpdateSessionRequest 定义更新课次（教师调课）的请求体。
 type UpdateSessionRequest struct {
 	SlotID   string    `json:"slot_id" binding:"required"`
 	Date     time.Time `json:"date" binding:"required"`

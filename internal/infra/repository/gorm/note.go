@@ -2,42 +2,42 @@ package gormrepo
 
 import (
 	"context"
+	"learn-go/internal/domain"
 	"time"
 
-	"learn-go/internal/domain"
-	"learn-go/internal/infra/repository"
+	"learn-go/internal/domain/notebook"
 
 	"gorm.io/gorm"
 )
 
-// NoteStore implements repository.NoteRepository with GORM.
+// NoteStore 基于 GORM 实现 notebook.NoteRepository。
 type NoteStore struct {
 	db *gorm.DB
 }
 
-// NewNoteStore creates a new note store instance.
+// NewNoteStore 创建笔记存储实例。
 func NewNoteStore(db *gorm.DB) *NoteStore {
 	return &NoteStore{db: db}
 }
 
-func (s *NoteStore) Create(ctx context.Context, note *domain.Note) error {
+func (s *NoteStore) Create(ctx context.Context, note *notebook.Note) error {
 	return s.db.WithContext(ctx).Create(note).Error
 }
 
-func (s *NoteStore) Update(ctx context.Context, note *domain.Note) error {
+func (s *NoteStore) Update(ctx context.Context, note *notebook.Note) error {
 	return s.db.WithContext(ctx).Save(note).Error
 }
 
-func (s *NoteStore) FindByID(ctx context.Context, id string) (*domain.Note, error) {
-	var note domain.Note
+func (s *NoteStore) FindByID(ctx context.Context, id string) (*notebook.Note, error) {
+	var note notebook.Note
 	if err := s.db.WithContext(ctx).First(&note, "id = ?", id).Error; err != nil {
-		return nil, err
+		return nil, notFound(err)
 	}
 	return &note, nil
 }
 
-func (s *NoteStore) ListByOwner(ctx context.Context, ownerID string, includeDeleted bool, status string) ([]domain.Note, error) {
-	var notes []domain.Note
+func (s *NoteStore) ListByOwner(ctx context.Context, ownerID string, includeDeleted bool, status string) ([]notebook.Note, error) {
+	var notes []notebook.Note
 	query := s.db.WithContext(ctx).Where("owner_id = ?", ownerID)
 	if !includeDeleted {
 		query = query.Where("deleted_at IS NULL")
@@ -51,8 +51,8 @@ func (s *NoteStore) ListByOwner(ctx context.Context, ownerID string, includeDele
 	return notes, nil
 }
 
-func (s *NoteStore) ListPublishedBySchool(ctx context.Context, schoolID string) ([]domain.Note, error) {
-	var notes []domain.Note
+func (s *NoteStore) ListPublishedBySchool(ctx context.Context, schoolID string) ([]notebook.Note, error) {
+	var notes []notebook.Note
 	if err := s.db.WithContext(ctx).
 		Where("school_id = ? AND deleted_at IS NULL AND status = ? AND visibility <> ?", schoolID, "published", "private").
 		Order("updated_at DESC").
@@ -65,7 +65,7 @@ func (s *NoteStore) ListPublishedBySchool(ctx context.Context, schoolID string) 
 func (s *NoteStore) SoftDelete(ctx context.Context, id string) error {
 	now := time.Now()
 	deletedAt := now
-	result := s.db.WithContext(ctx).Model(&domain.Note{}).
+	result := s.db.WithContext(ctx).Model(&notebook.Note{}).
 		Where("id = ?", id).
 		Updates(map[string]interface{}{
 			"deleted_at": &deletedAt,
@@ -75,13 +75,13 @@ func (s *NoteStore) SoftDelete(ctx context.Context, id string) error {
 		return result.Error
 	}
 	if result.RowsAffected == 0 {
-		return gorm.ErrRecordNotFound
+		return domain.ErrNotFound
 	}
 	return nil
 }
 
 func (s *NoteStore) Restore(ctx context.Context, id string) error {
-	result := s.db.WithContext(ctx).Model(&domain.Note{}).
+	result := s.db.WithContext(ctx).Model(&notebook.Note{}).
 		Where("id = ?", id).
 		Updates(map[string]interface{}{
 			"deleted_at": nil,
@@ -91,9 +91,9 @@ func (s *NoteStore) Restore(ctx context.Context, id string) error {
 		return result.Error
 	}
 	if result.RowsAffected == 0 {
-		return gorm.ErrRecordNotFound
+		return domain.ErrNotFound
 	}
 	return nil
 }
 
-var _ repository.NoteRepository = (*NoteStore)(nil)
+var _ notebook.NoteRepository = (*NoteStore)(nil)

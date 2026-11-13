@@ -5,11 +5,10 @@ import (
 
 	"gorm.io/gorm"
 
-	"learn-go/internal/domain"
-	"learn-go/internal/infra/repository"
+	"learn-go/internal/domain/organization"
 )
 
-// ClassStore implements repository.ClassRepository using GORM.
+// ClassStore 基于 GORM 实现 organization.ClassRepository。
 type ClassStore struct {
 	db *gorm.DB
 }
@@ -18,12 +17,12 @@ func NewClassStore(db *gorm.DB) *ClassStore {
 	return &ClassStore{db: db}
 }
 
-func (s *ClassStore) Create(ctx context.Context, class *domain.Class) error {
+func (s *ClassStore) Create(ctx context.Context, class *organization.Class) error {
 	return s.db.WithContext(ctx).Create(class).Error
 }
 
-func (s *ClassStore) ListByDepartment(ctx context.Context, schoolID, departmentID string) ([]domain.Class, error) {
-	var classes []domain.Class
+func (s *ClassStore) ListByDepartment(ctx context.Context, schoolID, departmentID string) ([]organization.Class, error) {
+	var classes []organization.Class
 	query := s.db.WithContext(ctx).Table("classes").
 		Select("classes.*, "+
 			"(SELECT count(*) FROM students WHERE students.class_id = classes.id) as student_count, "+
@@ -39,19 +38,19 @@ func (s *ClassStore) ListByDepartment(ctx context.Context, schoolID, departmentI
 	return classes, nil
 }
 
-func (s *ClassStore) GetByID(ctx context.Context, id string) (*domain.Class, error) {
-	var class domain.Class
+func (s *ClassStore) GetByID(ctx context.Context, id string) (*organization.Class, error) {
+	var class organization.Class
 	if err := s.db.WithContext(ctx).First(&class, "id = ?", id).Error; err != nil {
-		return nil, err
+		return nil, notFound(err)
 	}
 	return &class, nil
 }
 
-func (s *ClassStore) ListByIDs(ctx context.Context, ids []string) ([]domain.Class, error) {
+func (s *ClassStore) ListByIDs(ctx context.Context, ids []string) ([]organization.Class, error) {
 	if len(ids) == 0 {
-		return []domain.Class{}, nil
+		return []organization.Class{}, nil
 	}
-	var classes []domain.Class
+	var classes []organization.Class
 	if err := s.db.WithContext(ctx).Where("id IN ?", ids).Find(&classes).Error; err != nil {
 		return nil, err
 	}
@@ -60,7 +59,7 @@ func (s *ClassStore) ListByIDs(ctx context.Context, ids []string) ([]domain.Clas
 
 func (s *ClassStore) UpdateName(ctx context.Context, id, schoolID, name string) error {
 	return s.db.WithContext(ctx).
-		Model(&domain.Class{}).
+		Model(&organization.Class{}).
 		Where("id = ? AND school_id = ?", id, schoolID).
 		Update("name", name).Error
 }
@@ -68,7 +67,7 @@ func (s *ClassStore) UpdateName(ctx context.Context, id, schoolID, name string) 
 func (s *ClassStore) Delete(ctx context.Context, id, schoolID string) error {
 	return s.db.WithContext(ctx).
 		Where("id = ? AND school_id = ?", id, schoolID).
-		Delete(&domain.Class{}).Error
+		Delete(&organization.Class{}).Error
 }
 
-var _ repository.ClassRepository = (*ClassStore)(nil)
+var _ organization.ClassRepository = (*ClassStore)(nil)

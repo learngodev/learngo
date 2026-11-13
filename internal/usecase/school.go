@@ -5,58 +5,58 @@ import (
 	"errors"
 	"time"
 
-	"learn-go/internal/domain"
-	"learn-go/internal/infra/repository"
+	"learn-go/internal/domain/organization"
+	"learn-go/internal/domain/scheduling"
 )
 
-// SchoolService manages school operations.
-type SchoolService struct {
-	schools   repository.SchoolRepository
-	timeSlots repository.TimeSlotRepository
+// SchoolUsecase 负责学校相关操作。
+type SchoolUsecase struct {
+	schools   organization.SchoolRepository
+	timeSlots scheduling.TimeSlotRepository
 }
 
-// NewSchoolService creates a new SchoolService.
-func NewSchoolService(schools repository.SchoolRepository, timeSlots repository.TimeSlotRepository) *SchoolService {
-	return &SchoolService{schools: schools, timeSlots: timeSlots}
+// NewSchoolUsecase 创建 SchoolUsecase。
+func NewSchoolUsecase(schools organization.SchoolRepository, timeSlots scheduling.TimeSlotRepository) *SchoolUsecase {
+	return &SchoolUsecase{schools: schools, timeSlots: timeSlots}
 }
 
-// ListSchools returns all schools.
-func (s *SchoolService) ListSchools(ctx context.Context) ([]domain.School, error) {
+// ListSchools 返回所有学校。
+func (s *SchoolUsecase) ListSchools(ctx context.Context) ([]organization.School, error) {
 	return s.schools.List(ctx)
 }
 
-// ListTimeSlots returns all time slots for a school.
-func (s *SchoolService) ListTimeSlots(ctx context.Context, schoolID string) ([]domain.TimeSlot, error) {
+// ListTimeSlots 返回某学校的所有节次。
+func (s *SchoolUsecase) ListTimeSlots(ctx context.Context, schoolID string) ([]scheduling.TimeSlot, error) {
 	return s.timeSlots.List(ctx, schoolID)
 }
 
-// GetTimeSlot returns a time slot by ID.
-func (s *SchoolService) GetTimeSlot(ctx context.Context, id string) (*domain.TimeSlot, error) {
+// GetTimeSlot 按 ID 返回节次。
+func (s *SchoolUsecase) GetTimeSlot(ctx context.Context, id string) (*scheduling.TimeSlot, error) {
 	return s.timeSlots.FindByID(ctx, id)
 }
 
-// CreateTimeSlot creates a new time slot.
-func (s *SchoolService) CreateTimeSlot(ctx context.Context, slot *domain.TimeSlot) error {
+// CreateTimeSlot 创建新节次。
+func (s *SchoolUsecase) CreateTimeSlot(ctx context.Context, slot *scheduling.TimeSlot) error {
 	if err := s.validateTimeSlot(slot); err != nil {
 		return err
 	}
 	return s.timeSlots.Create(ctx, slot)
 }
 
-// UpdateTimeSlot updates an existing time slot.
-func (s *SchoolService) UpdateTimeSlot(ctx context.Context, slot *domain.TimeSlot) error {
+// UpdateTimeSlot 更新已有节次。
+func (s *SchoolUsecase) UpdateTimeSlot(ctx context.Context, slot *scheduling.TimeSlot) error {
 	if err := s.validateTimeSlot(slot); err != nil {
 		return err
 	}
 	return s.timeSlots.Update(ctx, slot)
 }
 
-// DeleteTimeSlot deletes a time slot.
-func (s *SchoolService) DeleteTimeSlot(ctx context.Context, id string) error {
+// DeleteTimeSlot 删除节次。
+func (s *SchoolUsecase) DeleteTimeSlot(ctx context.Context, id string) error {
 	return s.timeSlots.Delete(ctx, id)
 }
 
-func (s *SchoolService) validateTimeSlot(slot *domain.TimeSlot) error {
+func (s *SchoolUsecase) validateTimeSlot(slot *scheduling.TimeSlot) error {
 	start, err := time.Parse("15:04", slot.StartTime)
 	if err != nil {
 		return errors.New("invalid start_time format, expected HH:mm")

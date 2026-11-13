@@ -2,25 +2,25 @@ package gormrepo
 
 import (
 	"context"
+	"learn-go/internal/domain"
 	"time"
 
-	"learn-go/internal/domain"
-	"learn-go/internal/infra/repository"
+	"learn-go/internal/domain/messaging"
 
 	"gorm.io/gorm"
 )
 
-// ConversationStore implements ConversationRepository using GORM.
+// ConversationStore 基于 GORM 实现 messaging.ConversationRepository。
 type ConversationStore struct {
 	db *gorm.DB
 }
 
-// NewConversationStore creates a conversation store instance.
+// NewConversationStore 创建会话存储实例。
 func NewConversationStore(db *gorm.DB) *ConversationStore {
 	return &ConversationStore{db: db}
 }
 
-func (s *ConversationStore) Create(ctx context.Context, conversation *domain.Conversation, members []domain.ConversationMember) error {
+func (s *ConversationStore) Create(ctx context.Context, conversation *messaging.Conversation, members []messaging.ConversationMember) error {
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(conversation).Error; err != nil {
 			return err
@@ -34,16 +34,16 @@ func (s *ConversationStore) Create(ctx context.Context, conversation *domain.Con
 	})
 }
 
-func (s *ConversationStore) GetByID(ctx context.Context, id string) (*domain.Conversation, error) {
-	var conv domain.Conversation
+func (s *ConversationStore) GetByID(ctx context.Context, id string) (*messaging.Conversation, error) {
+	var conv messaging.Conversation
 	if err := s.db.WithContext(ctx).First(&conv, "id = ?", id).Error; err != nil {
-		return nil, err
+		return nil, notFound(err)
 	}
 	return &conv, nil
 }
 
-func (s *ConversationStore) ListByAccount(ctx context.Context, accountID string) ([]domain.Conversation, error) {
-	var convs []domain.Conversation
+func (s *ConversationStore) ListByAccount(ctx context.Context, accountID string) ([]messaging.Conversation, error) {
+	var convs []messaging.Conversation
 	err := s.db.WithContext(ctx).
 		Joins("JOIN conversation_members cm ON cm.conversation_id = conversations.id").
 		Where("cm.account_id = ?", accountID).
@@ -55,8 +55,8 @@ func (s *ConversationStore) ListByAccount(ctx context.Context, accountID string)
 	return convs, nil
 }
 
-func (s *ConversationStore) GetMembers(ctx context.Context, conversationID string) ([]domain.ConversationMember, error) {
-	var members []domain.ConversationMember
+func (s *ConversationStore) GetMembers(ctx context.Context, conversationID string) ([]messaging.ConversationMember, error) {
+	var members []messaging.ConversationMember
 	if err := s.db.WithContext(ctx).Where("conversation_id = ?", conversationID).Find(&members).Error; err != nil {
 		return nil, err
 	}
@@ -65,7 +65,7 @@ func (s *ConversationStore) GetMembers(ctx context.Context, conversationID strin
 
 func (s *ConversationStore) IsMember(ctx context.Context, conversationID, accountID string) (bool, error) {
 	var count int64
-	if err := s.db.WithContext(ctx).Model(&domain.ConversationMember{}).
+	if err := s.db.WithContext(ctx).Model(&messaging.ConversationMember{}).
 		Where("conversation_id = ? AND account_id = ?", conversationID, accountID).
 		Count(&count).Error; err != nil {
 		return false, err
@@ -73,8 +73,8 @@ func (s *ConversationStore) IsMember(ctx context.Context, conversationID, accoun
 	return count > 0, nil
 }
 
-func (s *ConversationStore) FindDirectBetween(ctx context.Context, schoolID string, participantIDs [2]string) (*domain.Conversation, error) {
-	var conv domain.Conversation
+func (s *ConversationStore) FindDirectBetween(ctx context.Context, schoolID string, participantIDs [2]string) (*messaging.Conversation, error) {
+	var conv messaging.Conversation
 
 	err := s.db.WithContext(ctx).
 		Joins("JOIN conversation_members cm ON cm.conversation_id = conversations.id").
@@ -91,16 +91,16 @@ func (s *ConversationStore) FindDirectBetween(ctx context.Context, schoolID stri
 }
 
 func (s *ConversationStore) UpdateTimestamp(ctx context.Context, conversationID string, ts time.Time) error {
-	result := s.db.WithContext(ctx).Model(&domain.Conversation{}).
+	result := s.db.WithContext(ctx).Model(&messaging.Conversation{}).
 		Where("id = ?", conversationID).
 		Updates(map[string]interface{}{"updated_at": ts})
 	if result.Error != nil {
 		return result.Error
 	}
 	if result.RowsAffected == 0 {
-		return gorm.ErrRecordNotFound
+		return domain.ErrNotFound
 	}
 	return nil
 }
 
-var _ repository.ConversationRepository = (*ConversationStore)(nil)
+var _ messaging.ConversationRepository = (*ConversationStore)(nil)

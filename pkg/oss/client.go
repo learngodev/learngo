@@ -6,27 +6,27 @@ import (
 	"strings"
 )
 
-// Client defines interface for interacting with Object Storage Service.
+// Client 定义与对象存储服务交互的接口。
 type Client interface {
-	// GenerateUploadCredentials returns STS credentials for client-side upload.
+	// GenerateUploadCredentials 返回用于客户端直传的 STS 凭据。
 	GenerateUploadCredentials(ctx context.Context, sessionName string, durationSeconds int64) (*UploadCredentials, error)
 
-	// SignURL generates a presigned URL for uploading or downloading.
-	// method: "GET" or "PUT"
+	// SignURL 生成用于上传或下载的预签名 URL。
+	// method："GET" 或 "PUT"
 	SignURL(objectKey string, method string, expiredInSec int64) (string, error)
 
-	// PutObject uploads data directly from server.
+	// PutObject 由服务端直接上传数据。
 	PutObject(objectKey string, reader io.Reader) error
 
-	// GetObject downloads object content for server-side relay.
-	// Caller must close the returned ReadCloser.
+	// GetObject 下载对象内容，用于服务端中转。
+	// 调用方必须关闭返回的 ReadCloser。
 	GetObject(objectKey string) (io.ReadCloser, error)
 
-	// DeleteObject deletes an object.
+	// DeleteObject 删除对象。
 	DeleteObject(objectKey string) error
 }
 
-// UploadCredentials represent temporary upload data for clients.
+// UploadCredentials 表示提供给客户端的临时上传凭据。
 type UploadCredentials struct {
 	Endpoint        string `json:"endpoint"`
 	Bucket          string `json:"bucket"`
@@ -36,7 +36,7 @@ type UploadCredentials struct {
 	Expiration      string `json:"expiration"`
 }
 
-// StaticClient returns preconfigured credentials (placeholder for integration).
+// StaticClient 返回预置的凭据（集成前的占位实现）。
 type StaticClient struct {
 	Endpoint string
 	Bucket   string

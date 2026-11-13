@@ -3,30 +3,32 @@ package gormrepo
 import (
 	"context"
 
-	"learn-go/internal/domain"
+	"learn-go/internal/domain/scheduling"
 
 	"gorm.io/gorm"
 )
 
-// CourseSlotStore implements repository.CourseSlotRepository.
+// CourseSlotStore 实现 scheduling.CourseSlotRepository。
 type CourseSlotStore struct {
 	db *gorm.DB
 }
 
-// NewCourseSlotStore constructs CourseSlotStore.
+// NewCourseSlotStore 构造 CourseSlotStore。
 func NewCourseSlotStore(db *gorm.DB) *CourseSlotStore {
 	return &CourseSlotStore{db: db}
 }
 
-// ListByIDs fetches course slots by identifiers.
-func (s *CourseSlotStore) ListByIDs(ctx context.Context, ids []string) ([]domain.CourseSlot, error) {
+// ListByIDs 按 ID 查询课程节次。
+func (s *CourseSlotStore) ListByIDs(ctx context.Context, ids []string) ([]scheduling.CourseSlot, error) {
 	if len(ids) == 0 {
-		return []domain.CourseSlot{}, nil
+		return []scheduling.CourseSlot{}, nil
 	}
 
-	var slots []domain.CourseSlot
+	var slots []scheduling.CourseSlot
 	if err := s.db.WithContext(ctx).Where("id IN ?", ids).Find(&slots).Error; err != nil {
 		return nil, err
 	}
 	return slots, nil
 }
+
+var _ scheduling.CourseSlotRepository = (*CourseSlotStore)(nil)

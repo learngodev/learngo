@@ -6,7 +6,7 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
-	"learn-go/internal/domain"
+	"learn-go/internal/domain/curriculum"
 )
 
 type CourseTeacherStore struct {
@@ -21,9 +21,9 @@ func (s *CourseTeacherStore) Add(ctx context.Context, courseID string, teacherID
 	if len(teacherIDs) == 0 {
 		return nil
 	}
-	var links []domain.CourseTeacher
+	var links []curriculum.CourseTeacher
 	for _, tid := range teacherIDs {
-		links = append(links, domain.CourseTeacher{
+		links = append(links, curriculum.CourseTeacher{
 			ID:        uuid.NewString(),
 			CourseID:  courseID,
 			TeacherID: tid,
@@ -38,21 +38,23 @@ func (s *CourseTeacherStore) Remove(ctx context.Context, courseID string, teache
 	}
 	return s.db.WithContext(ctx).
 		Where("course_id = ? AND teacher_id IN ?", courseID, teacherIDs).
-		Delete(&domain.CourseTeacher{}).Error
+		Delete(&curriculum.CourseTeacher{}).Error
 }
 
-func (s *CourseTeacherStore) ListByCourseID(ctx context.Context, courseID string) ([]domain.CourseTeacher, error) {
-	var links []domain.CourseTeacher
+func (s *CourseTeacherStore) ListByCourseID(ctx context.Context, courseID string) ([]curriculum.CourseTeacher, error) {
+	var links []curriculum.CourseTeacher
 	err := s.db.WithContext(ctx).Where("course_id = ?", courseID).Find(&links).Error
 	return links, err
 }
 
-// ListCourseIDsByTeacher returns course IDs bound to the teacher.
+// ListCourseIDsByTeacher 返回与该教师绑定的课程 ID。
 func (s *CourseTeacherStore) ListCourseIDsByTeacher(ctx context.Context, teacherID string) ([]string, error) {
 	var ids []string
 	err := s.db.WithContext(ctx).
-		Model(&domain.CourseTeacher{}).
+		Model(&curriculum.CourseTeacher{}).
 		Where("teacher_id = ?", teacherID).
 		Pluck("course_id", &ids).Error
 	return ids, err
 }
+
+var _ curriculum.CourseTeacherRepository = (*CourseTeacherStore)(nil)

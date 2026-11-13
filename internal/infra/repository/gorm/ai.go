@@ -4,35 +4,34 @@ import (
 	"context"
 	"errors"
 
-	"learn-go/internal/domain"
-	"learn-go/internal/infra/repository"
+	"learn-go/internal/domain/aiagent"
 
 	"gorm.io/gorm"
 )
 
-// AIAgentSettingStore implements repository.AIAgentSettingRepository.
+// AIAgentSettingStore 实现 aiagent.AIAgentSettingRepository。
 type AIAgentSettingStore struct {
 	db *gorm.DB
 }
 
-// NewAIAgentSettingStore constructs an AIAgentSettingStore.
+// NewAIAgentSettingStore 构造 AIAgentSettingStore。
 func NewAIAgentSettingStore(db *gorm.DB) *AIAgentSettingStore {
 	return &AIAgentSettingStore{db: db}
 }
 
-func (s *AIAgentSettingStore) GetBySchoolID(ctx context.Context, schoolID string) (*domain.AIAgentSetting, error) {
+func (s *AIAgentSettingStore) GetBySchoolID(ctx context.Context, schoolID string) (*aiagent.AIAgentSetting, error) {
 	if schoolID == "" {
 		return nil, errors.New("school_id required")
 	}
 
-	var setting domain.AIAgentSetting
+	var setting aiagent.AIAgentSetting
 	if err := s.db.WithContext(ctx).Where("school_id = ?", schoolID).First(&setting).Error; err != nil {
-		return nil, err
+		return nil, notFound(err)
 	}
 	return &setting, nil
 }
 
-func (s *AIAgentSettingStore) Upsert(ctx context.Context, setting *domain.AIAgentSetting) error {
+func (s *AIAgentSettingStore) Upsert(ctx context.Context, setting *aiagent.AIAgentSetting) error {
 	if setting == nil {
 		return errors.New("setting required")
 	}
@@ -40,7 +39,7 @@ func (s *AIAgentSettingStore) Upsert(ctx context.Context, setting *domain.AIAgen
 		return errors.New("setting id required")
 	}
 
-	var existing domain.AIAgentSetting
+	var existing aiagent.AIAgentSetting
 	err := s.db.WithContext(ctx).First(&existing, "id = ?", setting.ID).Error
 	switch {
 	case errors.Is(err, gorm.ErrRecordNotFound):
@@ -67,25 +66,25 @@ func (s *AIAgentSettingStore) Upsert(ctx context.Context, setting *domain.AIAgen
 		}
 
 		return s.db.WithContext(ctx).
-			Model(&domain.AIAgentSetting{}).
+			Model(&aiagent.AIAgentSetting{}).
 			Where("id = ?", setting.ID).
 			Updates(updates).Error
 	}
 }
 
-var _ repository.AIAgentSettingRepository = (*AIAgentSettingStore)(nil)
+var _ aiagent.AIAgentSettingRepository = (*AIAgentSettingStore)(nil)
 
-// AIAgentSettingAuditStore implements repository.AIAgentSettingAuditRepository.
+// AIAgentSettingAuditStore 实现 aiagent.AIAgentSettingAuditRepository。
 type AIAgentSettingAuditStore struct {
 	db *gorm.DB
 }
 
-// NewAIAgentSettingAuditStore constructs an audit store.
+// NewAIAgentSettingAuditStore 构造 AI 配置审计存储。
 func NewAIAgentSettingAuditStore(db *gorm.DB) *AIAgentSettingAuditStore {
 	return &AIAgentSettingAuditStore{db: db}
 }
 
-func (s *AIAgentSettingAuditStore) Create(ctx context.Context, entry *domain.AIAgentSettingAudit) error {
+func (s *AIAgentSettingAuditStore) Create(ctx context.Context, entry *aiagent.AIAgentSettingAudit) error {
 	if entry == nil {
 		return errors.New("entry required")
 	}
@@ -95,7 +94,7 @@ func (s *AIAgentSettingAuditStore) Create(ctx context.Context, entry *domain.AIA
 	return s.db.WithContext(ctx).Create(entry).Error
 }
 
-func (s *AIAgentSettingAuditStore) ListRecent(ctx context.Context, schoolID string, limit int) ([]domain.AIAgentSettingAudit, error) {
+func (s *AIAgentSettingAuditStore) ListRecent(ctx context.Context, schoolID string, limit int) ([]aiagent.AIAgentSettingAudit, error) {
 	if schoolID == "" {
 		return nil, errors.New("school_id required")
 	}
@@ -104,7 +103,7 @@ func (s *AIAgentSettingAuditStore) ListRecent(ctx context.Context, schoolID stri
 		limit = 20
 	}
 
-	var entries []domain.AIAgentSettingAudit
+	var entries []aiagent.AIAgentSettingAudit
 	query := s.db.WithContext(ctx).
 		Where("school_id = ?", schoolID).
 		Order("created_at DESC").
@@ -115,4 +114,4 @@ func (s *AIAgentSettingAuditStore) ListRecent(ctx context.Context, schoolID stri
 	return entries, nil
 }
 
-var _ repository.AIAgentSettingAuditRepository = (*AIAgentSettingAuditStore)(nil)
+var _ aiagent.AIAgentSettingAuditRepository = (*AIAgentSettingAuditStore)(nil)

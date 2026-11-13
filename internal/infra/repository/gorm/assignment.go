@@ -4,13 +4,13 @@ import (
 	"context"
 	"time"
 
-	"learn-go/internal/domain"
-	"learn-go/internal/infra/repository"
+	"learn-go/internal/domain/coursework"
+	"learn-go/internal/domain/storage"
 
 	"gorm.io/gorm"
 )
 
-// AssignmentStore implements repository.AssignmentRepository with GORM.
+// AssignmentStore 基于 GORM 实现 coursework.AssignmentRepository。
 type AssignmentStore struct {
 	db *gorm.DB
 }
@@ -19,7 +19,7 @@ func NewAssignmentStore(db *gorm.DB) *AssignmentStore {
 	return &AssignmentStore{db: db}
 }
 
-func (s *AssignmentStore) Create(ctx context.Context, assignment *domain.Assignment, questions []domain.AssignmentQuestion, attachments []domain.AssignmentAttachment) error {
+func (s *AssignmentStore) Create(ctx context.Context, assignment *coursework.Assignment, questions []coursework.AssignmentQuestion, attachments []coursework.AssignmentAttachment) error {
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(assignment).Error; err != nil {
 			return err
@@ -44,16 +44,16 @@ func (s *AssignmentStore) Create(ctx context.Context, assignment *domain.Assignm
 	})
 }
 
-func (s *AssignmentStore) Get(ctx context.Context, id string) (*domain.Assignment, []domain.AssignmentQuestion, []domain.File, error) {
-	var assignment domain.Assignment
+func (s *AssignmentStore) Get(ctx context.Context, id string) (*coursework.Assignment, []coursework.AssignmentQuestion, []storage.File, error) {
+	var assignment coursework.Assignment
 	if err := s.db.WithContext(ctx).First(&assignment, "id = ?", id).Error; err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, notFound(err)
 	}
-	var questions []domain.AssignmentQuestion
+	var questions []coursework.AssignmentQuestion
 	if err := s.db.WithContext(ctx).Where("assignment_id = ?", assignment.ID).Order("order_index").Find(&questions).Error; err != nil {
 		return nil, nil, nil, err
 	}
-	var files []domain.File
+	var files []storage.File
 	if err := s.db.WithContext(ctx).
 		Table("files").
 		Joins("JOIN assignment_attachments ON assignment_attachments.file_id = files.id").
@@ -64,7 +64,7 @@ func (s *AssignmentStore) Get(ctx context.Context, id string) (*domain.Assignmen
 	return &assignment, questions, files, nil
 }
 
-func (s *AssignmentStore) ListByClass(ctx context.Context, classID string, limit int, types []domain.AssignmentType) ([]domain.Assignment, error) {
+func (s *AssignmentStore) ListByClass(ctx context.Context, classID string, limit int, types []coursework.AssignmentType) ([]coursework.Assignment, error) {
 	query := s.db.WithContext(ctx).Where("class_id = ?", classID)
 	if len(types) > 0 {
 		query = query.Where("type IN ?", types)
@@ -76,7 +76,7 @@ func (s *AssignmentStore) ListByClass(ctx context.Context, classID string, limit
 		limit = 200
 	}
 
-	var assignments []domain.Assignment
+	var assignments []coursework.Assignment
 	if err := query.
 		Order("COALESCE(due_at, start_at, created_at) ASC").
 		Limit(limit).
@@ -86,7 +86,7 @@ func (s *AssignmentStore) ListByClass(ctx context.Context, classID string, limit
 	return assignments, nil
 }
 
-func (s *AssignmentStore) ListDueBetween(ctx context.Context, classID string, start, end time.Time, types []domain.AssignmentType) ([]domain.Assignment, error) {
+func (s *AssignmentStore) ListDueBetween(ctx context.Context, classID string, start, end time.Time, types []coursework.AssignmentType) ([]coursework.Assignment, error) {
 	query := s.db.WithContext(ctx).Where("class_id = ?", classID)
 	if len(types) > 0 {
 		query = query.Where("type IN ?", types)
@@ -98,14 +98,14 @@ func (s *AssignmentStore) ListDueBetween(ctx context.Context, classID string, st
 		query = query.Where("due_at < ?", end)
 	}
 
-	var assignments []domain.Assignment
+	var assignments []coursework.Assignment
 	if err := query.Order("due_at ASC NULLS LAST").Find(&assignments).Error; err != nil {
 		return nil, err
 	}
 	return assignments, nil
 }
 
-func (s *AssignmentStore) ListByTeacher(ctx context.Context, teacherID string, limit int, classID string, types []domain.AssignmentType) ([]domain.Assignment, error) {
+func (s *AssignmentStore) ListByTeacher(ctx context.Context, teacherID string, limit int, classID string, types []coursework.AssignmentType) ([]coursework.Assignment, error) {
 	query := s.db.WithContext(ctx).Where("teacher_id = ?", teacherID)
 	if classID != "" {
 		query = query.Where("class_id = ?", classID)
@@ -120,14 +120,14 @@ func (s *AssignmentStore) ListByTeacher(ctx context.Context, teacherID string, l
 		limit = 200
 	}
 
-	var assignments []domain.Assignment
+	var assignments []coursework.Assignment
 	if err := query.Order("COALESCE(due_at, start_at, created_at) DESC").Limit(limit).Find(&assignments).Error; err != nil {
 		return nil, err
 	}
 	return assignments, nil
 }
 
-func (s *AssignmentStore) ListDueBetweenByTeacher(ctx context.Context, teacherID string, start, end time.Time, types []domain.AssignmentType) ([]domain.Assignment, error) {
+func (s *AssignmentStore) ListDueBetweenByTeacher(ctx context.Context, teacherID string, start, end time.Time, types []coursework.AssignmentType) ([]coursework.Assignment, error) {
 	query := s.db.WithContext(ctx).Where("teacher_id = ?", teacherID)
 	if len(types) > 0 {
 		query = query.Where("type IN ?", types)
@@ -139,15 +139,15 @@ func (s *AssignmentStore) ListDueBetweenByTeacher(ctx context.Context, teacherID
 		query = query.Where("due_at < ?", end)
 	}
 
-	var assignments []domain.Assignment
+	var assignments []coursework.Assignment
 	if err := query.Order("due_at ASC NULLS LAST").Find(&assignments).Error; err != nil {
 		return nil, err
 	}
 	return assignments, nil
 }
 
-func (s *AssignmentStore) Search(ctx context.Context, teacherID string, q string) ([]domain.Assignment, error) {
-	var assignments []domain.Assignment
+func (s *AssignmentStore) Search(ctx context.Context, teacherID string, q string) ([]coursework.Assignment, error) {
+	var assignments []coursework.Assignment
 	if err := s.db.WithContext(ctx).
 		Where("teacher_id = ? AND (title LIKE ? OR description LIKE ?)", teacherID, "%"+q+"%", "%"+q+"%").
 		Order("created_at DESC").
@@ -158,8 +158,8 @@ func (s *AssignmentStore) Search(ctx context.Context, teacherID string, q string
 	return assignments, nil
 }
 
-func (s *AssignmentStore) Update(ctx context.Context, assignment *domain.Assignment) error {
+func (s *AssignmentStore) Update(ctx context.Context, assignment *coursework.Assignment) error {
 	return s.db.WithContext(ctx).Save(assignment).Error
 }
 
-var _ repository.AssignmentRepository = (*AssignmentStore)(nil)
+var _ coursework.AssignmentRepository = (*AssignmentStore)(nil)

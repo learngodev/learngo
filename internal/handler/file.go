@@ -3,21 +3,21 @@ package handler
 import (
 	"errors"
 	"fmt"
+	"learn-go/internal/domain"
 	"mime"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
-	"learn-go/internal/infra/config"
-	"learn-go/internal/domain"
+	"learn-go/internal/config"
+	"learn-go/internal/domain/storage"
 	"learn-go/pkg/middleware"
 	"learn-go/pkg/response"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
-	"gorm.io/gorm"
 )
 
 type UploadRequest struct {
@@ -26,11 +26,11 @@ type UploadRequest struct {
 	Size     int64  `json:"size" binding:"required"`
 }
 
-// RelayUpload accepts file content (multipart/form-data) and uploads it to OSS via the server.
-// Form fields:
-// - file: required
-// - file_name: optional (fallback to original filename)
-// - file_type: optional (fallback to part Content-Type)
+// RelayUpload 接收文件内容（multipart/form-data），并由服务端中转上传到 OSS。
+// 表单字段：
+// - file：必填
+// - file_name：可选（缺省时使用原始文件名）
+// - file_type：可选（缺省时使用该分段的 Content-Type）
 func (h *Handler) RelayUpload(c *gin.Context) {
 	fileHeader, err := c.FormFile("file")
 	if err != nil {
@@ -90,16 +90,16 @@ func (h *Handler) RelayUpload(c *gin.Context) {
 	}
 	defer opened.Close()
 
-	var stored *domain.File
+	var stored *storage.File
 	if fileID != "" {
-		recorded, err := h.fileService.GetFileForUploader(
+		recorded, err := h.fileUsecase.GetFileForUploader(
 			c.Request.Context(),
 			account.SchoolID,
 			account.ID,
 			fileID,
 		)
 		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
+			if errors.Is(err, domain.ErrNotFound) {
 				h.respondServiceError(c, err, http.StatusBadRequest, response.CodeFileNotFound)
 				return
 			}
@@ -107,7 +107,7 @@ func (h *Handler) RelayUpload(c *gin.Context) {
 			return
 		}
 
-		// Best-effort safety: prevent mismatched metadata when reusing an existing record.
+		// 尽力保护：复用已有记录时，防止元数据不一致。
 		if fileName != "" && len(fileName) > 256 {
 			response.Error(c, http.StatusBadRequest, response.CodeFileNameTooLong, nil)
 			return
@@ -133,13 +133,13 @@ func (h *Handler) RelayUpload(c *gin.Context) {
 			response.Error(c, http.StatusBadRequest, "file_size mismatch", nil)
 			return
 		}
-		if err := h.fileService.RelayUploadExisting(c.Request.Context(), recorded, opened); err != nil {
+		if err := h.fileUsecase.RelayUploadExisting(c.Request.Context(), recorded, opened); err != nil {
 			h.respondServiceError(c, err, http.StatusInternalServerError, response.CodeUnableToRelayUploadExistingFile)
 			return
 		}
 		stored = recorded
 	} else {
-		recorded, err := h.fileService.RelayUpload(
+		recorded, err := h.fileUsecase.RelayUpload(
 			c.Request.Context(),
 			account.SchoolID,
 			account.ID,
@@ -201,7 +201,7 @@ func (h *Handler) GetUploadURL(c *gin.Context) {
 		return
 	}
 
-	file, method, url, err := h.fileService.InitUpload(
+	file, method, url, err := h.fileUsecase.InitUpload(
 		c.Request.Context(),
 		account.SchoolID,
 		account.ID,
@@ -245,9 +245,9 @@ func (h *Handler) GetDownloadURL(c *gin.Context) {
 		return
 	}
 
-	_, method, directURL, err := h.fileService.GetDownloadInfo(c.Request.Context(), account.SchoolID, fileID)
+	_, method, directURL, err := h.fileUsecase.GetDownloadInfo(c.Request.Context(), account.SchoolID, fileID)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if errors.Is(err, domain.ErrNotFound) {
 			response.Error(c, http.StatusNotFound, response.CodeFileNotFound, nil)
 			return
 		}
@@ -333,9 +333,9 @@ func (h *Handler) RelayDownload(c *gin.Context) {
 		return
 	}
 
-	file, rc, err := h.fileService.OpenDownloadStream(c.Request.Context(), schoolID, fileID)
+	file, rc, err := h.fileUsecase.OpenDownloadStream(c.Request.Context(), schoolID, fileID)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if errors.Is(err, domain.ErrNotFound) {
 			response.Error(c, http.StatusNotFound, response.CodeFileNotFound, nil)
 			return
 		}

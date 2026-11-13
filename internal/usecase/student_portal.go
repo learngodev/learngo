@@ -3,44 +3,48 @@ package usecase
 import (
 	"context"
 	"errors"
+	"learn-go/internal/domain"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
-	"gorm.io/gorm"
 
-	"learn-go/internal/domain"
-	"learn-go/internal/infra/repository"
+	"learn-go/internal/domain/coursework"
+	"learn-go/internal/domain/curriculum"
+	"learn-go/internal/domain/identity"
+	"learn-go/internal/domain/roster"
+	"learn-go/internal/domain/scheduling"
+	"learn-go/internal/domain/storage"
 )
 
 var (
-	// ErrStudentProfileNotFound indicates the current account has no student profile.
+	// ErrStudentProfileNotFound 表示当前账号没有学生档案。
 	ErrStudentProfileNotFound = errors.New("student profile not found")
-	// ErrStudentReminderNotFound indicates the reminder cannot be located for the student.
+	// ErrStudentReminderNotFound 表示找不到该学生的提醒事项。
 	ErrStudentReminderNotFound = errors.New("student reminder not found")
-	// ErrStudentReminderInvalid indicates create/update payload is invalid.
+	// ErrStudentReminderInvalid 表示创建或更新的数据无效。
 	ErrStudentReminderInvalid = errors.New("student reminder invalid")
-	// ErrCourseAccessDenied indicates the student doesn't have access to the course.
+	// ErrCourseAccessDenied 表示学生无权访问该课程。
 	ErrCourseAccessDenied = errors.New("course access denied")
 )
 
-// StudentPortalService aggregates academic data for students.
-type StudentPortalService struct {
-	students    repository.StudentRepository
-	assignments repository.AssignmentRepository
-	submissions repository.SubmissionRepository
-	courses     repository.CourseRepository
-	chapters    repository.CourseChapterRepository
-	slots       repository.CourseSlotRepository
-	sessions    repository.CourseSessionRepository
-	teachers    repository.TeacherRepository
-	accounts    repository.AccountRepository
-	reminders   repository.StudentReminderRepository
+// StudentPortalUsecase 为学生聚合教学相关数据。
+type StudentPortalUsecase struct {
+	students    roster.StudentRepository
+	assignments coursework.AssignmentRepository
+	submissions coursework.SubmissionRepository
+	courses     curriculum.CourseRepository
+	chapters    curriculum.CourseChapterRepository
+	slots       scheduling.CourseSlotRepository
+	sessions    scheduling.CourseSessionRepository
+	teachers    roster.TeacherRepository
+	accounts    identity.AccountRepository
+	reminders   roster.StudentReminderRepository
 }
 
-// GetSchoolID retrieves the school ID for a given account.
-func (s *StudentPortalService) GetSchoolID(ctx context.Context, accountID string) (string, error) {
+// GetSchoolID 获取指定账号所属的学校 ID。
+func (s *StudentPortalUsecase) GetSchoolID(ctx context.Context, accountID string) (string, error) {
 	account, err := s.accounts.FindByID(ctx, accountID)
 	if err != nil {
 		return "", err
@@ -51,25 +55,25 @@ func (s *StudentPortalService) GetSchoolID(ctx context.Context, accountID string
 	return account.SchoolID, nil
 }
 
-// GetStudentByAccountID retrieves the student profile for a given account.
-func (s *StudentPortalService) GetStudentByAccountID(ctx context.Context, accountID string) (*domain.Student, error) {
+// GetStudentByAccountID 获取指定账号的学生档案。
+func (s *StudentPortalUsecase) GetStudentByAccountID(ctx context.Context, accountID string) (*roster.Student, error) {
 	return s.students.GetByAccountID(ctx, accountID)
 }
 
-// NewStudentPortalService constructs StudentPortalService.
-func NewStudentPortalService(
-	students repository.StudentRepository,
-	assignments repository.AssignmentRepository,
-	submissions repository.SubmissionRepository,
-	courses repository.CourseRepository,
-	chapters repository.CourseChapterRepository,
-	slots repository.CourseSlotRepository,
-	sessions repository.CourseSessionRepository,
-	teachers repository.TeacherRepository,
-	accounts repository.AccountRepository,
-	reminders repository.StudentReminderRepository,
-) *StudentPortalService {
-	return &StudentPortalService{
+// NewStudentPortalUsecase 构造 StudentPortalUsecase。
+func NewStudentPortalUsecase(
+	students roster.StudentRepository,
+	assignments coursework.AssignmentRepository,
+	submissions coursework.SubmissionRepository,
+	courses curriculum.CourseRepository,
+	chapters curriculum.CourseChapterRepository,
+	slots scheduling.CourseSlotRepository,
+	sessions scheduling.CourseSessionRepository,
+	teachers roster.TeacherRepository,
+	accounts identity.AccountRepository,
+	reminders roster.StudentReminderRepository,
+) *StudentPortalUsecase {
+	return &StudentPortalUsecase{
 		students:    students,
 		assignments: assignments,
 		submissions: submissions,
@@ -83,27 +87,27 @@ func NewStudentPortalService(
 	}
 }
 
-// StudentAssignmentItem represents homework/exam summary for dashboard.
+// StudentAssignmentItem 表示首页展示的作业/考试摘要。
 type StudentAssignmentItem struct {
-	ID            string                `json:"id"`
-	Title         string                `json:"title"`
-	Description   string                `json:"description"`
-	CourseID      string                `json:"course_id"`
-	CourseName    string                `json:"course_name"`
-	TeacherID     string                `json:"teacher_id"`
-	TeacherName   string                `json:"teacher_name"`
-	Type          domain.AssignmentType `json:"type"`
-	StartAt       *time.Time            `json:"start_at"`
-	DueAt         *time.Time            `json:"due_at"`
-	AllowResubmit bool                  `json:"allow_resubmit"`
-	Status        string                `json:"status"`
-	SubmittedAt   *time.Time            `json:"submitted_at"`
-	Score         *float64              `json:"score"`
-	Feedback      string                `json:"feedback"`
-	IsOverdue     bool                  `json:"is_overdue"`
+	ID            string                    `json:"id"`
+	Title         string                    `json:"title"`
+	Description   string                    `json:"description"`
+	CourseID      string                    `json:"course_id"`
+	CourseName    string                    `json:"course_name"`
+	TeacherID     string                    `json:"teacher_id"`
+	TeacherName   string                    `json:"teacher_name"`
+	Type          coursework.AssignmentType `json:"type"`
+	StartAt       *time.Time                `json:"start_at"`
+	DueAt         *time.Time                `json:"due_at"`
+	AllowResubmit bool                      `json:"allow_resubmit"`
+	Status        string                    `json:"status"`
+	SubmittedAt   *time.Time                `json:"submitted_at"`
+	Score         *float64                  `json:"score"`
+	Feedback      string                    `json:"feedback"`
+	IsOverdue     bool                      `json:"is_overdue"`
 }
 
-// StudentScheduleItem represents a single course session.
+// StudentScheduleItem 表示一次课次。
 type StudentScheduleItem struct {
 	SessionID   string    `json:"session_id"`
 	CourseID    string    `json:"course_id"`
@@ -119,7 +123,7 @@ type StudentScheduleItem struct {
 	Source      string    `json:"source"`
 }
 
-// AgendaItemKind enumerates agenda event types.
+// AgendaItemKind 枚举日程事件类型。
 type AgendaItemKind string
 
 const (
@@ -128,7 +132,7 @@ const (
 	AgendaItemKindExam       AgendaItemKind = "exam"
 )
 
-// StudentAgendaItem represents a merged schedule view.
+// StudentAgendaItem 表示合并后的日程视图。
 type StudentAgendaItem struct {
 	ID          string         `json:"id"`
 	Kind        AgendaItemKind `json:"kind"`
@@ -150,30 +154,30 @@ type StudentAgendaItem struct {
 	IsOverdue   bool           `json:"is_overdue"`
 }
 
-// CreateStudentReminderInput contains fields for creating custom reminders.
+// CreateStudentReminderInput 包含创建自定义提醒的字段。
 type CreateStudentReminderInput struct {
 	Title       string
 	Description string
 	TimeLabel   string
 	Route       string
-	Priority    domain.StudentReminderPriority
+	Priority    roster.StudentReminderPriority
 	Icon        string
 }
 
-// UpdateStudentReminderInput contains optional fields for reminder updates.
+// UpdateStudentReminderInput 包含更新提醒的可选字段。
 type UpdateStudentReminderInput struct {
 	Title       *string
 	Description *string
 	TimeLabel   *string
 	Route       *string
-	Priority    *domain.StudentReminderPriority
+	Priority    *roster.StudentReminderPriority
 	Icon        *string
 	Completed   *bool
 }
 
-// ListAssignments returns assignments for the student's class.
-// If courseID is provided, results will be filtered to that course.
-func (s *StudentPortalService) ListAssignments(ctx context.Context, accountID string, limit int, courseID string) ([]StudentAssignmentItem, error) {
+// ListAssignments 返回学生所在班级的作业。
+// 若提供了 courseID，则仅返回该课程的作业。
+func (s *StudentPortalUsecase) ListAssignments(ctx context.Context, accountID string, limit int, courseID string) ([]StudentAssignmentItem, error) {
 	student, err := s.students.GetByAccountID(ctx, accountID)
 	if err != nil {
 		return nil, err
@@ -192,7 +196,7 @@ func (s *StudentPortalService) ListAssignments(ctx context.Context, accountID st
 	}
 
 	if trimmed := strings.TrimSpace(courseID); trimmed != "" {
-		filtered := make([]domain.Assignment, 0, len(assignments))
+		filtered := make([]coursework.Assignment, 0, len(assignments))
 		for _, a := range assignments {
 			if a.CourseID == trimmed {
 				filtered = append(filtered, a)
@@ -204,7 +208,7 @@ func (s *StudentPortalService) ListAssignments(ctx context.Context, accountID st
 	return s.buildAssignmentItems(ctx, student.ID, assignments)
 }
 
-func (s *StudentPortalService) ensureStudentCourseAccess(ctx context.Context, studentID string, courseID string) error {
+func (s *StudentPortalUsecase) ensureStudentCourseAccess(ctx context.Context, studentID string, courseID string) error {
 	courses, err := s.courses.ListByStudentID(ctx, studentID)
 	if err != nil {
 		return err
@@ -217,8 +221,8 @@ func (s *StudentPortalService) ensureStudentCourseAccess(ctx context.Context, st
 	return ErrCourseAccessDenied
 }
 
-// ListCourseChapters lists chapters for a course the student is enrolled in.
-func (s *StudentPortalService) ListCourseChapters(ctx context.Context, accountID string, courseID string) ([]domain.CourseChapter, error) {
+// ListCourseChapters 列出学生所选课程的章节。
+func (s *StudentPortalUsecase) ListCourseChapters(ctx context.Context, accountID string, courseID string) ([]curriculum.CourseChapter, error) {
 	student, err := s.students.GetByAccountID(ctx, accountID)
 	if err != nil {
 		return nil, err
@@ -232,8 +236,8 @@ func (s *StudentPortalService) ListCourseChapters(ctx context.Context, accountID
 	return s.chapters.ListByCourse(ctx, courseID)
 }
 
-// GetCourseChapter returns a single chapter and its attached files.
-func (s *StudentPortalService) GetCourseChapter(ctx context.Context, accountID string, courseID string, chapterID string) (*domain.CourseChapter, []domain.File, error) {
+// GetCourseChapter 返回单个章节及其附件。
+func (s *StudentPortalUsecase) GetCourseChapter(ctx context.Context, accountID string, courseID string, chapterID string) (*curriculum.CourseChapter, []storage.File, error) {
 	student, err := s.students.GetByAccountID(ctx, accountID)
 	if err != nil {
 		return nil, nil, err
@@ -256,8 +260,8 @@ func (s *StudentPortalService) GetCourseChapter(ctx context.Context, accountID s
 	return chapter, files, nil
 }
 
-// ListExams returns exam-type assignments for the student's class.
-func (s *StudentPortalService) ListExams(ctx context.Context, accountID string, limit int) ([]StudentAssignmentItem, error) {
+// ListExams 返回学生所在班级的考试。
+func (s *StudentPortalUsecase) ListExams(ctx context.Context, accountID string, limit int) ([]StudentAssignmentItem, error) {
 	student, err := s.students.GetByAccountID(ctx, accountID)
 	if err != nil {
 		return nil, err
@@ -270,15 +274,15 @@ func (s *StudentPortalService) ListExams(ctx context.Context, accountID string, 
 		return []StudentAssignmentItem{}, nil
 	}
 
-	assignments, err := s.assignments.ListByClass(ctx, *student.ClassID, limit, []domain.AssignmentType{domain.AssignmentExam})
+	assignments, err := s.assignments.ListByClass(ctx, *student.ClassID, limit, []coursework.AssignmentType{coursework.AssignmentExam})
 	if err != nil {
 		return nil, err
 	}
 	return s.buildAssignmentItems(ctx, student.ID, assignments)
 }
 
-// ListSchedule returns course sessions for the student's class within the given window.
-func (s *StudentPortalService) ListSchedule(ctx context.Context, accountID string, start, end time.Time) ([]StudentScheduleItem, error) {
+// ListSchedule 返回学生所在班级在指定时间窗口内的课次。
+func (s *StudentPortalUsecase) ListSchedule(ctx context.Context, accountID string, start, end time.Time) ([]StudentScheduleItem, error) {
 	student, err := s.students.GetByAccountID(ctx, accountID)
 	if err != nil {
 		return nil, err
@@ -299,8 +303,8 @@ func (s *StudentPortalService) ListSchedule(ctx context.Context, accountID strin
 	return s.buildScheduleItems(ctx, sessions)
 }
 
-// ListAgenda returns merged lesson & assignment schedule within window.
-func (s *StudentPortalService) ListAgenda(ctx context.Context, accountID string, start, end time.Time, includeAssignments bool) ([]StudentAgendaItem, error) {
+// ListAgenda 返回指定时间窗口内合并后的课程与作业日程。
+func (s *StudentPortalUsecase) ListAgenda(ctx context.Context, accountID string, start, end time.Time, includeAssignments bool) ([]StudentAgendaItem, error) {
 	student, err := s.students.GetByAccountID(ctx, accountID)
 	if err != nil {
 		return nil, err
@@ -364,7 +368,7 @@ func (s *StudentPortalService) ListAgenda(ctx context.Context, accountID string,
 				endAt = assignment.DueAt
 			}
 			kind := AgendaItemKindAssignment
-			if assignment.Type == domain.AssignmentExam {
+			if assignment.Type == coursework.AssignmentExam {
 				kind = AgendaItemKindExam
 			}
 			agenda = append(agenda, StudentAgendaItem{
@@ -400,7 +404,7 @@ func (s *StudentPortalService) ListAgenda(ctx context.Context, accountID string,
 	return agenda, nil
 }
 
-func (s *StudentPortalService) buildScheduleItems(ctx context.Context, sessions []domain.CourseSession) ([]StudentScheduleItem, error) {
+func (s *StudentPortalUsecase) buildScheduleItems(ctx context.Context, sessions []scheduling.CourseSession) ([]StudentScheduleItem, error) {
 	if len(sessions) == 0 {
 		return []StudentScheduleItem{}, nil
 	}
@@ -452,7 +456,7 @@ func (s *StudentPortalService) buildScheduleItems(ctx context.Context, sessions 
 	return items, nil
 }
 
-func (s *StudentPortalService) buildAssignmentItems(ctx context.Context, studentID string, assignments []domain.Assignment) ([]StudentAssignmentItem, error) {
+func (s *StudentPortalUsecase) buildAssignmentItems(ctx context.Context, studentID string, assignments []coursework.Assignment) ([]StudentAssignmentItem, error) {
 	if len(assignments) == 0 {
 		return []StudentAssignmentItem{}, nil
 	}
@@ -470,7 +474,7 @@ func (s *StudentPortalService) buildAssignmentItems(ctx context.Context, student
 	if err != nil {
 		return nil, err
 	}
-	submissionMap := make(map[string]domain.AssignmentSubmission, len(submissions))
+	submissionMap := make(map[string]coursework.AssignmentSubmission, len(submissions))
 	for _, submission := range submissions {
 		submissionMap[submission.AssignmentID] = submission
 	}
@@ -545,7 +549,7 @@ func (s *StudentPortalService) buildAssignmentItems(ctx context.Context, student
 	return items, nil
 }
 
-func (s *StudentPortalService) loadCourseNames(ctx context.Context, courseIDs []string) (map[string]string, error) {
+func (s *StudentPortalUsecase) loadCourseNames(ctx context.Context, courseIDs []string) (map[string]string, error) {
 	result := make(map[string]string)
 	unique := uniqueStrings(courseIDs)
 	if len(unique) == 0 {
@@ -561,7 +565,7 @@ func (s *StudentPortalService) loadCourseNames(ctx context.Context, courseIDs []
 	return result, nil
 }
 
-func (s *StudentPortalService) loadTeacherNames(ctx context.Context, teacherIDs []string) (map[string]string, error) {
+func (s *StudentPortalUsecase) loadTeacherNames(ctx context.Context, teacherIDs []string) (map[string]string, error) {
 	result := make(map[string]string)
 	unique := uniqueStrings(teacherIDs)
 	if len(unique) == 0 {
@@ -598,7 +602,7 @@ func (s *StudentPortalService) loadTeacherNames(ctx context.Context, teacherIDs 
 	return result, nil
 }
 
-func (s *StudentPortalService) loadSlotNames(ctx context.Context, slotIDs []string) (map[string]string, error) {
+func (s *StudentPortalUsecase) loadSlotNames(ctx context.Context, slotIDs []string) (map[string]string, error) {
 	result := make(map[string]string)
 	unique := uniqueStrings(slotIDs)
 	if len(unique) == 0 {
@@ -614,7 +618,7 @@ func (s *StudentPortalService) loadSlotNames(ctx context.Context, slotIDs []stri
 	return result, nil
 }
 
-func collectCourseIDsFromSessions(sessions []domain.CourseSession) []string {
+func collectCourseIDsFromSessions(sessions []scheduling.CourseSession) []string {
 	ids := make([]string, 0, len(sessions))
 	for _, session := range sessions {
 		ids = append(ids, session.CourseID)
@@ -622,7 +626,7 @@ func collectCourseIDsFromSessions(sessions []domain.CourseSession) []string {
 	return ids
 }
 
-func collectTeacherIDsFromSessions(sessions []domain.CourseSession) []string {
+func collectTeacherIDsFromSessions(sessions []scheduling.CourseSession) []string {
 	ids := make([]string, 0, len(sessions))
 	for _, session := range sessions {
 		if session.TeacherID != nil {
@@ -632,7 +636,7 @@ func collectTeacherIDsFromSessions(sessions []domain.CourseSession) []string {
 	return ids
 }
 
-func collectSlotIDsFromSessions(sessions []domain.CourseSession) []string {
+func collectSlotIDsFromSessions(sessions []scheduling.CourseSession) []string {
 	ids := make([]string, 0, len(sessions))
 	for _, session := range sessions {
 		if session.SlotID != "" {
@@ -661,8 +665,8 @@ func uniqueStrings(values []string) []string {
 	return result
 }
 
-// ListCustomReminders returns custom reminders created by the student.
-func (s *StudentPortalService) ListCustomReminders(ctx context.Context, accountID string) ([]domain.StudentReminder, error) {
+// ListCustomReminders 返回学生创建的自定义提醒。
+func (s *StudentPortalUsecase) ListCustomReminders(ctx context.Context, accountID string) ([]roster.StudentReminder, error) {
 	student, err := s.currentStudent(ctx, accountID)
 	if err != nil {
 		return nil, err
@@ -670,8 +674,8 @@ func (s *StudentPortalService) ListCustomReminders(ctx context.Context, accountI
 	return s.reminders.ListByStudent(ctx, student.ID)
 }
 
-// CreateCustomReminder stores a new reminder for the student.
-func (s *StudentPortalService) CreateCustomReminder(ctx context.Context, accountID string, input CreateStudentReminderInput) (*domain.StudentReminder, error) {
+// CreateCustomReminder 为学生保存一条新提醒。
+func (s *StudentPortalUsecase) CreateCustomReminder(ctx context.Context, accountID string, input CreateStudentReminderInput) (*roster.StudentReminder, error) {
 	student, err := s.currentStudent(ctx, accountID)
 	if err != nil {
 		return nil, err
@@ -680,7 +684,7 @@ func (s *StudentPortalService) CreateCustomReminder(ctx context.Context, account
 	if err != nil {
 		return nil, err
 	}
-	reminder := &domain.StudentReminder{
+	reminder := &roster.StudentReminder{
 		ID:          uuid.NewString(),
 		StudentID:   student.ID,
 		Title:       title,
@@ -696,8 +700,8 @@ func (s *StudentPortalService) CreateCustomReminder(ctx context.Context, account
 	return reminder, nil
 }
 
-// UpdateCustomReminder updates mutable fields of a custom reminder.
-func (s *StudentPortalService) UpdateCustomReminder(ctx context.Context, accountID, reminderID string, input UpdateStudentReminderInput) (*domain.StudentReminder, error) {
+// UpdateCustomReminder 更新自定义提醒的可变字段。
+func (s *StudentPortalUsecase) UpdateCustomReminder(ctx context.Context, accountID, reminderID string, input UpdateStudentReminderInput) (*roster.StudentReminder, error) {
 	student, err := s.currentStudent(ctx, accountID)
 	if err != nil {
 		return nil, err
@@ -735,7 +739,7 @@ func (s *StudentPortalService) UpdateCustomReminder(ctx context.Context, account
 	if len(updates) == 0 {
 		reminder, err := s.reminders.GetByID(ctx, reminderID)
 		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
+			if errors.Is(err, domain.ErrNotFound) {
 				return nil, ErrStudentReminderNotFound
 			}
 			return nil, err
@@ -747,7 +751,7 @@ func (s *StudentPortalService) UpdateCustomReminder(ctx context.Context, account
 	}
 	updated, err := s.reminders.UpdateFields(ctx, reminderID, student.ID, updates)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if errors.Is(err, domain.ErrNotFound) {
 			return nil, ErrStudentReminderNotFound
 		}
 		return nil, err
@@ -755,14 +759,14 @@ func (s *StudentPortalService) UpdateCustomReminder(ctx context.Context, account
 	return updated, nil
 }
 
-// DeleteCustomReminder removes a reminder owned by the student.
-func (s *StudentPortalService) DeleteCustomReminder(ctx context.Context, accountID, reminderID string) error {
+// DeleteCustomReminder 删除学生拥有的提醒。
+func (s *StudentPortalUsecase) DeleteCustomReminder(ctx context.Context, accountID, reminderID string) error {
 	student, err := s.currentStudent(ctx, accountID)
 	if err != nil {
 		return err
 	}
 	if err := s.reminders.Delete(ctx, reminderID, student.ID); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if errors.Is(err, domain.ErrNotFound) {
 			return ErrStudentReminderNotFound
 		}
 		return err
@@ -770,13 +774,13 @@ func (s *StudentPortalService) DeleteCustomReminder(ctx context.Context, account
 	return nil
 }
 
-// MarkAllRemindersComplete marks all reminders as completed for the student.
-func (s *StudentPortalService) MarkAllRemindersComplete(ctx context.Context, accountID string) error {
+// MarkAllRemindersComplete 将学生的所有提醒标记为已完成。
+func (s *StudentPortalUsecase) MarkAllRemindersComplete(ctx context.Context, accountID string) error {
 	return s.SetAllRemindersCompletion(ctx, accountID, true)
 }
 
-// SetReminderCompletion toggles completion for a single reminder.
-func (s *StudentPortalService) SetReminderCompletion(ctx context.Context, accountID, reminderID string, completed bool) (*domain.StudentReminder, error) {
+// SetReminderCompletion 切换单条提醒的完成状态。
+func (s *StudentPortalUsecase) SetReminderCompletion(ctx context.Context, accountID, reminderID string, completed bool) (*roster.StudentReminder, error) {
 	student, err := s.currentStudent(ctx, accountID)
 	if err != nil {
 		return nil, err
@@ -788,7 +792,7 @@ func (s *StudentPortalService) SetReminderCompletion(ctx context.Context, accoun
 	}
 	updated, err := s.reminders.SetCompletion(ctx, reminderID, student.ID, completed, ts)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if errors.Is(err, domain.ErrNotFound) {
 			return nil, ErrStudentReminderNotFound
 		}
 		return nil, err
@@ -796,8 +800,8 @@ func (s *StudentPortalService) SetReminderCompletion(ctx context.Context, accoun
 	return updated, nil
 }
 
-// BatchSetReminderCompletion toggles completion for multiple reminders.
-func (s *StudentPortalService) BatchSetReminderCompletion(ctx context.Context, accountID string, reminderIDs []string, completed bool) error {
+// BatchSetReminderCompletion 批量切换多条提醒的完成状态。
+func (s *StudentPortalUsecase) BatchSetReminderCompletion(ctx context.Context, accountID string, reminderIDs []string, completed bool) error {
 	ids := uniqueStrings(reminderIDs)
 	if len(ids) == 0 {
 		return ErrStudentReminderInvalid
@@ -812,7 +816,7 @@ func (s *StudentPortalService) BatchSetReminderCompletion(ctx context.Context, a
 		ts = &now
 	}
 	if err := s.reminders.MarkBatchCompleted(ctx, student.ID, ids, completed, ts); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if errors.Is(err, domain.ErrNotFound) {
 			return ErrStudentReminderNotFound
 		}
 		return err
@@ -820,8 +824,8 @@ func (s *StudentPortalService) BatchSetReminderCompletion(ctx context.Context, a
 	return nil
 }
 
-// SetAllRemindersCompletion updates completion flag for all reminders.
-func (s *StudentPortalService) SetAllRemindersCompletion(ctx context.Context, accountID string, completed bool) error {
+// SetAllRemindersCompletion 更新所有提醒的完成状态。
+func (s *StudentPortalUsecase) SetAllRemindersCompletion(ctx context.Context, accountID string, completed bool) error {
 	student, err := s.currentStudent(ctx, accountID)
 	if err != nil {
 		return err
@@ -834,7 +838,7 @@ func (s *StudentPortalService) SetAllRemindersCompletion(ctx context.Context, ac
 	return s.reminders.MarkAllCompleted(ctx, student.ID, completed, ts)
 }
 
-func (s *StudentPortalService) currentStudent(ctx context.Context, accountID string) (*domain.Student, error) {
+func (s *StudentPortalUsecase) currentStudent(ctx context.Context, accountID string) (*roster.Student, error) {
 	student, err := s.students.GetByAccountID(ctx, accountID)
 	if err != nil {
 		return nil, err
@@ -873,12 +877,12 @@ func sanitizeReminderRoute(value string) string {
 	return trimmed
 }
 
-func normalizeReminderPriority(value domain.StudentReminderPriority) domain.StudentReminderPriority {
+func normalizeReminderPriority(value roster.StudentReminderPriority) roster.StudentReminderPriority {
 	switch value {
-	case domain.StudentReminderPriorityHigh:
-		return domain.StudentReminderPriorityHigh
+	case roster.StudentReminderPriorityHigh:
+		return roster.StudentReminderPriorityHigh
 	default:
-		return domain.StudentReminderPriorityNormal
+		return roster.StudentReminderPriorityNormal
 	}
 }
 
@@ -899,7 +903,7 @@ func sanitizeReminderIcon(value string) string {
 	return "alarm"
 }
 
-// GetStudentProfile exposes currentStudent for external use.
-func (s *StudentPortalService) GetStudentProfile(ctx context.Context, accountID string) (*domain.Student, error) {
+// GetStudentProfile 对外暴露 currentStudent。
+func (s *StudentPortalUsecase) GetStudentProfile(ctx context.Context, accountID string) (*roster.Student, error) {
 	return s.currentStudent(ctx, accountID)
 }

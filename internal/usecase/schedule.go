@@ -8,25 +8,27 @@ import (
 	"strings"
 	"time"
 
-	"learn-go/internal/domain"
-	"learn-go/internal/infra/repository"
+	"learn-go/internal/domain/curriculum"
+	"learn-go/internal/domain/organization"
+	"learn-go/internal/domain/roster"
+	"learn-go/internal/domain/scheduling"
 
 	"github.com/google/uuid"
 )
 
-type ScheduleService struct {
-	timeSlotRepo  repository.TimeSlotRepository
-	scheduleRepo  repository.CourseScheduleRepository
-	sessionRepo   repository.CourseSessionRepository
-	courseRepo    repository.CourseRepository
-	teacherRepo   repository.TeacherRepository
-	classroomRepo repository.ClassroomRepository
+type ScheduleUsecase struct {
+	timeSlotRepo  scheduling.TimeSlotRepository
+	scheduleRepo  scheduling.CourseScheduleRepository
+	sessionRepo   scheduling.CourseSessionRepository
+	courseRepo    curriculum.CourseRepository
+	teacherRepo   roster.TeacherRepository
+	classroomRepo organization.ClassroomRepository
 }
 
 var (
-	// ErrScheduleValidation indicates schedule input is invalid.
+	// ErrScheduleValidation 表示排课输入无效。
 	ErrScheduleValidation = errors.New("invalid schedule input")
-	// ErrScheduleConflict indicates schedule conflicts with existing resources.
+	// ErrScheduleConflict 表示排课与已有安排冲突。
 	ErrScheduleConflict = errors.New("schedule conflict")
 )
 
@@ -47,15 +49,15 @@ type scheduleValidationDetails struct {
 	Value  interface{} `json:"value,omitempty"`
 }
 
-func NewScheduleService(
-	timeSlotRepo repository.TimeSlotRepository,
-	scheduleRepo repository.CourseScheduleRepository,
-	sessionRepo repository.CourseSessionRepository,
-	courseRepo repository.CourseRepository,
-	teacherRepo repository.TeacherRepository,
-	classroomRepo repository.ClassroomRepository,
-) *ScheduleService {
-	return &ScheduleService{
+func NewScheduleUsecase(
+	timeSlotRepo scheduling.TimeSlotRepository,
+	scheduleRepo scheduling.CourseScheduleRepository,
+	sessionRepo scheduling.CourseSessionRepository,
+	courseRepo curriculum.CourseRepository,
+	teacherRepo roster.TeacherRepository,
+	classroomRepo organization.ClassroomRepository,
+) *ScheduleUsecase {
+	return &ScheduleUsecase{
 		timeSlotRepo:  timeSlotRepo,
 		scheduleRepo:  scheduleRepo,
 		sessionRepo:   sessionRepo,
@@ -65,10 +67,10 @@ func NewScheduleService(
 	}
 }
 
-// Time Slot Management
+// 节次管理
 
-func (s *ScheduleService) CreateTimeSlot(ctx context.Context, schoolID, name, startTime, endTime string) (*domain.TimeSlot, error) {
-	slot := &domain.TimeSlot{
+func (s *ScheduleUsecase) CreateTimeSlot(ctx context.Context, schoolID, name, startTime, endTime string) (*scheduling.TimeSlot, error) {
+	slot := &scheduling.TimeSlot{
 		ID:        uuid.New().String(),
 		SchoolID:  schoolID,
 		Name:      name,
@@ -83,13 +85,13 @@ func (s *ScheduleService) CreateTimeSlot(ctx context.Context, schoolID, name, st
 	return slot, nil
 }
 
-func (s *ScheduleService) ListTimeSlots(ctx context.Context, schoolID string) ([]domain.TimeSlot, error) {
+func (s *ScheduleUsecase) ListTimeSlots(ctx context.Context, schoolID string) ([]scheduling.TimeSlot, error) {
 	return s.timeSlotRepo.List(ctx, schoolID)
 }
 
-// Schedule Rule Management
+// 排课规则管理
 
-func (s *ScheduleService) CreateSchedule(ctx context.Context, schoolID, courseID, classID, teacherID, slotID string, dayOfWeek int, location string, classroomID *string, startDate, endDate time.Time) (*domain.CourseSchedule, error) {
+func (s *ScheduleUsecase) CreateSchedule(ctx context.Context, schoolID, courseID, classID, teacherID, slotID string, dayOfWeek int, location string, classroomID *string, startDate, endDate time.Time) (*scheduling.CourseSchedule, error) {
 	if dayOfWeek < 1 || dayOfWeek > 7 {
 		return nil, newScheduleValidationError("星期参数无效，应为 1 到 7", "day_of_week", "out_of_range", dayOfWeek)
 	}
@@ -100,7 +102,7 @@ func (s *ScheduleService) CreateSchedule(ctx context.Context, schoolID, courseID
 		})
 	}
 
-	// Validate slot exists and get times
+	// 校验节次存在并获取时间
 	slot, err := s.timeSlotRepo.FindByID(ctx, slotID)
 	if err != nil {
 		return nil, err
@@ -120,14 +122,14 @@ func (s *ScheduleService) CreateSchedule(ctx context.Context, schoolID, courseID
 	if err != nil {
 		return nil, err
 	}
-	slotMap := make(map[string]domain.TimeSlot, len(availableSlots))
+	slotMap := make(map[string]scheduling.TimeSlot, len(availableSlots))
 	for _, item := range availableSlots {
 		slotMap[item.ID] = item
 	}
 
-	// Validate classroom if provided
+	// 若提供了教室则进行校验
 	if classroomID != nil && *classroomID != "" {
-		// Check existence
+		// 检查是否存在
 		classroom, err := s.classroomRepo.GetByID(ctx, *classroomID)
 		if err != nil {
 			return nil, newScheduleValidationError("未找到对应教室", "classroom_id", "not_found", *classroomID)
@@ -140,7 +142,7 @@ func (s *ScheduleService) CreateSchedule(ctx context.Context, schoolID, courseID
 		}
 		location = classroom.Location
 
-		// Check conflict
+		// 检查冲突
 		existingSchedules, err := s.scheduleRepo.ListByClassroom(ctx, *classroomID)
 		if err != nil {
 			return nil, err
@@ -152,10 +154,10 @@ func (s *ScheduleService) CreateSchedule(ctx context.Context, schoolID, courseID
 
 	var tid *string
 	if teacherID != "" {
-		// Try as Profile ID first
+		// 先按档案 ID 查找
 		teacher, err := s.teacherRepo.GetByID(ctx, teacherID)
 		if err != nil || teacher == nil {
-			// Try as Account ID
+			// 再按账号 ID 查找
 			teacher, err = s.teacherRepo.GetByAccountID(ctx, teacherID)
 			if err != nil {
 				return nil, newScheduleValidationError("未找到对应教师", "teacher_id", "not_found", teacherID)
@@ -163,12 +165,12 @@ func (s *ScheduleService) CreateSchedule(ctx context.Context, schoolID, courseID
 			if teacher == nil {
 				return nil, newScheduleValidationError("未找到对应教师", "teacher_id", "not_found", teacherID)
 			}
-			// Use the resolved Profile ID
+			// 使用解析出的档案 ID
 			teacherID = teacher.ID
 		}
 		tid = &teacherID
 
-		// Check Teacher Conflict
+		// 检查教师冲突
 		existingSchedules, err := s.scheduleRepo.ListByTeacher(ctx, teacherID)
 		if err != nil {
 			return nil, err
@@ -178,7 +180,7 @@ func (s *ScheduleService) CreateSchedule(ctx context.Context, schoolID, courseID
 		}
 	}
 
-	// Check Class Conflict
+	// 检查班级冲突
 	if classID != "" {
 		existingSchedules, err := s.scheduleRepo.ListByClass(ctx, classID)
 		if err != nil {
@@ -211,7 +213,7 @@ func (s *ScheduleService) CreateSchedule(ctx context.Context, schoolID, courseID
 	}
 
 	now := time.Now()
-	schedule := &domain.CourseSchedule{
+	schedule := &scheduling.CourseSchedule{
 		ID:          uuid.New().String(),
 		SchoolID:    schoolID,
 		CourseID:    courseID,
@@ -243,7 +245,7 @@ func (s *ScheduleService) CreateSchedule(ctx context.Context, schoolID, courseID
 	return schedule, nil
 }
 
-func (s *ScheduleService) DeleteSchedule(ctx context.Context, id string) error {
+func (s *ScheduleUsecase) DeleteSchedule(ctx context.Context, id string) error {
 	schedule, err := s.scheduleRepo.GetByID(ctx, id)
 	if err != nil {
 		return err
@@ -259,17 +261,17 @@ func (s *ScheduleService) DeleteSchedule(ctx context.Context, id string) error {
 	return s.scheduleRepo.Delete(ctx, id)
 }
 
-func (s *ScheduleService) ListSchedules(ctx context.Context, schoolID string, courseID string) ([]domain.CourseScheduleDetail, error) {
+func (s *ScheduleUsecase) ListSchedules(ctx context.Context, schoolID string, courseID string) ([]scheduling.CourseScheduleDetail, error) {
 	return s.scheduleRepo.ListDetailsBySchool(ctx, schoolID, courseID)
 }
 
-func (s *ScheduleService) GetScheduleStats(ctx context.Context, schoolID string) (*domain.ScheduleStats, error) {
+func (s *ScheduleUsecase) GetScheduleStats(ctx context.Context, schoolID string) (*scheduling.ScheduleStats, error) {
 	stats, err := s.scheduleRepo.GetStats(ctx, schoolID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Get total courses count
+	// 获取课程总数
 	_, totalCourses, err := s.courseRepo.List(ctx, schoolID, 1, 1)
 	if err != nil {
 		return nil, err
@@ -283,9 +285,9 @@ func (s *ScheduleService) GetScheduleStats(ctx context.Context, schoolID string)
 	return stats, nil
 }
 
-// Session Generation
+// 课次生成
 
-func (s *ScheduleService) GenerateSessions(ctx context.Context, schoolID string, start, end time.Time) error {
+func (s *ScheduleUsecase) GenerateSessions(ctx context.Context, schoolID string, start, end time.Time) error {
 	if !start.Before(end) {
 		return newScheduleValidationError("生成范围开始时间必须早于结束时间", "date_range", "start_not_before_end", map[string]string{
 			"start": start.Format(time.RFC3339),
@@ -293,24 +295,24 @@ func (s *ScheduleService) GenerateSessions(ctx context.Context, schoolID string,
 		})
 	}
 
-	// 1. List all schedules for the school
+	// 1. 列出学校的所有排课规则
 	schedules, err := s.scheduleRepo.ListBySchool(ctx, schoolID)
 	if err != nil {
 		return err
 	}
 
-	// 2. Pre-fetch time slots
+	// 2. 预先加载节次
 	slots, err := s.timeSlotRepo.List(ctx, schoolID)
 	if err != nil {
 		return err
 	}
-	slotMap := make(map[string]domain.TimeSlot)
+	slotMap := make(map[string]scheduling.TimeSlot)
 	for _, slot := range slots {
 		slotMap[slot.ID] = slot
 	}
 
-	// 3. Iterate through days in range
-	// Use a fixed timezone (CST) for day calculation to ensure consistency with user expectations
+	// 3. 遍历范围内的每一天
+	// 使用固定时区（CST）计算日期，确保与用户预期一致
 	loc := time.FixedZone("CST", 8*3600)
 
 	for d := start; d.Before(end) || d.Equal(end); d = d.AddDate(0, 0, 1) {
@@ -334,7 +336,7 @@ func (s *ScheduleService) GenerateSessions(ctx context.Context, schoolID string,
 				continue
 			}
 
-			// Parse HH:MM
+			// 解析 HH:MM
 			startH, startM, err := parseTime(slot.StartTime)
 			if err != nil {
 				return newScheduleValidationError("时间段开始时间格式不正确", "start_time", "invalid_time_format", slot.StartTime)
@@ -344,11 +346,11 @@ func (s *ScheduleService) GenerateSessions(ctx context.Context, schoolID string,
 				return newScheduleValidationError("时间段结束时间格式不正确", "end_time", "invalid_time_format", slot.EndTime)
 			}
 
-			// Create session in the target timezone, then convert to UTC for storage
+			// 在目标时区创建课次，再转换为 UTC 存储
 			startsAt := time.Date(dInLoc.Year(), dInLoc.Month(), dInLoc.Day(), startH, startM, 0, 0, loc).UTC()
 			endsAt := time.Date(dInLoc.Year(), dInLoc.Month(), dInLoc.Day(), endH, endM, 0, 0, loc).UTC()
 
-			// Check if session already exists (to avoid duplicates)
+			// 检查课次是否已存在（避免重复）
 			exists, err := s.sessionRepo.Exists(ctx, sched.CourseID, sched.ClassID, sched.TeacherID, sched.SlotID, startsAt)
 			if err != nil {
 				return err
@@ -357,7 +359,7 @@ func (s *ScheduleService) GenerateSessions(ctx context.Context, schoolID string,
 				continue
 			}
 
-			session := &domain.CourseSession{
+			session := &scheduling.CourseSession{
 				ID:          uuid.New().String(),
 				CourseID:    sched.CourseID,
 				ClassID:     sched.ClassID,
@@ -398,8 +400,8 @@ func buildSessionsForSchedule(
 	location string,
 	startDate time.Time,
 	endDate time.Time,
-	slot domain.TimeSlot,
-) ([]domain.CourseSession, error) {
+	slot scheduling.TimeSlot,
+) ([]scheduling.CourseSession, error) {
 	startH, startM, err := parseTime(slot.StartTime)
 	if err != nil {
 		return nil, newScheduleValidationError("时间段开始时间格式不正确", "start_time", "invalid_time_format", slot.StartTime)
@@ -409,7 +411,7 @@ func buildSessionsForSchedule(
 		return nil, newScheduleValidationError("时间段结束时间格式不正确", "end_time", "invalid_time_format", slot.EndTime)
 	}
 
-	sessions := make([]domain.CourseSession, 0)
+	sessions := make([]scheduling.CourseSession, 0)
 	for d := startDate; d.Before(endDate) || d.Equal(endDate); d = d.AddDate(0, 0, 1) {
 		weekday := int(d.Weekday())
 		if weekday == 0 {
@@ -440,7 +442,7 @@ func buildSessionsForSchedule(
 			d.Location(),
 		)
 
-		sessions = append(sessions, domain.CourseSession{
+		sessions = append(sessions, scheduling.CourseSession{
 			CourseID:    courseID,
 			ClassID:     classID,
 			TeacherID:   teacherID,
@@ -456,9 +458,9 @@ func buildSessionsForSchedule(
 	return sessions, nil
 }
 
-// Teacher Adjustment
+// 教师调课
 
-func (s *ScheduleService) UpdateSession(ctx context.Context, sessionID string, newSlotID string, newDate time.Time, newLocation string) error {
+func (s *ScheduleUsecase) UpdateSession(ctx context.Context, sessionID string, newSlotID string, newDate time.Time, newLocation string) error {
 	session, err := s.sessionRepo.GetByID(ctx, sessionID)
 	if err != nil {
 		return err
@@ -467,7 +469,7 @@ func (s *ScheduleService) UpdateSession(ctx context.Context, sessionID string, n
 		return newScheduleValidationError("未找到对应课次", "session_id", "not_found", sessionID)
 	}
 
-	// Get new slot details
+	// 获取新节次详情
 	slot, err := s.timeSlotRepo.FindByID(ctx, newSlotID)
 	if err != nil {
 		return err
@@ -511,16 +513,16 @@ func (s *ScheduleService) UpdateSession(ctx context.Context, sessionID string, n
 	return s.sessionRepo.Update(ctx, session)
 }
 
-func (s *ScheduleService) ensureNoScheduleConflict(
+func (s *ScheduleUsecase) ensureNoScheduleConflict(
 	ctx context.Context,
 	scope string,
-	schedules []domain.CourseSchedule,
+	schedules []scheduling.CourseSchedule,
 	dayOfWeek int,
 	startDate time.Time,
 	endDate time.Time,
 	newStartMinute int,
 	newEndMinute int,
-	slotMap map[string]domain.TimeSlot,
+	slotMap map[string]scheduling.TimeSlot,
 ) error {
 	for _, sch := range schedules {
 		if sch.DayOfWeek != dayOfWeek {
@@ -582,7 +584,7 @@ func (s *ScheduleService) ensureNoScheduleConflict(
 	return nil
 }
 
-func (s *ScheduleService) ensureNoSessionConflict(ctx context.Context, session domain.CourseSession, excludeSessionID string) error {
+func (s *ScheduleUsecase) ensureNoSessionConflict(ctx context.Context, session scheduling.CourseSession, excludeSessionID string) error {
 	allSessions, err := s.sessionRepo.ListBetween(ctx, session.StartsAt, session.EndsAt)
 	if err != nil {
 		return err
@@ -651,7 +653,7 @@ func (s *ScheduleService) ensureNoSessionConflict(ctx context.Context, session d
 	return nil
 }
 
-func (s *ScheduleService) deleteGeneratedSessionsBySchedule(ctx context.Context, schedule domain.CourseSchedule) error {
+func (s *ScheduleUsecase) deleteGeneratedSessionsBySchedule(ctx context.Context, schedule scheduling.CourseSchedule) error {
 	loc := schedule.StartDate.Location()
 	startDate := dateAtLocation(schedule.StartDate, loc)
 	endDate := dateAtLocation(schedule.EndDate, loc)
@@ -710,22 +712,22 @@ func sameOptionalString(a, b *string) bool {
 	return *a == *b
 }
 
-func (s *ScheduleService) resolveSlot(ctx context.Context, slotID string, slotMap map[string]domain.TimeSlot) (domain.TimeSlot, error) {
+func (s *ScheduleUsecase) resolveSlot(ctx context.Context, slotID string, slotMap map[string]scheduling.TimeSlot) (scheduling.TimeSlot, error) {
 	if slot, ok := slotMap[slotID]; ok {
 		return slot, nil
 	}
 	resolved, err := s.timeSlotRepo.FindByID(ctx, slotID)
 	if err != nil {
-		return domain.TimeSlot{}, err
+		return scheduling.TimeSlot{}, err
 	}
 	if resolved == nil {
-		return domain.TimeSlot{}, newScheduleValidationError("未找到对应时间段", "slot_id", "not_found", slotID)
+		return scheduling.TimeSlot{}, newScheduleValidationError("未找到对应时间段", "slot_id", "not_found", slotID)
 	}
 	slotMap[slotID] = *resolved
 	return *resolved, nil
 }
 
-func slotRangeMinutes(slot domain.TimeSlot) (int, int, error) {
+func slotRangeMinutes(slot scheduling.TimeSlot) (int, int, error) {
 	startH, startM, err := parseTime(slot.StartTime)
 	if err != nil {
 		return 0, 0, newScheduleValidationError("时间段开始时间格式不正确", "start_time", "invalid_time_format", slot.StartTime)

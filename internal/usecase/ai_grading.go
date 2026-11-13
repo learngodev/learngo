@@ -11,52 +11,53 @@ import (
 	"github.com/google/uuid"
 
 	"learn-go/internal/domain"
-	"learn-go/internal/infra/repository"
+	"learn-go/internal/domain/aiagent"
+	"learn-go/internal/domain/identity"
 )
 
-// AIGradingService provides AI-powered assignment checking and grading.
-type AIGradingService struct {
-	settings repository.AIAgentSettingRepository
-	logs     repository.AIUsageLogRepository
+// AIGradingUsecase 提供基于 AI 的作业检查与批改。
+type AIGradingUsecase struct {
+	settings aiagent.AIAgentSettingRepository
+	logs     aiagent.AIUsageLogRepository
 	model    AIChatModel
 }
 
-// NewAIGradingService creates a new AIGradingService.
-func NewAIGradingService(
-	settings repository.AIAgentSettingRepository,
-	logs repository.AIUsageLogRepository,
+// NewAIGradingUsecase 创建 AIGradingUsecase。
+func NewAIGradingUsecase(
+	settings aiagent.AIAgentSettingRepository,
+	logs aiagent.AIUsageLogRepository,
 	model AIChatModel,
-) *AIGradingService {
-	return &AIGradingService{
+) *AIGradingUsecase {
+	return &AIGradingUsecase{
 		settings: settings,
 		logs:     logs,
 		model:    model,
 	}
 }
 
-// CheckAssignmentInput contains data for AI pre-check.
+// CheckAssignmentInput 包含 AI 提交前检查所需的数据。
 type CheckAssignmentInput struct {
 	SchoolID    string
 	AccountID   string
-	Role        domain.Role
+	Role        identity.Role
 	Title       string
 	Description string
 	Content     string
 }
 
-// CheckAssignmentResult contains AI feedback for students.
+// CheckAssignmentResult 包含给学生的 AI 反馈。
 type CheckAssignmentResult struct {
 	Issues      []string `json:"issues"`
 	Suggestions []string `json:"suggestions"`
 	Overall     string   `json:"overall"`
 }
 
-// ExplainQuestionInput contains data for AI question explanation.
-// It is intended to explain the question like a teacher, without providing the final answer.
+// ExplainQuestionInput 包含 AI 讲题所需的数据。
+// 用于像老师一样讲解题目，但不给出最终答案。
 type ExplainQuestionInput struct {
 	SchoolID     string
 	AccountID    string
-	Role         domain.Role
+	Role         identity.Role
 	Title        string
 	Prompt       string
 	QuestionType string
@@ -64,8 +65,8 @@ type ExplainQuestionInput struct {
 	ExtraContext string
 }
 
-// ExplainQuestionResult contains AI explanation for a question.
-// NOTE: It must not include the final answer.
+// ExplainQuestionResult 包含 AI 对题目的讲解。
+// 注意：不得包含最终答案。
 type ExplainQuestionResult struct {
 	Analysis  string   `json:"analysis"`
 	Steps     []string `json:"steps"`
@@ -74,10 +75,10 @@ type ExplainQuestionResult struct {
 	Checklist []string `json:"checklist"`
 }
 
-// GradeAssignmentInput contains data for AI grading.
+// GradeAssignmentInput 包含 AI 批改所需的数据。
 type GradeAssignmentInput struct {
 	AccountID   string
-	Role        domain.Role
+	Role        identity.Role
 	SchoolID    string
 	Title       string
 	Description string
@@ -85,7 +86,7 @@ type GradeAssignmentInput struct {
 	Rubrics     string
 }
 
-// GradeAssignmentResult contains AI grading results for teachers.
+// GradeAssignmentResult 包含给教师的 AI 批改结果。
 type GradeAssignmentResult struct {
 	Score       int      `json:"score"`
 	Summary     string   `json:"summary"`
@@ -93,8 +94,8 @@ type GradeAssignmentResult struct {
 	ItemScores  []int    `json:"item_scores"`
 }
 
-// CheckAssignment performs a pre-check on the assignment for students.
-func (s *AIGradingService) CheckAssignment(ctx context.Context, input CheckAssignmentInput) (*CheckAssignmentResult, error) {
+// CheckAssignment 为学生执行作业提交前检查。
+func (s *AIGradingUsecase) CheckAssignment(ctx context.Context, input CheckAssignmentInput) (*CheckAssignmentResult, error) {
 	setting, err := s.getAISetting(ctx, input.SchoolID)
 	if err != nil {
 		return nil, err
@@ -132,7 +133,7 @@ Please return the result in strict JSON format as follows (ensure all text field
 		return nil, err
 	}
 
-	_ = s.logs.Create(ctx, &domain.AIUsageLog{
+	_ = s.logs.Create(ctx, &aiagent.AIUsageLog{
 		ID:           uuid.NewString(),
 		SchoolID:     input.SchoolID,
 		AccountID:    input.AccountID,
@@ -153,8 +154,8 @@ Please return the result in strict JSON format as follows (ensure all text field
 	return &result, nil
 }
 
-// ExplainQuestion explains the question like a teacher (in Simplified Chinese), without giving the final answer.
-func (s *AIGradingService) ExplainQuestion(ctx context.Context, input ExplainQuestionInput) (*ExplainQuestionResult, error) {
+// ExplainQuestion 像老师一样（用简体中文）讲解题目，但不给出最终答案。
+func (s *AIGradingUsecase) ExplainQuestion(ctx context.Context, input ExplainQuestionInput) (*ExplainQuestionResult, error) {
 	setting, err := s.getAISetting(ctx, input.SchoolID)
 	if err != nil {
 		return nil, err
@@ -162,7 +163,7 @@ func (s *AIGradingService) ExplainQuestion(ctx context.Context, input ExplainQue
 
 	optionsText := "(none)"
 	if len(input.Options) > 0 {
-		// Keep options as plain lines; do not imply any correct option.
+		// 选项按普通行列出，不暗示任何正确选项。
 		optionsText = strings.Join(input.Options, "\n")
 	}
 
@@ -213,7 +214,7 @@ Return the result in STRICT JSON format, all fields in Chinese (Simplified):
 		return nil, err
 	}
 
-	_ = s.logs.Create(ctx, &domain.AIUsageLog{
+	_ = s.logs.Create(ctx, &aiagent.AIUsageLog{
 		ID:           uuid.NewString(),
 		SchoolID:     input.SchoolID,
 		AccountID:    input.AccountID,
@@ -234,8 +235,8 @@ Return the result in STRICT JSON format, all fields in Chinese (Simplified):
 	return &result, nil
 }
 
-// GradeAssignment performs AI grading for teachers.
-func (s *AIGradingService) GradeAssignment(ctx context.Context, input GradeAssignmentInput) (*GradeAssignmentResult, error) {
+// GradeAssignment 为教师执行 AI 批改。
+func (s *AIGradingUsecase) GradeAssignment(ctx context.Context, input GradeAssignmentInput) (*GradeAssignmentResult, error) {
 	setting, err := s.getAISetting(ctx, input.SchoolID)
 	if err != nil {
 		return nil, err
@@ -271,7 +272,7 @@ Please return the result in strict JSON format as follows (ensure all text field
 		return nil, err
 	}
 
-	_ = s.logs.Create(ctx, &domain.AIUsageLog{
+	_ = s.logs.Create(ctx, &aiagent.AIUsageLog{
 		ID:           uuid.NewString(),
 		SchoolID:     input.SchoolID,
 		AccountID:    input.AccountID,
@@ -292,32 +293,32 @@ Please return the result in strict JSON format as follows (ensure all text field
 	return &result, nil
 }
 
-// GenerateQuestionsInput contains parameters for AI question generation.
+// GenerateQuestionsInput 包含 AI 出题的参数。
 type GenerateQuestionsInput struct {
 	AccountID  string
-	Role       domain.Role
+	Role       identity.Role
 	SchoolID   string
 	Topic      string
 	Count      int
 	Difficulty string
 }
 
-// GeneratedQuestion represents a single question generated by AI.
+// GeneratedQuestion 表示 AI 生成的一道题目。
 type GeneratedQuestion struct {
-	Type    string   `json:"type"` // choice, essay
+	Type    string   `json:"type"` // choice（选择题）、essay（问答题）
 	Prompt  string   `json:"prompt"`
-	Options []string `json:"options"` // Only for choice
+	Options []string `json:"options"` // 仅选择题使用
 	Answer  string   `json:"answer"`
 	Score   float64  `json:"score"`
 }
 
-// GenerateQuestionsResult contains the list of generated questions.
+// GenerateQuestionsResult 包含生成的题目列表。
 type GenerateQuestionsResult struct {
 	Questions []GeneratedQuestion `json:"questions"`
 }
 
-// GenerateQuestions generates assignment questions based on a topic.
-func (s *AIGradingService) GenerateQuestions(ctx context.Context, input GenerateQuestionsInput) (*GenerateQuestionsResult, error) {
+// GenerateQuestions 根据主题生成作业题目。
+func (s *AIGradingUsecase) GenerateQuestions(ctx context.Context, input GenerateQuestionsInput) (*GenerateQuestionsResult, error) {
 	setting, err := s.getAISetting(ctx, input.SchoolID)
 	if err != nil {
 		return nil, err
@@ -357,7 +358,7 @@ Please return the result in strict JSON format as follows:
 		return nil, err
 	}
 
-	_ = s.logs.Create(ctx, &domain.AIUsageLog{
+	_ = s.logs.Create(ctx, &aiagent.AIUsageLog{
 		ID:           uuid.NewString(),
 		SchoolID:     input.SchoolID,
 		AccountID:    input.AccountID,
@@ -378,16 +379,16 @@ Please return the result in strict JSON format as follows:
 	return &result, nil
 }
 
-func (s *AIGradingService) getAISetting(ctx context.Context, schoolID string) (*domain.AIAgentSetting, error) {
-	// Try to find a setting for the school, or use a default/global one if your logic requires.
-	// For now, let's assume we fetch by SchoolID.
-	// If your system has a specific "Grading Agent" setting, you might query by a specific key or type.
-	// Here we just fetch the first available setting for the school or a default one.
+func (s *AIGradingUsecase) getAISetting(ctx context.Context, schoolID string) (*aiagent.AIAgentSetting, error) {
+	// 尝试查找该学校的配置，必要时使用默认/全局配置。
+	// 目前按 SchoolID 查询。
+	// 如果系统有专门的“批改 Agent”配置，可以按特定 key 或类型查询。
+	// 这里仅获取该学校第一条可用配置或默认配置。
 
-	// Note: You might need to adjust this query based on how you manage AI settings (e.g. by AgentType).
+	// 注意：可能需要根据 AI 配置的管理方式（如按 AgentType）调整此查询。
 	setting, err := s.settings.GetBySchoolID(ctx, schoolID)
 	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
+		if errors.Is(err, domain.ErrNotFound) {
 			return nil, ErrAISettingNotConfigured
 		}
 		return nil, err
@@ -395,7 +396,7 @@ func (s *AIGradingService) getAISetting(ctx context.Context, schoolID string) (*
 	return setting, nil
 }
 
-// cleanJSON helps strip markdown code blocks if the AI adds them.
+// cleanJSON 去除 AI 可能添加的 markdown 代码块标记。
 func cleanJSON(content string) string {
 	content = strings.TrimSpace(content)
 	if strings.HasPrefix(content, "```json") {

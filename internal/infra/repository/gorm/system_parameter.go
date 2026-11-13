@@ -5,33 +5,33 @@ import (
 	"time"
 
 	"learn-go/internal/domain"
-	"learn-go/internal/infra/repository"
+	"learn-go/internal/domain/system"
 
 	"gorm.io/gorm"
 )
 
-// SystemParameterStore implements SystemParameterRepository with GORM.
+// SystemParameterStore 基于 GORM 实现 system.SystemParameterRepository。
 type SystemParameterStore struct {
 	db *gorm.DB
 }
 
-// NewSystemParameterStore builds a SystemParameterStore.
+// NewSystemParameterStore 构造 SystemParameterStore。
 func NewSystemParameterStore(db *gorm.DB) *SystemParameterStore {
 	return &SystemParameterStore{db: db}
 }
 
-func (s *SystemParameterStore) EnsureDefaults(ctx context.Context, schoolID string, defaults []domain.SystemParameter) error {
+func (s *SystemParameterStore) EnsureDefaults(ctx context.Context, schoolID string, defaults []system.SystemParameter) error {
 	if len(defaults) == 0 {
 		return nil
 	}
 	var count int64
-	if err := s.db.WithContext(ctx).Model(&domain.SystemParameter{}).Where("school_id = ?", schoolID).Count(&count).Error; err != nil {
+	if err := s.db.WithContext(ctx).Model(&system.SystemParameter{}).Where("school_id = ?", schoolID).Count(&count).Error; err != nil {
 		return err
 	}
 	if count > 0 {
 		return nil
 	}
-	batch := make([]domain.SystemParameter, len(defaults))
+	batch := make([]system.SystemParameter, len(defaults))
 	now := time.Now()
 	for i := range defaults {
 		batch[i] = defaults[i]
@@ -46,8 +46,8 @@ func (s *SystemParameterStore) EnsureDefaults(ctx context.Context, schoolID stri
 	return s.db.WithContext(ctx).Create(&batch).Error
 }
 
-func (s *SystemParameterStore) List(ctx context.Context, schoolID string) ([]domain.SystemParameter, error) {
-	var params []domain.SystemParameter
+func (s *SystemParameterStore) List(ctx context.Context, schoolID string) ([]system.SystemParameter, error) {
+	var params []system.SystemParameter
 	err := s.db.WithContext(ctx).
 		Where("school_id = ?", schoolID).
 		Order("sort_order ASC, created_at ASC").
@@ -55,34 +55,34 @@ func (s *SystemParameterStore) List(ctx context.Context, schoolID string) ([]dom
 	return params, err
 }
 
-func (s *SystemParameterStore) Get(ctx context.Context, schoolID, id string) (*domain.SystemParameter, error) {
-	var param domain.SystemParameter
+func (s *SystemParameterStore) Get(ctx context.Context, schoolID, id string) (*system.SystemParameter, error) {
+	var param system.SystemParameter
 	if err := s.db.WithContext(ctx).Where("school_id = ? AND id = ?", schoolID, id).First(&param).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
-			return nil, repository.ErrNotFound
+			return nil, domain.ErrNotFound
 		}
 		return nil, err
 	}
 	return &param, nil
 }
 
-func (s *SystemParameterStore) UpdateFields(ctx context.Context, schoolID, id string, updates map[string]any) (*domain.SystemParameter, error) {
+func (s *SystemParameterStore) UpdateFields(ctx context.Context, schoolID, id string, updates map[string]any) (*system.SystemParameter, error) {
 	if updates == nil {
 		updates = map[string]any{}
 	}
 	updates["updated_at"] = time.Now()
 
 	result := s.db.WithContext(ctx).
-		Model(&domain.SystemParameter{}).
+		Model(&system.SystemParameter{}).
 		Where("school_id = ? AND id = ?", schoolID, id).
 		Updates(updates)
 	if result.Error != nil {
 		return nil, result.Error
 	}
 	if result.RowsAffected == 0 {
-		return nil, repository.ErrNotFound
+		return nil, domain.ErrNotFound
 	}
 	return s.Get(ctx, schoolID, id)
 }
 
-var _ repository.SystemParameterRepository = (*SystemParameterStore)(nil)
+var _ system.SystemParameterRepository = (*SystemParameterStore)(nil)

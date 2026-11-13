@@ -7,30 +7,28 @@ import (
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-
 	"learn-go/internal/interface/grpcmapper"
 	"learn-go/internal/interface/grpcpb"
 	"learn-go/internal/interface/imstream"
-	"learn-go/internal/infra/realtime"
 	"learn-go/internal/usecase"
 )
 
 const conversationHistoryLimit = 50
 
-// ConversationServer implements the gRPC conversation streaming usecase.
+// ConversationServer 实现 gRPC 会话流服务。
 type ConversationServer struct {
 	grpcpb.UnimplementedConversationServiceServer
 
-	conversations *usecase.ConversationService
-	hub           *realtime.Hub
+	conversations *usecase.ConversationUsecase
+	hub           *imstream.Hub
 }
 
-// NewConversationServer constructs a ConversationServer.
-func NewConversationServer(conversations *usecase.ConversationService, hub *realtime.Hub) *ConversationServer {
+// NewConversationServer 构造 ConversationServer。
+func NewConversationServer(conversations *usecase.ConversationUsecase, hub *imstream.Hub) *ConversationServer {
 	return &ConversationServer{conversations: conversations, hub: hub}
 }
 
-// Subscribe handles server-streaming conversation subscriptions (web-friendly).
+// Subscribe 处理服务端流式的会话订阅（对 Web 友好）。
 func (s *ConversationServer) Subscribe(req *grpcpb.JoinConversation, stream grpcpb.ConversationService_SubscribeServer) error {
 	ctx := stream.Context()
 	accountID, ok := AccountIDFromContext(ctx)
@@ -67,7 +65,7 @@ func (s *ConversationServer) Subscribe(req *grpcpb.JoinConversation, stream grpc
 		}
 	}
 
-	client := realtime.NewStreamClient(conversationID)
+	client := imstream.NewStreamClient(conversationID)
 	s.hub.Register(client)
 	defer s.hub.Unregister(client)
 
@@ -96,9 +94,9 @@ func (s *ConversationServer) Subscribe(req *grpcpb.JoinConversation, stream grpc
 	}
 }
 
-// SubscribeInbox streams conversation events across all conversations for the authenticated user.
-// This allows clients (especially web via gRPC-Web) to keep the conversation list and unread
-// badges updated with a single streaming RPC.
+// SubscribeInbox 推送当前认证用户所有会话中的事件。
+// 这样客户端（尤其是通过 gRPC-Web 接入的 Web 端）只需一个流式 RPC，
+// 即可保持会话列表和未读角标的实时更新。
 func (s *ConversationServer) SubscribeInbox(_ *grpcpb.JoinConversation, stream grpcpb.ConversationService_SubscribeInboxServer) error {
 	ctx := stream.Context()
 	accountID, ok := AccountIDFromContext(ctx)
@@ -112,7 +110,7 @@ func (s *ConversationServer) SubscribeInbox(_ *grpcpb.JoinConversation, stream g
 	}
 
 	merged := make(chan *grpcpb.ConversationStreamResponse, 64)
-	clients := make([]*realtime.StreamClient, 0, len(summaries))
+	clients := make([]*imstream.StreamClient, 0, len(summaries))
 
 	for _, summary := range summaries {
 		conversationID := summary.Conversation.ID
@@ -120,11 +118,11 @@ func (s *ConversationServer) SubscribeInbox(_ *grpcpb.JoinConversation, stream g
 			continue
 		}
 
-		client := realtime.NewStreamClient(conversationID)
+		client := imstream.NewStreamClient(conversationID)
 		s.hub.Register(client)
 		clients = append(clients, client)
 
-		go func(c *realtime.StreamClient) {
+		go func(c *imstream.StreamClient) {
 			for {
 				select {
 				case <-ctx.Done():
@@ -164,7 +162,7 @@ func (s *ConversationServer) SubscribeInbox(_ *grpcpb.JoinConversation, stream g
 	}
 }
 
-// Stream handles bidirectional conversation streams.
+// Stream 处理会话双向流。
 func (s *ConversationServer) Stream(stream grpcpb.ConversationService_StreamServer) error {
 	ctx := stream.Context()
 	accountID, ok := AccountIDFromContext(ctx)

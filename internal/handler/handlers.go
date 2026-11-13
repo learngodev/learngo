@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"learn-go/internal/domain"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -16,45 +17,50 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
-	"gorm.io/gorm"
 
-	"learn-go/internal/domain"
-	"learn-go/internal/infra/realtime"
+	"learn-go/internal/domain/aiagent"
+	"learn-go/internal/domain/coursework"
+	"learn-go/internal/domain/identity"
+	"learn-go/internal/domain/messaging"
+	"learn-go/internal/domain/notebook"
+	"learn-go/internal/domain/roster"
+	"learn-go/internal/domain/storage"
 	"learn-go/internal/interface/grpcmapper"
 	"learn-go/internal/interface/grpcpb"
+	"learn-go/internal/interface/imstream"
 	"learn-go/internal/usecase"
 	"learn-go/pkg/middleware"
 	"learn-go/pkg/response"
 )
 
-// Handler aggregates dependencies for HTTP handlers.
+// Handler 聚合 HTTP 处理器所需的依赖。
 type Handler struct {
 	jwtSecret       string
-	auth            *usecase.AuthService
-	admin           *usecase.AdminService
-	assignments     *usecase.AssignmentService
-	teacher         *usecase.TeacherPortalService
-	student         *usecase.StudentPortalService
-	notes           *usecase.NoteService
-	noteComments    *usecase.NoteCommentService
-	conversations   *usecase.ConversationService
-	oss             *usecase.AdminOssService
-	system          *usecase.AdminSystemService
-	aiSettings      *usecase.AISettingsService
-	aiGrading       *usecase.AIGradingService
-	school          *usecase.SchoolService
-	courseService   *usecase.CourseService
-	schedule        *usecase.ScheduleService
-	classroom       *usecase.ClassroomService
-	fileService     *usecase.FileService
-	notifications   *usecase.NotificationService
-	resourceService *usecase.ResourceService
-	streamHub       *realtime.Hub
+	auth            *usecase.AuthUsecase
+	admin           *usecase.AdminUsecase
+	assignments     *usecase.AssignmentUsecase
+	teacher         *usecase.TeacherPortalUsecase
+	student         *usecase.StudentPortalUsecase
+	notes           *usecase.NoteUsecase
+	noteComments    *usecase.NoteCommentUsecase
+	conversations   *usecase.ConversationUsecase
+	oss             *usecase.AdminOssUsecase
+	system          *usecase.AdminSystemUsecase
+	aiSettings      *usecase.AISettingsUsecase
+	aiGrading       *usecase.AIGradingUsecase
+	school          *usecase.SchoolUsecase
+	courseUsecase   *usecase.CourseUsecase
+	schedule        *usecase.ScheduleUsecase
+	classroom       *usecase.ClassroomUsecase
+	fileUsecase     *usecase.FileUsecase
+	notifications   *usecase.NotificationUsecase
+	resourceUsecase *usecase.ResourceUsecase
+	streamHub       *imstream.Hub
 	validate        *validator.Validate
 }
 
-// NewHandler constructs a Handler instance.
-func NewHandler(jwtSecret string, auth *usecase.AuthService, admin *usecase.AdminService, assignments *usecase.AssignmentService, teacher *usecase.TeacherPortalService, student *usecase.StudentPortalService, conversations *usecase.ConversationService, notes *usecase.NoteService, noteComments *usecase.NoteCommentService, oss *usecase.AdminOssService, system *usecase.AdminSystemService, aiSettings *usecase.AISettingsService, aiGrading *usecase.AIGradingService, school *usecase.SchoolService, courseService *usecase.CourseService, schedule *usecase.ScheduleService, classroom *usecase.ClassroomService, fileService *usecase.FileService, notifications *usecase.NotificationService, streamHub *realtime.Hub, resourceService *usecase.ResourceService) *Handler {
+// NewHandler 构造一个 Handler 实例。
+func NewHandler(jwtSecret string, auth *usecase.AuthUsecase, admin *usecase.AdminUsecase, assignments *usecase.AssignmentUsecase, teacher *usecase.TeacherPortalUsecase, student *usecase.StudentPortalUsecase, conversations *usecase.ConversationUsecase, notes *usecase.NoteUsecase, noteComments *usecase.NoteCommentUsecase, oss *usecase.AdminOssUsecase, system *usecase.AdminSystemUsecase, aiSettings *usecase.AISettingsUsecase, aiGrading *usecase.AIGradingUsecase, school *usecase.SchoolUsecase, courseUsecase *usecase.CourseUsecase, schedule *usecase.ScheduleUsecase, classroom *usecase.ClassroomUsecase, fileUsecase *usecase.FileUsecase, notifications *usecase.NotificationUsecase, streamHub *imstream.Hub, resourceUsecase *usecase.ResourceUsecase) *Handler {
 	return &Handler{
 		jwtSecret:       jwtSecret,
 		auth:            auth,
@@ -70,12 +76,12 @@ func NewHandler(jwtSecret string, auth *usecase.AuthService, admin *usecase.Admi
 		aiSettings:      aiSettings,
 		aiGrading:       aiGrading,
 		school:          school,
-		courseService:   courseService,
+		courseUsecase:   courseUsecase,
 		schedule:        schedule,
 		classroom:       classroom,
-		fileService:     fileService,
+		fileUsecase:     fileUsecase,
 		notifications:   notifications,
-		resourceService: resourceService,
+		resourceUsecase: resourceUsecase,
 		streamHub:       streamHub,
 		validate:        validator.New(),
 	}
@@ -321,14 +327,14 @@ func (h *Handler) ListAccounts(c *gin.Context) {
 	}
 
 	roleParam := strings.ToLower(strings.TrimSpace(c.DefaultQuery("role", "all")))
-	var role domain.Role
+	var role identity.Role
 	switch roleParam {
 	case "", "all":
 		role = ""
 	case "teacher", "teachers":
-		role = domain.RoleTeacher
+		role = identity.RoleTeacher
 	case "student", "students":
-		role = domain.RoleStudent
+		role = identity.RoleStudent
 	default:
 		response.Error(c, http.StatusBadRequest, "invalid role", roleParam)
 		return
@@ -346,16 +352,16 @@ func (h *Handler) ListAccounts(c *gin.Context) {
 	query := strings.TrimSpace(c.Query("query"))
 
 	statusParam := strings.ToLower(strings.TrimSpace(c.Query("status")))
-	var status domain.AccountStatus
+	var status identity.AccountStatus
 	switch statusParam {
 	case "", "all":
 		status = ""
-	case string(domain.AccountStatusActive):
-		status = domain.AccountStatusActive
-	case string(domain.AccountStatusLocked):
-		status = domain.AccountStatusLocked
-	case string(domain.AccountStatusPasswordResetRequired):
-		status = domain.AccountStatusPasswordResetRequired
+	case string(identity.AccountStatusActive):
+		status = identity.AccountStatusActive
+	case string(identity.AccountStatusLocked):
+		status = identity.AccountStatusLocked
+	case string(identity.AccountStatusPasswordResetRequired):
+		status = identity.AccountStatusPasswordResetRequired
 	default:
 		response.Error(c, http.StatusBadRequest, response.CodeInvalidStatus, statusParam)
 		return
@@ -536,7 +542,7 @@ func (h *Handler) ResetAccountPassword(c *gin.Context) {
 
 	response.Success(c, http.StatusOK, gin.H{
 		"account_id": accountID,
-		"status":     domain.AccountStatusPasswordResetRequired,
+		"status":     identity.AccountStatusPasswordResetRequired,
 	})
 }
 
@@ -642,7 +648,7 @@ func (h *Handler) LockAccount(c *gin.Context) {
 
 	response.Success(c, http.StatusOK, gin.H{
 		"account_id": accountID,
-		"status":     domain.AccountStatusLocked,
+		"status":     identity.AccountStatusLocked,
 	})
 }
 
@@ -670,7 +676,7 @@ func (h *Handler) UnlockAccount(c *gin.Context) {
 
 	response.Success(c, http.StatusOK, gin.H{
 		"account_id": accountID,
-		"status":     domain.AccountStatusActive,
+		"status":     identity.AccountStatusActive,
 	})
 }
 
@@ -748,7 +754,7 @@ type adminAIExecuteRequest struct {
 	Operations []usecase.AIOperation `json:"operations" validate:"required"`
 }
 
-// AdminAIAnalyze handles AI analysis of batch operations.
+// AdminAIAnalyze 处理批量操作的 AI 分析请求。
 func (h *Handler) AdminAIAnalyze(c *gin.Context) {
 	var req adminAIBatchRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -775,7 +781,7 @@ func (h *Handler) AdminAIAnalyze(c *gin.Context) {
 	response.Success(c, http.StatusOK, aiResp)
 }
 
-// AdminAIExecute handles execution of AI batch operations.
+// AdminAIExecute 处理 AI 批量操作的执行请求。
 func (h *Handler) AdminAIExecute(c *gin.Context) {
 	var req adminAIExecuteRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -874,7 +880,7 @@ func (h *Handler) UpdateAIAgentSetting(c *gin.Context) {
 
 	setting, err := h.aiSettings.UpdateSetting(c.Request.Context(), usecase.UpdateAIAgentSettingInput{
 		SchoolID:                strings.TrimSpace(req.SchoolID),
-		Provider:                domain.AIProvider(strings.TrimSpace(strings.ToLower(req.Provider))),
+		Provider:                aiagent.AIProvider(strings.TrimSpace(strings.ToLower(req.Provider))),
 		Model:                   strings.TrimSpace(req.Model),
 		APIKey:                  strings.TrimSpace(req.APIKey),
 		BaseURL:                 strings.TrimSpace(req.BaseURL),
@@ -1100,7 +1106,7 @@ func (h *Handler) DeleteOssCredential(c *gin.Context) {
 		switch {
 		case errors.Is(err, usecase.ErrOssPrimaryCredentialDeletion):
 			h.respondServiceError(c, err, http.StatusBadRequest, "unable to delete credential")
-		case errors.Is(err, gorm.ErrRecordNotFound):
+		case errors.Is(err, domain.ErrNotFound):
 			h.respondServiceError(c, err, http.StatusNotFound, "credential not found")
 		default:
 			h.respondServiceError(c, err, http.StatusInternalServerError, "unable to delete credential")
@@ -1123,14 +1129,14 @@ func (h *Handler) CreateOssPolicy(c *gin.Context) {
 	}
 
 	statusValue := strings.ToLower(strings.TrimSpace(req.Status))
-	var status domain.OssPolicyStatus
+	var status storage.OssPolicyStatus
 	switch statusValue {
-	case "", string(domain.OssPolicyStatusEnabled):
-		status = domain.OssPolicyStatusEnabled
-	case string(domain.OssPolicyStatusReadOnly), "readonly":
-		status = domain.OssPolicyStatusReadOnly
-	case string(domain.OssPolicyStatusDisabled):
-		status = domain.OssPolicyStatusDisabled
+	case "", string(storage.OssPolicyStatusEnabled):
+		status = storage.OssPolicyStatusEnabled
+	case string(storage.OssPolicyStatusReadOnly), "readonly":
+		status = storage.OssPolicyStatusReadOnly
+	case string(storage.OssPolicyStatusDisabled):
+		status = storage.OssPolicyStatusDisabled
 	default:
 		response.Error(c, http.StatusBadRequest, response.CodeInvalidStatus, statusValue)
 		return
@@ -1180,7 +1186,7 @@ func (h *Handler) DeleteOssPolicy(c *gin.Context) {
 
 	operatorID := c.GetString(middleware.ContextAccountID)
 	if err := h.oss.DeletePolicy(c.Request.Context(), schoolID, policyID, operatorID); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if errors.Is(err, domain.ErrNotFound) {
 			h.respondServiceError(c, err, http.StatusNotFound, "policy not found")
 		} else {
 			h.respondServiceError(c, err, http.StatusInternalServerError, "unable to delete policy")
@@ -1286,14 +1292,14 @@ func (h *Handler) UpdateOssPolicy(c *gin.Context) {
 	}
 
 	statusValue := strings.ToLower(strings.TrimSpace(req.Status))
-	var status domain.OssPolicyStatus
+	var status storage.OssPolicyStatus
 	switch statusValue {
-	case string(domain.OssPolicyStatusEnabled):
-		status = domain.OssPolicyStatusEnabled
-	case string(domain.OssPolicyStatusReadOnly), "readonly":
-		status = domain.OssPolicyStatusReadOnly
-	case string(domain.OssPolicyStatusDisabled):
-		status = domain.OssPolicyStatusDisabled
+	case string(storage.OssPolicyStatusEnabled):
+		status = storage.OssPolicyStatusEnabled
+	case string(storage.OssPolicyStatusReadOnly), "readonly":
+		status = storage.OssPolicyStatusReadOnly
+	case string(storage.OssPolicyStatusDisabled):
+		status = storage.OssPolicyStatusDisabled
 	default:
 		response.Error(c, http.StatusBadRequest, response.CodeInvalidStatus, statusValue)
 		return
@@ -1941,13 +1947,13 @@ func (h *Handler) ListStudentSchedule(c *gin.Context) {
 		return
 	}
 
-	// If no sessions found, try to generate them for the requested range
+	// 若未找到课次，则尝试为请求的时间范围生成课次
 	if len(items) == 0 {
 		schoolID, err := h.student.GetSchoolID(c.Request.Context(), accountID)
 		if err == nil && schoolID != "" {
-			// Generate sessions (ignoring error to avoid blocking response)
+			// 生成课次（忽略错误，避免阻塞响应）
 			if err := h.schedule.GenerateSessions(c.Request.Context(), schoolID, start, end); err == nil {
-				// Fetch again
+				// 重新查询
 				items, _ = h.student.ListSchedule(c.Request.Context(), accountID, start, end)
 			}
 		}
@@ -2334,13 +2340,13 @@ func (h *Handler) ListTeacherSchedule(c *gin.Context) {
 		return
 	}
 
-	// If no sessions found, try to generate them for the requested range
+	// 若未找到课次，则尝试为请求的时间范围生成课次
 	if len(items) == 0 {
 		schoolID, err := h.teacher.GetSchoolID(c.Request.Context(), accountID)
 		if err == nil && schoolID != "" {
-			// Generate sessions (ignoring error to avoid blocking response)
+			// 生成课次（忽略错误，避免阻塞响应）
 			if err := h.schedule.GenerateSessions(c.Request.Context(), schoolID, start, end); err == nil {
-				// Fetch again
+				// 重新查询
 				items, _ = h.teacher.ListSchedule(c.Request.Context(), accountID, start, end)
 			}
 		}
@@ -2734,9 +2740,9 @@ type createConversationRequest struct {
 }
 
 type conversationCandidate struct {
-	ID          string      `json:"id"`
-	DisplayName string      `json:"display_name"`
-	Role        domain.Role `json:"role"`
+	ID          string        `json:"id"`
+	DisplayName string        `json:"display_name"`
+	Role        identity.Role `json:"role"`
 }
 
 type sendMessageRequest struct {
@@ -2957,22 +2963,22 @@ func parseScheduleRange(fromRaw, toRaw string) (time.Time, time.Time, error) {
 	return start, end, nil
 }
 
-func parseAssignmentTypes(raw string) []domain.AssignmentType {
+func parseAssignmentTypes(raw string) []coursework.AssignmentType {
 	if raw == "" {
 		return nil
 	}
 	parts := strings.Split(raw, ",")
-	result := make([]domain.AssignmentType, 0, len(parts))
+	result := make([]coursework.AssignmentType, 0, len(parts))
 	for _, part := range parts {
 		part = strings.TrimSpace(part)
 		if part == "" {
 			continue
 		}
 		switch strings.ToLower(part) {
-		case string(domain.AssignmentHomework):
-			result = append(result, domain.AssignmentHomework)
-		case string(domain.AssignmentExam):
-			result = append(result, domain.AssignmentExam)
+		case string(coursework.AssignmentHomework):
+			result = append(result, coursework.AssignmentHomework)
+		case string(coursework.AssignmentExam):
+			result = append(result, coursework.AssignmentExam)
 		}
 	}
 	if len(result) == 0 {
@@ -2981,7 +2987,7 @@ func parseAssignmentTypes(raw string) []domain.AssignmentType {
 	return result
 }
 
-func studentReminderPayload(item domain.StudentReminder) gin.H {
+func studentReminderPayload(item roster.StudentReminder) gin.H {
 	payload := gin.H{
 		"id":           item.ID,
 		"title":        item.Title,
@@ -2998,12 +3004,12 @@ func studentReminderPayload(item domain.StudentReminder) gin.H {
 	return payload
 }
 
-func parseReminderPriority(raw string) domain.StudentReminderPriority {
+func parseReminderPriority(raw string) roster.StudentReminderPriority {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
-	case string(domain.StudentReminderPriorityHigh):
-		return domain.StudentReminderPriorityHigh
+	case string(roster.StudentReminderPriorityHigh):
+		return roster.StudentReminderPriorityHigh
 	default:
-		return domain.StudentReminderPriorityNormal
+		return roster.StudentReminderPriorityNormal
 	}
 }
 
@@ -3479,19 +3485,19 @@ func (h *Handler) SearchConversationCandidates(c *gin.Context) {
 	}
 
 	roleParam := strings.ToLower(strings.TrimSpace(c.Query("role")))
-	var role domain.Role
+	var role identity.Role
 	switch roleParam {
 	case "teacher":
-		role = domain.RoleTeacher
+		role = identity.RoleTeacher
 	case "student":
-		role = domain.RoleStudent
+		role = identity.RoleStudent
 	}
 
 	accounts, _, err := h.admin.ListAccounts(c.Request.Context(), usecase.ListAccountsOptions{
 		SchoolID: account.SchoolID,
 		Query:    query,
 		Role:     role,
-		Status:   domain.AccountStatusActive,
+		Status:   identity.AccountStatusActive,
 		Page:     1,
 		Size:     limit,
 	})
@@ -3691,7 +3697,7 @@ func (h *Handler) MarkConversationRead(c *gin.Context) {
 	})
 }
 
-func assignmentPayload(assignment domain.Assignment, questions []domain.AssignmentQuestion, files []domain.File) gin.H {
+func assignmentPayload(assignment coursework.Assignment, questions []coursework.AssignmentQuestion, files []storage.File) gin.H {
 	questionsPayload := make([]gin.H, 0, len(questions))
 	for _, q := range questions {
 		questionsPayload = append(questionsPayload, assignmentQuestionPayload(q))
@@ -3716,7 +3722,7 @@ func assignmentPayload(assignment domain.Assignment, questions []domain.Assignme
 	}
 }
 
-func assignmentQuestionPayload(q domain.AssignmentQuestion) gin.H {
+func assignmentQuestionPayload(q coursework.AssignmentQuestion) gin.H {
 	return gin.H{
 		"id":            q.ID,
 		"assignment_id": q.AssignmentID,
@@ -3744,7 +3750,7 @@ func submissionRecordPayload(detail usecase.SubmissionDetail) gin.H {
 	}
 }
 
-func submissionItemsPayload(items []domain.SubmissionItem) []gin.H {
+func submissionItemsPayload(items []coursework.SubmissionItem) []gin.H {
 	payload := make([]gin.H, 0, len(items))
 	for _, item := range items {
 		payload = append(payload, gin.H{
@@ -3765,13 +3771,13 @@ func submissionDetailPayload(detail usecase.SubmissionDetail) gin.H {
 	}
 }
 
-func submissionDetailWithCommentsPayload(detail usecase.SubmissionDetail, comments []domain.SubmissionComment) gin.H {
+func submissionDetailWithCommentsPayload(detail usecase.SubmissionDetail, comments []coursework.SubmissionComment) gin.H {
 	payload := submissionDetailPayload(detail)
 	payload["comments"] = submissionCommentsPayload(comments)
 	return payload
 }
 
-func submissionCommentPayload(comment domain.SubmissionComment) gin.H {
+func submissionCommentPayload(comment coursework.SubmissionComment) gin.H {
 	return gin.H{
 		"id":             comment.ID,
 		"submission_id":  comment.SubmissionID,
@@ -3783,7 +3789,7 @@ func submissionCommentPayload(comment domain.SubmissionComment) gin.H {
 	}
 }
 
-func submissionCommentsPayload(comments []domain.SubmissionComment) []gin.H {
+func submissionCommentsPayload(comments []coursework.SubmissionComment) []gin.H {
 	payload := make([]gin.H, 0, len(comments))
 	for _, comment := range comments {
 		payload = append(payload, submissionCommentPayload(comment))
@@ -3825,7 +3831,7 @@ func conversationPayload(summary usecase.ConversationSummary) gin.H {
 	}
 }
 
-func messagePayload(msg domain.Message) gin.H {
+func messagePayload(msg messaging.Message) gin.H {
 	return gin.H{
 		"id":              msg.ID,
 		"conversation_id": msg.ConversationID,
@@ -3839,7 +3845,7 @@ func messagePayload(msg domain.Message) gin.H {
 	}
 }
 
-func noteCommentPayload(comment domain.NoteComment) gin.H {
+func noteCommentPayload(comment notebook.NoteComment) gin.H {
 	return gin.H{
 		"id":          comment.ID,
 		"note_id":     comment.NoteID,
@@ -3850,7 +3856,7 @@ func noteCommentPayload(comment domain.NoteComment) gin.H {
 	}
 }
 
-func notePayload(note domain.Note) gin.H {
+func notePayload(note notebook.Note) gin.H {
 	var deletedAt interface{}
 	if note.DeletedAt != nil {
 		deletedAt = note.DeletedAt
@@ -3880,12 +3886,12 @@ func getSchoolIDFromRequest(c *gin.Context) string {
 		return ""
 	}
 
-	// First try to get from context (set by JWT middleware)
+	// 优先从 context 中获取（由 JWT 中间件设置）
 	if schoolID := c.GetString(middleware.ContextSchoolID); schoolID != "" {
 		return schoolID
 	}
 
-	// Fallback to query parameter for backward compatibility
+	// 回退到查询参数，以保持向后兼容
 	if schoolID := strings.TrimSpace(c.Query("school_id")); schoolID != "" {
 		return schoolID
 	}
@@ -3935,7 +3941,7 @@ func convertToTime(t *usecase.TimeISO8601) *time.Time {
 	return &parsed
 }
 
-// ListSchools returns all schools.
+// ListSchools 返回所有学校。
 func (h *Handler) ListSchools(c *gin.Context) {
 	schools, err := h.school.ListSchools(c.Request.Context())
 	if err != nil {
@@ -3979,7 +3985,7 @@ func (h *Handler) ListTeacherCourseClasses(c *gin.Context) {
 			response.Error(c, http.StatusForbidden, response.CodeTeacherProfileNotFound, nil)
 		case errors.Is(err, usecase.ErrTeacherAssignmentForbidden):
 			response.Error(c, http.StatusForbidden, response.CodeCourseNotOwned, nil)
-		case errors.Is(err, gorm.ErrRecordNotFound):
+		case errors.Is(err, domain.ErrNotFound):
 			response.Error(c, http.StatusNotFound, response.CodeCourseNotFound, nil)
 		default:
 			h.respondServiceError(c, err, http.StatusInternalServerError, "failed to list classes")
@@ -3999,7 +4005,7 @@ func (h *Handler) ListTeacherClassStudents(c *gin.Context) {
 			response.Error(c, http.StatusForbidden, response.CodeTeacherProfileNotFound, nil)
 		case errors.Is(err, usecase.ErrTeacherCourseAccessDenied):
 			response.Error(c, http.StatusForbidden, response.CodeCourseNotOwned, nil)
-		case errors.Is(err, gorm.ErrRecordNotFound):
+		case errors.Is(err, domain.ErrNotFound):
 			response.Error(c, http.StatusNotFound, response.CodeResourceNotFound, nil)
 		default:
 			h.respondServiceError(c, err, http.StatusInternalServerError, "failed to list students")

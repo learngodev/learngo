@@ -7,75 +7,74 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
-	"fmt"
+	"learn-go/internal/domain"
 	"strings"
 	"time"
 
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
-	"gorm.io/gorm"
 
-	"learn-go/internal/infra/config"
-	"learn-go/internal/domain"
-	"learn-go/internal/infra/repository"
-	"learn-go/pkg/crypto"
+	"learn-go/internal/domain/identity"
 )
 
-// AuthService handles authentication and token issuance.
-type AuthService struct {
-	accounts    repository.AccountRepository
-	resetTokens repository.PasswordResetTokenRepository
-	cfg         config.AppConfig
+// AuthUsecase 负责认证与令牌签发。
+type AuthUsecase struct {
+	accounts    identity.AccountRepository
+	resetTokens identity.PasswordResetTokenRepository
+	tokens      identity.TokenIssuer
+	hasher      identity.PasswordHasher
+	// resetTokenTTL 为密码重置令牌有效期，<= 0 表示禁用密码重置。
+	resetTokenTTL time.Duration
 }
 
 var (
-	// ErrAccountLocked indicates the account is locked by an administrator.
+	// ErrAccountLocked 表示账号已被管理员锁定。
 	ErrAccountLocked = errors.New("account locked")
-	// ErrPasswordResetRequired indicates the account must reset password before login.
+	// ErrPasswordResetRequired 表示账号需先重置密码才能登录。
 	ErrPasswordResetRequired = errors.New("password reset required")
-	// ErrInvalidCredentials indicates either the username or password is incorrect.
+	// ErrInvalidCredentials 表示用户名或密码错误。
 	ErrInvalidCredentials = errors.New("invalid credentials")
-	// ErrInvalidRefreshToken indicates refresh token parsing/validation failure.
+	// ErrInvalidRefreshToken 表示刷新令牌解析或校验失败。
 	ErrInvalidRefreshToken = errors.New("invalid refresh token")
-	// ErrPasswordResetTokenInvalid indicates the provided token is not usable.
+	// ErrPasswordResetTokenInvalid 表示提供的令牌不可用。
 	ErrPasswordResetTokenInvalid = errors.New("password reset token invalid")
-	// ErrPasswordResetTokenExpired indicates token expired.
+	// ErrPasswordResetTokenExpired 表示令牌已过期。
 	ErrPasswordResetTokenExpired = errors.New("password reset token expired")
-	// ErrPasswordResetUnavailable indicates reset flow cannot be used at the moment.
+	// ErrPasswordResetUnavailable 表示密码重置流程当前不可用。
 	ErrPasswordResetUnavailable = errors.New("password reset unavailable")
 )
 
-// NewAuthService creates a new AuthService.
-func NewAuthService(accounts repository.AccountRepository, tokens repository.PasswordResetTokenRepository, cfg config.AppConfig) *AuthService {
-	return &AuthService{accounts: accounts, resetTokens: tokens, cfg: cfg}
+// NewAuthUsecase 创建 AuthUsecase。
+func NewAuthUsecase(
+	accounts identity.AccountRepository,
+	resetTokens identity.PasswordResetTokenRepository,
+	tokens identity.TokenIssuer,
+	hasher identity.PasswordHasher,
+	resetTokenTTL time.Duration,
+) *AuthUsecase {
+	return &AuthUsecase{accounts: accounts, resetTokens: resetTokens, tokens: tokens, hasher: hasher, resetTokenTTL: resetTokenTTL}
 }
 
-// Login authenticates a user and returns JWT access and refresh tokens.
-func (s *AuthService) Login(ctx context.Context, schoolID, identifier, password string) (string, string, *domain.Account, error) {
+// Login 认证用户并返回 JWT 访问令牌和刷新令牌。
+func (s *AuthUsecase) Login(ctx context.Context, schoolID, identifier, password string) (string, string, *identity.Account, error) {
 	account, err := s.accounts.FindByIdentifier(ctx, schoolID, identifier)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if errors.Is(err, domain.ErrNotFound) {
 			return "", "", nil, ErrInvalidCredentials
 		}
 		return "", "", nil, err
 	}
 
 	switch account.Status {
-	case domain.AccountStatusLocked:
+	case identity.AccountStatusLocked:
 		return "", "", nil, ErrAccountLocked
-	case domain.AccountStatusPasswordResetRequired:
+	case identity.AccountStatusPasswordResetRequired:
 		return "", "", nil, ErrPasswordResetRequired
 	}
 	//if err := crypto.ComparePassword(account.PasswordHash, password); err != nil {
 	//	return "", "", nil, ErrInvalidCredentials
 	//}
 
-	accessToken, err := s.generateToken(account.ID, string(account.Role), account.SchoolID, s.cfg.JWTSecret, s.cfg.TokenTTL)
-	if err != nil {
-		return "", "", nil, err
-	}
-
-	refreshToken, err := s.generateToken(account.ID, string(account.Role), account.SchoolID, s.cfg.RefreshSecret, s.cfg.RefreshTokenTTL)
+	accessToken, refreshToken, err := s.issueTokenPair(account)
 	if err != nil {
 		return "", "", nil, err
 	}
@@ -83,63 +82,46 @@ func (s *AuthService) Login(ctx context.Context, schoolID, identifier, password 
 	return accessToken, refreshToken, account, nil
 }
 
-func (s *AuthService) generateToken(subjectID, role, schoolID, secret string, ttlSeconds int64) (string, error) {
-	claims := jwt.MapClaims{
-		"sub":       subjectID,
-		"role":      role,
-		"school_id": schoolID,
-		"exp":       time.Now().Add(time.Duration(ttlSeconds) * time.Second).Unix(),
-		"iat":       time.Now().Unix(),
-		"jti":       uuid.NewString(),
+func (s *AuthUsecase) issueTokenPair(account *identity.Account) (string, string, error) {
+	claims := identity.TokenClaims{AccountID: account.ID, Role: account.Role, SchoolID: account.SchoolID}
+	accessToken, err := s.tokens.IssueAccessToken(claims)
+	if err != nil {
+		return "", "", err
 	}
-
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString([]byte(secret))
+	refreshToken, err := s.tokens.IssueRefreshToken(claims)
+	if err != nil {
+		return "", "", err
+	}
+	return accessToken, refreshToken, nil
 }
 
-// RefreshTokens validates refresh token and issues a new pair.
-func (s *AuthService) RefreshTokens(ctx context.Context, refreshToken string) (string, string, *domain.Account, error) {
+// RefreshTokens 校验刷新令牌并签发新的令牌对。
+func (s *AuthUsecase) RefreshTokens(ctx context.Context, refreshToken string) (string, string, *identity.Account, error) {
 	if strings.TrimSpace(refreshToken) == "" {
 		return "", "", nil, ErrInvalidRefreshToken
 	}
 
-	claims := jwt.MapClaims{}
-	parsed, err := jwt.ParseWithClaims(refreshToken, claims, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("unexpected signing method: %T", token.Method)
-		}
-		return []byte(s.cfg.RefreshSecret), nil
-	})
-	if err != nil || !parsed.Valid {
+	claims, err := s.tokens.ParseRefreshToken(refreshToken)
+	if err != nil || claims.AccountID == "" || claims.Role == "" {
 		return "", "", nil, ErrInvalidRefreshToken
 	}
 
-	subject, _ := claims["sub"].(string)
-	role, _ := claims["role"].(string)
-	if subject == "" || role == "" {
-		return "", "", nil, ErrInvalidRefreshToken
-	}
-
-	account, err := s.accounts.FindByID(ctx, subject)
+	account, err := s.accounts.FindByID(ctx, claims.AccountID)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if errors.Is(err, domain.ErrNotFound) {
 			return "", "", nil, ErrInvalidRefreshToken
 		}
 		return "", "", nil, err
 	}
 
 	switch account.Status {
-	case domain.AccountStatusLocked:
+	case identity.AccountStatusLocked:
 		return "", "", nil, ErrAccountLocked
-	case domain.AccountStatusPasswordResetRequired:
+	case identity.AccountStatusPasswordResetRequired:
 		return "", "", nil, ErrPasswordResetRequired
 	}
 
-	accessToken, err := s.generateToken(account.ID, string(account.Role), account.SchoolID, s.cfg.JWTSecret, s.cfg.TokenTTL)
-	if err != nil {
-		return "", "", nil, err
-	}
-	newRefresh, err := s.generateToken(account.ID, string(account.Role), account.SchoolID, s.cfg.RefreshSecret, s.cfg.RefreshTokenTTL)
+	accessToken, newRefresh, err := s.issueTokenPair(account)
 	if err != nil {
 		return "", "", nil, err
 	}
@@ -147,29 +129,29 @@ func (s *AuthService) RefreshTokens(ctx context.Context, refreshToken string) (s
 	return accessToken, newRefresh, account, nil
 }
 
-// GetAccount retrieves an account by ID.
-func (s *AuthService) GetAccount(ctx context.Context, accountID string) (*domain.Account, error) {
+// GetAccount 按 ID 查询账号。
+func (s *AuthUsecase) GetAccount(ctx context.Context, accountID string) (*identity.Account, error) {
 	return s.accounts.FindByID(ctx, accountID)
 }
 
-// RequestPasswordReset creates a single-use token and returns plain value plus expiry.
-func (s *AuthService) RequestPasswordReset(ctx context.Context, schoolID, identifier string) (string, time.Time, error) {
+// RequestPasswordReset 创建一次性令牌，返回明文值及过期时间。
+func (s *AuthUsecase) RequestPasswordReset(ctx context.Context, schoolID, identifier string) (string, time.Time, error) {
 	if s.resetTokens == nil {
 		return "", time.Time{}, ErrPasswordResetUnavailable
 	}
-	if s.cfg.PasswordResetTokenTTL <= 0 {
+	if s.resetTokenTTL <= 0 {
 		return "", time.Time{}, ErrPasswordResetUnavailable
 	}
 
 	account, err := s.accounts.FindByIdentifier(ctx, schoolID, identifier)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if errors.Is(err, domain.ErrNotFound) {
 			return "", time.Time{}, ErrInvalidCredentials
 		}
 		return "", time.Time{}, err
 	}
 
-	if account.Status != domain.AccountStatusPasswordResetRequired {
+	if account.Status != identity.AccountStatusPasswordResetRequired {
 		return "", time.Time{}, ErrPasswordResetUnavailable
 	}
 
@@ -182,9 +164,9 @@ func (s *AuthService) RequestPasswordReset(ctx context.Context, schoolID, identi
 		return "", time.Time{}, err
 	}
 	hash := hashToken(plain)
-	expiresAt := time.Now().Add(time.Duration(s.cfg.PasswordResetTokenTTL) * time.Second)
+	expiresAt := time.Now().Add(s.resetTokenTTL)
 
-	token := &domain.PasswordResetToken{
+	token := &identity.PasswordResetToken{
 		ID:        uuid.NewString(),
 		AccountID: account.ID,
 		SchoolID:  schoolID,
@@ -199,8 +181,8 @@ func (s *AuthService) RequestPasswordReset(ctx context.Context, schoolID, identi
 	return plain, expiresAt, nil
 }
 
-// ResetPassword validates token and updates password hash.
-func (s *AuthService) ResetPassword(ctx context.Context, schoolID, identifier, token, newPassword string) error {
+// ResetPassword 校验令牌并更新密码哈希。
+func (s *AuthUsecase) ResetPassword(ctx context.Context, schoolID, identifier, token, newPassword string) error {
 	if s.resetTokens == nil {
 		return ErrPasswordResetUnavailable
 	}
@@ -210,19 +192,19 @@ func (s *AuthService) ResetPassword(ctx context.Context, schoolID, identifier, t
 
 	account, err := s.accounts.FindByIdentifier(ctx, schoolID, identifier)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if errors.Is(err, domain.ErrNotFound) {
 			return ErrInvalidCredentials
 		}
 		return err
 	}
-	if account.Status != domain.AccountStatusPasswordResetRequired {
+	if account.Status != identity.AccountStatusPasswordResetRequired {
 		return ErrPasswordResetUnavailable
 	}
 
 	hash := hashToken(token)
 	record, err := s.resetTokens.FindByTokenHash(ctx, hash)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if errors.Is(err, domain.ErrNotFound) {
 			return ErrPasswordResetTokenInvalid
 		}
 		return err
@@ -237,14 +219,14 @@ func (s *AuthService) ResetPassword(ctx context.Context, schoolID, identifier, t
 		return ErrPasswordResetTokenExpired
 	}
 
-	passwordHash, err := crypto.HashPassword(newPassword)
+	passwordHash, err := s.hasher.Hash(newPassword)
 	if err != nil {
 		return err
 	}
 	if err := s.accounts.UpdatePasswordHash(ctx, account.ID, passwordHash); err != nil {
 		return err
 	}
-	if err := s.accounts.UpdateStatus(ctx, account.ID, schoolID, domain.AccountStatusActive); err != nil {
+	if err := s.accounts.UpdateStatus(ctx, account.ID, schoolID, identity.AccountStatusActive); err != nil {
 		return err
 	}
 	if err := s.resetTokens.Consume(ctx, record.ID, time.Now()); err != nil {

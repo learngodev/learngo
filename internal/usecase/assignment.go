@@ -4,38 +4,40 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"learn-go/internal/domain"
 	"math"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 
-	"learn-go/internal/domain"
-	"learn-go/internal/infra/repository"
-
-	"gorm.io/gorm"
+	"learn-go/internal/domain/coursework"
+	"learn-go/internal/domain/identity"
+	"learn-go/internal/domain/notification"
+	"learn-go/internal/domain/roster"
+	"learn-go/internal/domain/storage"
 )
 
-// AssignmentService manages assignments and submissions.
-type AssignmentService struct {
-	assignments   repository.AssignmentRepository
-	submissions   repository.SubmissionRepository
-	comments      repository.SubmissionCommentRepository
-	students      repository.StudentRepository
-	notifications *NotificationService
-	files         *FileService
+// AssignmentUsecase 管理作业与提交。
+type AssignmentUsecase struct {
+	assignments   coursework.AssignmentRepository
+	submissions   coursework.SubmissionRepository
+	comments      coursework.SubmissionCommentRepository
+	students      roster.StudentRepository
+	notifications *NotificationUsecase
+	files         *FileUsecase
 }
 
-// NewAssignmentService creates a new AssignmentService.
-func NewAssignmentService(
-	assignments repository.AssignmentRepository,
-	submissions repository.SubmissionRepository,
-	comments repository.SubmissionCommentRepository,
-	students repository.StudentRepository,
-	notifications *NotificationService,
-	files *FileService,
-) *AssignmentService {
-	return &AssignmentService{
+// NewAssignmentUsecase 创建 AssignmentUsecase。
+func NewAssignmentUsecase(
+	assignments coursework.AssignmentRepository,
+	submissions coursework.SubmissionRepository,
+	comments coursework.SubmissionCommentRepository,
+	students roster.StudentRepository,
+	notifications *NotificationUsecase,
+	files *FileUsecase,
+) *AssignmentUsecase {
+	return &AssignmentUsecase{
 		assignments:   assignments,
 		submissions:   submissions,
 		comments:      comments,
@@ -45,27 +47,27 @@ func NewAssignmentService(
 	}
 }
 
-// ErrAssignmentNotFound indicates the assignment does not exist.
+// ErrAssignmentNotFound 表示作业不存在。
 var ErrAssignmentNotFound = errors.New("assignment not found")
 
-// ErrSubmissionNotFound indicates the submission does not exist.
+// ErrSubmissionNotFound 表示提交记录不存在。
 var ErrSubmissionNotFound = errors.New("submission not found")
 
-// ErrSubmissionForbidden indicates the caller cannot access the submission.
+// ErrSubmissionForbidden 表示调用方无权访问该提交。
 var ErrSubmissionForbidden = errors.New("submission forbidden")
 
-// ErrSubmissionAlreadyGraded indicates graded submissions cannot be changed by students.
+// ErrSubmissionAlreadyGraded 表示已批改的提交不允许学生修改。
 var ErrSubmissionAlreadyGraded = errors.New("submission already graded")
 
-// ErrScoreOutOfRange indicates a score exceeds its allowed range.
+// ErrScoreOutOfRange 表示分数超出允许范围。
 var ErrScoreOutOfRange = errors.New("score out of allowed range")
 
-// CreateAssignmentInput contains data for creating an assignment.
+// CreateAssignmentInput 包含创建作业所需的数据。
 type CreateAssignmentInput struct {
 	CourseID      string
 	TeacherID     string
 	ClassID       string
-	Type          domain.AssignmentType
+	Type          coursework.AssignmentType
 	Title         string
 	Description   string
 	StartAt       *time.Time
@@ -76,9 +78,9 @@ type CreateAssignmentInput struct {
 	Attachments   []string
 }
 
-// QuestionInput describes a single question.
+// QuestionInput 描述一道题目。
 type QuestionInput struct {
-	Type       domain.QuestionType
+	Type       coursework.QuestionType
 	Prompt     string
 	Options    string
 	Answer     string
@@ -86,8 +88,8 @@ type QuestionInput struct {
 	OrderIndex int
 }
 
-// CreateAssignment creates an assignment with its questions.
-func (s *AssignmentService) CreateAssignment(ctx context.Context, input CreateAssignmentInput) (*domain.Assignment, error) {
+// CreateAssignment 创建作业及其题目。
+func (s *AssignmentUsecase) CreateAssignment(ctx context.Context, input CreateAssignmentInput) (*coursework.Assignment, error) {
 	if input.CourseID == "" || input.TeacherID == "" || input.ClassID == "" {
 		return nil, errors.New("course, teacher and class are required")
 	}
@@ -95,7 +97,7 @@ func (s *AssignmentService) CreateAssignment(ctx context.Context, input CreateAs
 		return nil, err
 	}
 
-	assignment := &domain.Assignment{
+	assignment := &coursework.Assignment{
 		ID:            uuid.NewString(),
 		CourseID:      input.CourseID,
 		TeacherID:     input.TeacherID,
@@ -111,9 +113,9 @@ func (s *AssignmentService) CreateAssignment(ctx context.Context, input CreateAs
 		UpdatedAt:     time.Now(),
 	}
 
-	questions := make([]domain.AssignmentQuestion, 0, len(input.Questions))
+	questions := make([]coursework.AssignmentQuestion, 0, len(input.Questions))
 	for _, q := range input.Questions {
-		questions = append(questions, domain.AssignmentQuestion{
+		questions = append(questions, coursework.AssignmentQuestion{
 			ID:         uuid.NewString(),
 			Type:       q.Type,
 			Prompt:     q.Prompt,
@@ -124,9 +126,9 @@ func (s *AssignmentService) CreateAssignment(ctx context.Context, input CreateAs
 		})
 	}
 
-	attachments := make([]domain.AssignmentAttachment, 0, len(input.Attachments))
+	attachments := make([]coursework.AssignmentAttachment, 0, len(input.Attachments))
 	for _, fileID := range input.Attachments {
-		attachments = append(attachments, domain.AssignmentAttachment{
+		attachments = append(attachments, coursework.AssignmentAttachment{
 			ID:           uuid.NewString(),
 			AssignmentID: assignment.ID,
 			FileID:       fileID,
@@ -138,7 +140,7 @@ func (s *AssignmentService) CreateAssignment(ctx context.Context, input CreateAs
 		return nil, err
 	}
 
-	// Notify students
+	// 通知学生
 	go func() {
 		bgCtx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
 		defer cancel()
@@ -146,7 +148,7 @@ func (s *AssignmentService) CreateAssignment(ctx context.Context, input CreateAs
 		students, err := s.students.ListByClassID(bgCtx, input.ClassID)
 		if err == nil {
 			for _, student := range students {
-				s.notifications.Create(bgCtx, student.AccountID, "New Assignment: "+input.Title, "A new assignment has been published.", domain.NotificationTypeAssignment, assignment.ID)
+				s.notifications.Create(bgCtx, student.AccountID, "New Assignment: "+input.Title, "A new assignment has been published.", notification.NotificationTypeAssignment, assignment.ID)
 			}
 		}
 	}()
@@ -154,7 +156,7 @@ func (s *AssignmentService) CreateAssignment(ctx context.Context, input CreateAs
 	return assignment, nil
 }
 
-// SubmitAssignmentInput captures student submission payload.
+// SubmitAssignmentInput 表示学生提交的作答数据。
 type SubmitAssignmentInput struct {
 	AssignmentID string
 	StudentID    string
@@ -164,20 +166,20 @@ type SubmitAssignmentInput struct {
 	Status       string
 }
 
-// AnswerInput ties an answer to a question.
+// AnswerInput 将答案与题目对应。
 type AnswerInput struct {
 	QuestionID string
 	Answer     string
 	Score      *float64
 }
 
-// Submit records or updates a student submission.
-func (s *AssignmentService) Submit(ctx context.Context, input SubmitAssignmentInput) error {
+// Submit 记录或更新学生的提交。
+func (s *AssignmentUsecase) Submit(ctx context.Context, input SubmitAssignmentInput) error {
 	if input.AssignmentID == "" || input.StudentID == "" {
 		return errors.New("assignment and student required")
 	}
 
-	// Calculate progress
+	// 计算完成进度
 	assignment, questions, _, err := s.assignments.Get(ctx, input.AssignmentID)
 	if err != nil {
 		return err
@@ -218,7 +220,7 @@ func (s *AssignmentService) Submit(ctx context.Context, input SubmitAssignmentIn
 		}
 	}
 
-	submission := &domain.AssignmentSubmission{
+	submission := &coursework.AssignmentSubmission{
 		ID:           uuid.NewString(),
 		AssignmentID: input.AssignmentID,
 		StudentID:    input.StudentID,
@@ -235,7 +237,7 @@ func (s *AssignmentService) Submit(ctx context.Context, input SubmitAssignmentIn
 		submission.SubmittedAt = &now
 	}
 
-	// Check if submission already exists to preserve ID
+	// 检查提交是否已存在，以保留原 ID
 	existing, _, err := s.submissions.GetByAssignmentAndStudent(ctx, input.AssignmentID, input.StudentID)
 	if err == nil && existing != nil {
 		if existing.Status == "graded" {
@@ -245,9 +247,9 @@ func (s *AssignmentService) Submit(ctx context.Context, input SubmitAssignmentIn
 		submission.CreatedAt = existing.CreatedAt
 	}
 
-	items := make([]domain.SubmissionItem, 0, len(input.Answers))
+	items := make([]coursework.SubmissionItem, 0, len(input.Answers))
 	for _, ans := range input.Answers {
-		items = append(items, domain.SubmissionItem{
+		items = append(items, coursework.SubmissionItem{
 			ID:         uuid.NewString(),
 			QuestionID: ans.QuestionID,
 			Answer:     ans.Answer,
@@ -258,21 +260,21 @@ func (s *AssignmentService) Submit(ctx context.Context, input SubmitAssignmentIn
 	return s.submissions.CreateOrUpdate(ctx, submission, items)
 }
 
-// SubmissionDetail aggregates a submission and its items.
+// SubmissionDetail 聚合一次提交及其各题作答。
 type SubmissionDetail struct {
-	Submission  domain.AssignmentSubmission
-	Items       []domain.SubmissionItem
+	Submission  coursework.AssignmentSubmission
+	Items       []coursework.SubmissionItem
 	StudentName string
 }
 
-// GetAssignment retrieves an assignment with its questions.
-func (s *AssignmentService) GetAssignment(ctx context.Context, assignmentID string) (*domain.Assignment, []domain.AssignmentQuestion, []domain.File, error) {
+// GetAssignment 查询作业及其题目。
+func (s *AssignmentUsecase) GetAssignment(ctx context.Context, assignmentID string) (*coursework.Assignment, []coursework.AssignmentQuestion, []storage.File, error) {
 	if assignmentID == "" {
 		return nil, nil, nil, errors.New("assignment id required")
 	}
 	assignment, questions, files, err := s.assignments.Get(ctx, assignmentID)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if errors.Is(err, domain.ErrNotFound) {
 			return nil, nil, nil, ErrAssignmentNotFound
 		}
 		return nil, nil, nil, err
@@ -281,8 +283,8 @@ func (s *AssignmentService) GetAssignment(ctx context.Context, assignmentID stri
 	return assignment, questions, files, nil
 }
 
-// ListAssignmentSubmissions returns submissions and items for an assignment.
-func (s *AssignmentService) ListAssignmentSubmissions(ctx context.Context, assignmentID string) ([]SubmissionDetail, error) {
+// ListAssignmentSubmissions 返回某作业的所有提交及各题作答。
+func (s *AssignmentUsecase) ListAssignmentSubmissions(ctx context.Context, assignmentID string) ([]SubmissionDetail, error) {
 	if assignmentID == "" {
 		return nil, errors.New("assignment id required")
 	}
@@ -313,7 +315,7 @@ func (s *AssignmentService) ListAssignmentSubmissions(ctx context.Context, assig
 		studentNameMap[st.ID] = st.Name
 	}
 
-	itemsBySubmission := make(map[string][]domain.SubmissionItem, len(subs))
+	itemsBySubmission := make(map[string][]coursework.SubmissionItem, len(subs))
 	for _, item := range items {
 		itemsBySubmission[item.SubmissionID] = append(itemsBySubmission[item.SubmissionID], item)
 	}
@@ -329,8 +331,8 @@ func (s *AssignmentService) ListAssignmentSubmissions(ctx context.Context, assig
 	return details, nil
 }
 
-// GetSubmissionForStudent returns the student's submission with items and comments.
-func (s *AssignmentService) GetSubmissionForStudent(ctx context.Context, assignmentID, studentID string) (*SubmissionDetail, []domain.SubmissionComment, error) {
+// GetSubmissionForStudent 返回学生的提交，包含各题作答与评论。
+func (s *AssignmentUsecase) GetSubmissionForStudent(ctx context.Context, assignmentID, studentID string) (*SubmissionDetail, []coursework.SubmissionComment, error) {
 	if assignmentID == "" || studentID == "" {
 		return nil, nil, errors.New("assignment and student required")
 	}
@@ -341,7 +343,7 @@ func (s *AssignmentService) GetSubmissionForStudent(ctx context.Context, assignm
 
 	submission, items, err := s.submissions.GetByAssignmentAndStudent(ctx, assignmentID, studentID)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if errors.Is(err, domain.ErrNotFound) {
 			return nil, nil, ErrSubmissionNotFound
 		}
 		return nil, nil, err
@@ -355,8 +357,8 @@ func (s *AssignmentService) GetSubmissionForStudent(ctx context.Context, assignm
 	return &SubmissionDetail{Submission: *submission, Items: items}, comments, nil
 }
 
-// GetSubmissionForTeacher returns a submission ensuring the teacher owns the assignment.
-func (s *AssignmentService) GetSubmissionForTeacher(ctx context.Context, teacherID, assignmentID, submissionID string) (*SubmissionDetail, []domain.SubmissionComment, error) {
+// GetSubmissionForTeacher 返回提交记录，并确保该作业属于当前教师。
+func (s *AssignmentUsecase) GetSubmissionForTeacher(ctx context.Context, teacherID, assignmentID, submissionID string) (*SubmissionDetail, []coursework.SubmissionComment, error) {
 	if teacherID == "" || assignmentID == "" || submissionID == "" {
 		return nil, nil, errors.New("teacher, assignment and submission required")
 	}
@@ -371,7 +373,7 @@ func (s *AssignmentService) GetSubmissionForTeacher(ctx context.Context, teacher
 
 	submission, items, err := s.submissions.GetByID(ctx, submissionID)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if errors.Is(err, domain.ErrNotFound) {
 			return nil, nil, ErrSubmissionNotFound
 		}
 		return nil, nil, err
@@ -388,12 +390,12 @@ func (s *AssignmentService) GetSubmissionForTeacher(ctx context.Context, teacher
 	return &SubmissionDetail{Submission: *submission, Items: items}, comments, nil
 }
 
-// SubmissionCommentInput captures submission comment payload.
+// SubmissionCommentInput 表示提交评论的数据。
 type SubmissionCommentInput struct {
 	Content string
 }
 
-// GradeSubmissionInput captures grading updates.
+// GradeSubmissionInput 表示批改更新的数据。
 type GradeSubmissionInput struct {
 	AssignmentID string
 	SubmissionID string
@@ -404,8 +406,8 @@ type GradeSubmissionInput struct {
 	Comment      *SubmissionCommentInput
 }
 
-// GradeSubmission applies scoring updates and optional comment.
-func (s *AssignmentService) GradeSubmission(ctx context.Context, teacherID string, input GradeSubmissionInput) (*SubmissionDetail, []domain.SubmissionComment, error) {
+// GradeSubmission 更新评分并可附带评论。
+func (s *AssignmentUsecase) GradeSubmission(ctx context.Context, teacherID string, input GradeSubmissionInput) (*SubmissionDetail, []coursework.SubmissionComment, error) {
 	if teacherID == "" {
 		return nil, nil, errors.New("teacher id required")
 	}
@@ -431,7 +433,7 @@ func (s *AssignmentService) GradeSubmission(ctx context.Context, teacherID strin
 
 	submission, items, err := s.submissions.GetByID(ctx, input.SubmissionID)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if errors.Is(err, domain.ErrNotFound) {
 			return nil, nil, ErrSubmissionNotFound
 		}
 		return nil, nil, err
@@ -440,12 +442,12 @@ func (s *AssignmentService) GradeSubmission(ctx context.Context, teacherID strin
 		return nil, nil, ErrSubmissionForbidden
 	}
 
-	itemByID := make(map[string]domain.SubmissionItem, len(items))
+	itemByID := make(map[string]coursework.SubmissionItem, len(items))
 	for _, item := range items {
 		itemByID[item.ID] = item
 	}
 
-	updates := make([]domain.SubmissionItem, 0, len(input.ItemScores))
+	updates := make([]coursework.SubmissionItem, 0, len(input.ItemScores))
 	for itemID, score := range input.ItemScores {
 		original, ok := itemByID[itemID]
 		if !ok {
@@ -481,11 +483,11 @@ func (s *AssignmentService) GradeSubmission(ctx context.Context, teacherID strin
 		if input.AccountID == "" {
 			return nil, nil, errors.New("account id required for comment")
 		}
-		comment := &domain.SubmissionComment{
+		comment := &coursework.SubmissionComment{
 			ID:           uuid.NewString(),
 			SubmissionID: submission.ID,
 			AuthorID:     input.AccountID,
-			AuthorRole:   domain.RoleTeacher,
+			AuthorRole:   identity.RoleTeacher,
 			Content:      input.Comment.Content,
 			CreatedAt:    time.Now(),
 		}
@@ -503,7 +505,7 @@ func (s *AssignmentService) GradeSubmission(ctx context.Context, teacherID strin
 	return &SubmissionDetail{Submission: *submission, Items: mergedItems}, comments, nil
 }
 
-// ReturnSubmissionInput captures return submission payload.
+// ReturnSubmissionInput 表示退回提交的数据。
 type ReturnSubmissionInput struct {
 	AssignmentID string
 	SubmissionID string
@@ -511,8 +513,8 @@ type ReturnSubmissionInput struct {
 	Comment      string
 }
 
-// ReturnSubmission returns a submission to student for rework.
-func (s *AssignmentService) ReturnSubmission(ctx context.Context, teacherID string, input ReturnSubmissionInput) (*SubmissionDetail, []domain.SubmissionComment, error) {
+// ReturnSubmission 将提交退回给学生重做。
+func (s *AssignmentUsecase) ReturnSubmission(ctx context.Context, teacherID string, input ReturnSubmissionInput) (*SubmissionDetail, []coursework.SubmissionComment, error) {
 	if teacherID == "" {
 		return nil, nil, errors.New("teacher id required")
 	}
@@ -530,7 +532,7 @@ func (s *AssignmentService) ReturnSubmission(ctx context.Context, teacherID stri
 
 	submission, items, err := s.submissions.GetByID(ctx, input.SubmissionID)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if errors.Is(err, domain.ErrNotFound) {
 			return nil, nil, ErrSubmissionNotFound
 		}
 		return nil, nil, err
@@ -545,8 +547,8 @@ func (s *AssignmentService) ReturnSubmission(ctx context.Context, teacherID stri
 	}
 	submission.UpdatedAt = time.Now()
 
-	// We use UpdateGrades here as it updates the submission record, even if items are empty
-	if err := s.submissions.UpdateGrades(ctx, submission, []domain.SubmissionItem{}); err != nil {
+	// 这里使用 UpdateGrades，因为即使没有作答项它也会更新提交记录
+	if err := s.submissions.UpdateGrades(ctx, submission, []coursework.SubmissionItem{}); err != nil {
 		return nil, nil, err
 	}
 
@@ -554,11 +556,11 @@ func (s *AssignmentService) ReturnSubmission(ctx context.Context, teacherID stri
 		if input.AccountID == "" {
 			return nil, nil, errors.New("account id required for comment")
 		}
-		comment := &domain.SubmissionComment{
+		comment := &coursework.SubmissionComment{
 			ID:           uuid.NewString(),
 			SubmissionID: submission.ID,
 			AuthorID:     input.AccountID,
-			AuthorRole:   domain.RoleTeacher,
+			AuthorRole:   identity.RoleTeacher,
 			Content:      input.Comment,
 			CreatedAt:    time.Now(),
 		}
@@ -575,7 +577,7 @@ func (s *AssignmentService) ReturnSubmission(ctx context.Context, teacherID stri
 	return &SubmissionDetail{Submission: *submission, Items: items}, comments, nil
 }
 
-// UpdateAssignmentInput contains data for updating an assignment.
+// UpdateAssignmentInput 包含更新作业所需的数据。
 type UpdateAssignmentInput struct {
 	ID            string
 	TeacherID     string
@@ -587,8 +589,8 @@ type UpdateAssignmentInput struct {
 	AllowResubmit *bool
 }
 
-// UpdateAssignment updates an existing assignment.
-func (s *AssignmentService) UpdateAssignment(ctx context.Context, input UpdateAssignmentInput) (*domain.Assignment, error) {
+// UpdateAssignment 更新已有作业。
+func (s *AssignmentUsecase) UpdateAssignment(ctx context.Context, input UpdateAssignmentInput) (*coursework.Assignment, error) {
 	if input.ID == "" || input.TeacherID == "" {
 		return nil, errors.New("assignment id and teacher id required")
 	}
@@ -685,15 +687,15 @@ func validateFiniteNonNegative(v float64) error {
 	return nil
 }
 
-func mergeItems(original []domain.SubmissionItem, updates []domain.SubmissionItem) []domain.SubmissionItem {
+func mergeItems(original []coursework.SubmissionItem, updates []coursework.SubmissionItem) []coursework.SubmissionItem {
 	if len(updates) == 0 {
 		return original
 	}
-	updated := make(map[string]domain.SubmissionItem, len(updates))
+	updated := make(map[string]coursework.SubmissionItem, len(updates))
 	for _, item := range updates {
 		updated[item.ID] = item
 	}
-	result := make([]domain.SubmissionItem, 0, len(original))
+	result := make([]coursework.SubmissionItem, 0, len(original))
 	for _, item := range original {
 		if upd, ok := updated[item.ID]; ok {
 			result = append(result, upd)

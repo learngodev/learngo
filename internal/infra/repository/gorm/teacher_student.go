@@ -5,13 +5,12 @@ import (
 
 	"github.com/google/uuid"
 
-	"learn-go/internal/domain"
-	"learn-go/internal/infra/repository"
+	"learn-go/internal/domain/roster"
 
 	"gorm.io/gorm"
 )
 
-// TeacherStudentStore manages teacher-student associations.
+// TeacherStudentStore 管理教师与学生的关联。
 type TeacherStudentStore struct {
 	db *gorm.DB
 }
@@ -22,16 +21,16 @@ func NewTeacherStudentStore(db *gorm.DB) *TeacherStudentStore {
 
 func (s *TeacherStudentStore) BindTeachers(ctx context.Context, studentID string, teacherIDs []string) error {
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("student_id = ?", studentID).Delete(&domain.TeacherStudentLink{}).Error; err != nil {
+		if err := tx.Where("student_id = ?", studentID).Delete(&roster.TeacherStudentLink{}).Error; err != nil {
 			return err
 		}
 
-		links := make([]domain.TeacherStudentLink, 0, len(teacherIDs))
+		links := make([]roster.TeacherStudentLink, 0, len(teacherIDs))
 		for _, teacherID := range teacherIDs {
 			if teacherID == "" {
 				continue
 			}
-			links = append(links, domain.TeacherStudentLink{
+			links = append(links, roster.TeacherStudentLink{
 				ID:        uuid.NewString(),
 				TeacherID: teacherID,
 				StudentID: studentID,
@@ -47,4 +46,4 @@ func (s *TeacherStudentStore) BindTeachers(ctx context.Context, studentID string
 	})
 }
 
-var _ repository.TeacherStudentRepository = (*TeacherStudentStore)(nil)
+var _ roster.TeacherStudentRepository = (*TeacherStudentStore)(nil)

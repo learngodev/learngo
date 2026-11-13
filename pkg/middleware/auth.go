@@ -17,20 +17,20 @@ var (
 	errInvalidTokenSub    = errors.New(response.CodeInvalidTokenSubject)
 )
 
-// Context keys.
+// Context 键。
 const (
 	ContextAccountID = "accountID"
 	ContextRole      = "role"
 	ContextSchoolID  = "schoolID"
 )
 
-// AuthConfig holds secret used to verify JWT.
+// AuthConfig 保存用于校验 JWT 的密钥。
 type AuthConfig struct {
 	Secret       string
 	AllowedRoles []string
 }
 
-// JWTAuth returns a middleware that verifies JWT tokens and optionally enforces roles.
+// JWTAuth 返回一个校验 JWT 并可选地限制角色的中间件。
 func JWTAuth(cfg AuthConfig) gin.HandlerFunc {
 	roleSet := make(map[string]struct{}, len(cfg.AllowedRoles))
 	for _, role := range cfg.AllowedRoles {
@@ -76,7 +76,7 @@ func JWTAuth(cfg AuthConfig) gin.HandlerFunc {
 	}
 }
 
-// ValidateJWT parses and validates the JWT token, returning account ID, role, and school ID if successful.
+// ValidateJWT 解析并校验 JWT，成功时返回账号 ID、角色和学校 ID。
 func ValidateJWT(tokenString, secret string) (string, string, string, error) {
 	if strings.TrimSpace(tokenString) == "" {
 		return "", "", "", errInvalidToken

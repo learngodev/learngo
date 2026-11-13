@@ -8,9 +8,9 @@ import (
 
 // Register 将 HTTP 路由挂载到 Gin Engine。
 func Register(r *gin.Engine, h *handler.Handler, adminGuard, teacherGuard, studentGuard gin.HandlerFunc) {
-	// WebSocket IM (Flutter Web) - standalone path (not under /api/v1).
-	// Browser WebSocket clients cannot reliably set Authorization headers; we accept token
-	// via query string or header and validate inside handler.
+	// WebSocket IM（Flutter Web）——独立路径（不在 /api/v1 下）。
+	// 浏览器 WebSocket 客户端无法可靠地设置 Authorization 请求头，因此支持通过
+	// 查询参数或请求头传入 token，并在处理器内部校验。
 	r.GET("/ws/im", h.IMWebSocket)
 
 	api := r.Group("/api/v1")
@@ -21,8 +21,8 @@ func Register(r *gin.Engine, h *handler.Handler, adminGuard, teacherGuard, stude
 		api.POST("/auth/password/reset/confirm", h.ConfirmPasswordReset)
 		api.GET("/schools", h.ListSchools)
 
-		// Relay download uses a short-lived token in query string so it can be used by Image.network.
-		// It is intentionally not guarded by JWT middleware.
+		// 中转下载在查询参数中携带短期 token，以便 Image.network 直接使用。
+		// 因此刻意不经过 JWT 中间件。
 		api.GET("/files/download/relay/:id", h.RelayDownload)
 
 		files := api.Group("/files", studentGuard)
@@ -31,7 +31,7 @@ func Register(r *gin.Engine, h *handler.Handler, adminGuard, teacherGuard, stude
 		files.GET("/download/:id", h.GetDownloadURL)
 		files.GET("/:id/download-url", h.GetDownloadURL)
 
-		// Notifications
+		// 通知
 		notifs := api.Group("/notifications", studentGuard)
 		notifs.GET("", h.ListNotifications)
 		notifs.PUT("/:id/read", h.MarkNotificationAsRead)
@@ -122,7 +122,7 @@ func Register(r *gin.Engine, h *handler.Handler, adminGuard, teacherGuard, stude
 		student.POST("/files/upload-url", h.GetUploadURL)
 		student.GET("/files/:id/download-url", h.GetDownloadURL)
 		student.GET("/courses", h.ListStudentCourses)
-		student.POST("/courses/join", h.JoinCourse) // Allow students to join via code
+		student.POST("/courses/join", h.JoinCourse) // 允许学生通过邀请码加入课程
 		student.GET("/assignments", h.ListStudentAssignments)
 		student.GET("/courses/:id/chapters", h.ListStudentCourseChapters)
 		student.GET("/courses/:id/chapters/:chapterID", h.GetStudentCourseChapter)

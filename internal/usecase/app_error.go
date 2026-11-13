@@ -2,7 +2,7 @@ package usecase
 
 import "fmt"
 
-// AppError is a structured business error that can be safely mapped to API responses.
+// AppError 是结构化的业务错误，可安全地映射为 API 响应。
 type AppError struct {
 	Code    string
 	Status  int

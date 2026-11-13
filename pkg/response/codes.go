@@ -1,6 +1,6 @@
 package response
 
-// Stable error codes used across handlers and localization mapping.
+// 在各处理器及本地化映射中使用的稳定错误码。
 const (
 	CodeMissingAuthorization = "missing authorization"
 	CodeMissingToken         = "missing token"

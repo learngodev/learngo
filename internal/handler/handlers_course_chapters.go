@@ -8,7 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"learn-go/internal/infra/repository"
+	"learn-go/internal/domain"
 	"learn-go/internal/usecase"
 	"learn-go/pkg/response"
 )
@@ -76,7 +76,7 @@ func (h *Handler) GetStudentCourseChapter(c *gin.Context) {
 			response.Error(c, http.StatusNotFound, response.CodeStudentProfileNotFound, nil)
 		case errors.Is(err, usecase.ErrCourseAccessDenied):
 			response.Error(c, http.StatusForbidden, response.CodeCourseAccessDenied, nil)
-		case errors.Is(err, repository.ErrNotFound):
+		case errors.Is(err, domain.ErrNotFound):
 			response.Error(c, http.StatusNotFound, response.CodeChapterNotFound, nil)
 		default:
 			h.respondServiceError(c, err, http.StatusInternalServerError, "unable to get chapter")

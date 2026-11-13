@@ -3,21 +3,20 @@ package usecase
 import (
 	"context"
 	"errors"
+	"learn-go/internal/domain"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 
-	"learn-go/internal/domain"
-	"learn-go/internal/infra/repository"
-
-	"gorm.io/gorm"
+	"learn-go/internal/domain/identity"
+	"learn-go/internal/domain/notebook"
 )
 
 var (
-	// ErrNoteNotFound indicates the note does not exist.
+	// ErrNoteNotFound 表示笔记不存在。
 	ErrNoteNotFound = errors.New("note not found")
-	// ErrNoteForbidden indicates the current user cannot perform the operation.
+	// ErrNoteForbidden 表示当前用户无权执行该操作。
 	ErrNoteForbidden = errors.New("not allowed to access note")
 )
 
@@ -33,18 +32,18 @@ var (
 	}
 )
 
-// NoteService manages note lifecycle.
-type NoteService struct {
-	notes    repository.NoteRepository
-	accounts repository.AccountRepository
+// NoteUsecase 管理笔记的生命周期。
+type NoteUsecase struct {
+	notes    notebook.NoteRepository
+	accounts identity.AccountRepository
 }
 
-// NewNoteService creates a note service instance.
-func NewNoteService(notes repository.NoteRepository, accounts repository.AccountRepository) *NoteService {
-	return &NoteService{notes: notes, accounts: accounts}
+// NewNoteUsecase 创建笔记用例实例。
+func NewNoteUsecase(notes notebook.NoteRepository, accounts identity.AccountRepository) *NoteUsecase {
+	return &NoteUsecase{notes: notes, accounts: accounts}
 }
 
-// CreateNoteInput describes note creation payload.
+// CreateNoteInput 描述创建笔记的数据。
 type CreateNoteInput struct {
 	Title      string
 	Content    string
@@ -52,7 +51,7 @@ type CreateNoteInput struct {
 	Status     string
 }
 
-// UpdateNoteInput describes note update payload.
+// UpdateNoteInput 描述更新笔记的数据。
 type UpdateNoteInput struct {
 	Title      string
 	Content    string
@@ -60,8 +59,8 @@ type UpdateNoteInput struct {
 	Status     string
 }
 
-// CreateNote creates a new note for the given account.
-func (s *NoteService) CreateNote(ctx context.Context, accountID string, input CreateNoteInput) (*domain.Note, error) {
+// CreateNote 为指定账号创建笔记。
+func (s *NoteUsecase) CreateNote(ctx context.Context, accountID string, input CreateNoteInput) (*notebook.Note, error) {
 	account, err := s.accounts.FindByID(ctx, accountID)
 	if err != nil {
 		return nil, err
@@ -78,7 +77,7 @@ func (s *NoteService) CreateNote(ctx context.Context, accountID string, input Cr
 	}
 
 	now := time.Now()
-	note := &domain.Note{
+	note := &notebook.Note{
 		ID:         uuid.NewString(),
 		SchoolID:   account.SchoolID,
 		OwnerID:    account.ID,
@@ -97,8 +96,8 @@ func (s *NoteService) CreateNote(ctx context.Context, accountID string, input Cr
 	return note, nil
 }
 
-// UpdateNote updates an existing note owned by the account.
-func (s *NoteService) UpdateNote(ctx context.Context, accountID, noteID string, input UpdateNoteInput) (*domain.Note, error) {
+// UpdateNote 更新该账号拥有的笔记。
+func (s *NoteUsecase) UpdateNote(ctx context.Context, accountID, noteID string, input UpdateNoteInput) (*notebook.Note, error) {
 	note, err := s.findOwnedNote(ctx, accountID, noteID)
 	if err != nil {
 		return nil, err
@@ -133,14 +132,14 @@ func (s *NoteService) UpdateNote(ctx context.Context, accountID, noteID string, 
 	return note, nil
 }
 
-// ListMyNotes returns notes for the owner.
-func (s *NoteService) ListMyNotes(ctx context.Context, accountID string, status string, includeDeleted bool) ([]domain.Note, error) {
+// ListMyNotes 返回所有者的笔记。
+func (s *NoteUsecase) ListMyNotes(ctx context.Context, accountID string, status string, includeDeleted bool) ([]notebook.Note, error) {
 	status = normalizeStatusFilter(status)
 	return s.notes.ListByOwner(ctx, accountID, includeDeleted, status)
 }
 
-// ListPublishedNotes returns published notes visible to the account's school.
-func (s *NoteService) ListPublishedNotes(ctx context.Context, accountID string) ([]domain.Note, error) {
+// ListPublishedNotes 返回该账号所在学校可见的已发布笔记。
+func (s *NoteUsecase) ListPublishedNotes(ctx context.Context, accountID string) ([]notebook.Note, error) {
 	account, err := s.accounts.FindByID(ctx, accountID)
 	if err != nil {
 		return nil, err
@@ -148,13 +147,13 @@ func (s *NoteService) ListPublishedNotes(ctx context.Context, accountID string) 
 	return s.notes.ListPublishedBySchool(ctx, account.SchoolID)
 }
 
-// DeleteNote moves a note to recycle bin.
-func (s *NoteService) DeleteNote(ctx context.Context, accountID, noteID string) error {
+// DeleteNote 将笔记移入回收站。
+func (s *NoteUsecase) DeleteNote(ctx context.Context, accountID, noteID string) error {
 	if _, err := s.findOwnedNote(ctx, accountID, noteID); err != nil {
 		return err
 	}
 	if err := s.notes.SoftDelete(ctx, noteID); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if errors.Is(err, domain.ErrNotFound) {
 			return ErrNoteNotFound
 		}
 		return err
@@ -162,8 +161,8 @@ func (s *NoteService) DeleteNote(ctx context.Context, accountID, noteID string) 
 	return nil
 }
 
-// RestoreNote restores a note from recycle bin.
-func (s *NoteService) RestoreNote(ctx context.Context, accountID, noteID string) error {
+// RestoreNote 从回收站恢复笔记。
+func (s *NoteUsecase) RestoreNote(ctx context.Context, accountID, noteID string) error {
 	note, err := s.findOwnedNote(ctx, accountID, noteID)
 	if err != nil {
 		return err
@@ -172,7 +171,7 @@ func (s *NoteService) RestoreNote(ctx context.Context, accountID, noteID string)
 		return nil
 	}
 	if err := s.notes.Restore(ctx, noteID); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if errors.Is(err, domain.ErrNotFound) {
 			return ErrNoteNotFound
 		}
 		return err
@@ -180,10 +179,10 @@ func (s *NoteService) RestoreNote(ctx context.Context, accountID, noteID string)
 	return nil
 }
 
-func (s *NoteService) findOwnedNote(ctx context.Context, accountID, noteID string) (*domain.Note, error) {
+func (s *NoteUsecase) findOwnedNote(ctx context.Context, accountID, noteID string) (*notebook.Note, error) {
 	note, err := s.notes.FindByID(ctx, noteID)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if errors.Is(err, domain.ErrNotFound) {
 			return nil, ErrNoteNotFound
 		}
 		return nil, err

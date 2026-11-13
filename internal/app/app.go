@@ -1,28 +1,34 @@
 package app
 
 import (
-	"errors"
 	"fmt"
-	"net"
-	"net/http"
 	"strings"
+	"time"
 
-	"github.com/gin-gonic/gin"
-	"github.com/improbable-eng/grpc-web/go/grpcweb"
-	"github.com/rs/cors"
-	"google.golang.org/grpc"
-
-	"learn-go/internal/domain"
-	"learn-go/internal/infra/config"
+	"learn-go/internal/config"
+	"learn-go/internal/domain/aiagent"
+	"learn-go/internal/domain/coursework"
+	"learn-go/internal/domain/curriculum"
+	"learn-go/internal/domain/identity"
+	"learn-go/internal/domain/library"
+	"learn-go/internal/domain/messaging"
+	"learn-go/internal/domain/notebook"
+	"learn-go/internal/domain/notification"
+	"learn-go/internal/domain/organization"
+	"learn-go/internal/domain/roster"
+	"learn-go/internal/domain/scheduling"
+	"learn-go/internal/domain/storage"
+	"learn-go/internal/domain/system"
+	apihandlers "learn-go/internal/handler"
+	"learn-go/internal/infra/objectstorage"
 	"learn-go/internal/infra/realtime"
 	gormrepo "learn-go/internal/infra/repository/gorm"
-	apigrpc "learn-go/internal/interface/grpcpb"
+	"learn-go/internal/infra/security"
 	"learn-go/internal/interface/grpcserver"
-	apihandlers "learn-go/internal/handler"
-	"learn-go/internal/route"
+	"learn-go/internal/interface/imstream"
+	"learn-go/internal/server"
 	"learn-go/internal/usecase"
 	"learn-go/pkg/logger"
-	"learn-go/pkg/middleware"
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/driver/postgres"
@@ -30,25 +36,19 @@ import (
 	gormlogger "gorm.io/gorm/logger"
 )
 
-// Application wires up services and transports.
+// Application 负责装配各个用例与传输层。
 type Application struct {
-	cfg    config.AppConfig
-	engine *gin.Engine
-	db     *gorm.DB
-	log    *logger.Logger
-	grpc   *grpc.Server
+	db   *gorm.DB
+	log  *logger.Logger
+	http *server.HTTPServer
+	grpc *server.GRPCServer
 }
 
-// New creates the application, preparing dependencies.
+// New 创建应用并准备好所有依赖。
 func New() (*Application, error) {
 	cfg := config.Load()
 
 	log := logger.New()
-
-	gin.SetMode(gin.ReleaseMode)
-	if cfg.Environment == "local" || cfg.Environment == "development" {
-		gin.SetMode(gin.DebugMode)
-	}
 
 	dialector, err := resolveDialector(cfg)
 	if err != nil {
@@ -107,120 +107,63 @@ func New() (*Application, error) {
 	resourceFileRepo := gormrepo.NewResourceFileStore(db)
 	resourceFavoriteRepo := gormrepo.NewResourceFavoriteStore(db)
 
-	authService := usecase.NewAuthService(accountRepo, passwordResetRepo, cfg)
+	fileRepo := gormrepo.NewFileStore(db)
+	attachmentRepo := gormrepo.NewAttachmentStore(db)
+
+	passwordHasher := security.NewBcryptHasher()
+	tokenIssuer := security.NewJWTIssuer(cfg.JWTSecret, cfg.RefreshSecret, cfg.TokenTTL, cfg.RefreshTokenTTL)
+
+	authUsecase := usecase.NewAuthUsecase(accountRepo, passwordResetRepo, tokenIssuer, passwordHasher, time.Duration(cfg.PasswordResetTokenTTL)*time.Second)
 	aiModel := usecase.NewOpenAIChatModel()
-	streamHub := realtime.NewHub()
+	streamHub := imstream.NewHub()
 	notificationHub := realtime.NewNotificationHub()
-	notificationService := usecase.NewNotificationService(notificationRepo, notificationHub)
-	fileService := usecase.NewFileService(db, ossCredentialRepo)
-	assignmentService := usecase.NewAssignmentService(assignmentRepo, submissionRepo, submissionCommentRepo, studentRepo, notificationService, fileService)
+	notificationUsecase := usecase.NewNotificationUsecase(notificationRepo, notificationHub)
+	fileUsecase := usecase.NewFileUsecase(fileRepo, attachmentRepo, ossCredentialRepo, objectstorage.NewAliyunFactory())
+	assignmentUsecase := usecase.NewAssignmentUsecase(assignmentRepo, submissionRepo, submissionCommentRepo, studentRepo, notificationUsecase, fileUsecase)
 
-	adminService := usecase.NewAdminService(accountRepo, teacherRepo, studentRepo, departmentRepo, classRepo, courseScheduleRepo, teacherStudentRepo, aiModel, aiSettingRepo)
-	teacherPortalService := usecase.NewTeacherPortalService(teacherRepo, assignmentRepo, submissionRepo, studentRepo, courseSessionRepo, courseRepo, classRepo, courseSlotRepo, accountRepo, courseScheduleRepo, courseChapterRepo, courseStudentRepo, courseTeacherRepo)
-	studentPortalService := usecase.NewStudentPortalService(studentRepo, assignmentRepo, submissionRepo, courseRepo, courseChapterRepo, courseSlotRepo, courseSessionRepo, teacherRepo, accountRepo, studentReminderRepo)
-	conversationService := usecase.NewConversationService(conversationRepo, messageRepo, receiptRepo, accountRepo)
-	noteService := usecase.NewNoteService(noteRepo, accountRepo)
-	noteCommentService := usecase.NewNoteCommentService(noteRepo, noteCommentRepo, accountRepo)
-	ossService := usecase.NewAdminOssService(ossCredentialRepo, ossPolicyRepo, ossAuditRepo, accountRepo)
-	systemService := usecase.NewAdminSystemService(systemSwitchRepo, systemParameterRepo, systemBroadcastRepo, systemAuditRepo)
-	aiSettingsService := usecase.NewAISettingsService(aiSettingRepo, aiAuditRepo, accountRepo)
-	aiGradingService := usecase.NewAIGradingService(aiSettingRepo, aiUsageLogRepo, aiModel)
+	adminUsecase := usecase.NewAdminUsecase(accountRepo, teacherRepo, studentRepo, departmentRepo, classRepo, courseScheduleRepo, teacherStudentRepo, aiModel, aiSettingRepo, passwordHasher)
+	teacherPortalUsecase := usecase.NewTeacherPortalUsecase(teacherRepo, assignmentRepo, submissionRepo, studentRepo, courseSessionRepo, courseRepo, classRepo, courseSlotRepo, accountRepo, courseScheduleRepo, courseChapterRepo, courseStudentRepo, courseTeacherRepo)
+	studentPortalUsecase := usecase.NewStudentPortalUsecase(studentRepo, assignmentRepo, submissionRepo, courseRepo, courseChapterRepo, courseSlotRepo, courseSessionRepo, teacherRepo, accountRepo, studentReminderRepo)
+	conversationUsecase := usecase.NewConversationUsecase(conversationRepo, messageRepo, receiptRepo, accountRepo)
+	noteUsecase := usecase.NewNoteUsecase(noteRepo, accountRepo)
+	noteCommentUsecase := usecase.NewNoteCommentUsecase(noteRepo, noteCommentRepo, accountRepo)
+	ossUsecase := usecase.NewAdminOssUsecase(ossCredentialRepo, ossPolicyRepo, ossAuditRepo, accountRepo)
+	systemUsecase := usecase.NewAdminSystemUsecase(systemSwitchRepo, systemParameterRepo, systemBroadcastRepo, systemAuditRepo)
+	aiSettingsUsecase := usecase.NewAISettingsUsecase(aiSettingRepo, aiAuditRepo, accountRepo)
+	aiGradingUsecase := usecase.NewAIGradingUsecase(aiSettingRepo, aiUsageLogRepo, aiModel)
 
-	engine := gin.New()
-	engine.Use(gin.Recovery())
-	engine.Use(gin.Logger())
-	engine.Use(middleware.CORS())
+	schoolUsecase := usecase.NewSchoolUsecase(schoolRepo, timeSlotRepo)
+	courseUsecase := usecase.NewCourseUsecase(courseRepo, courseStudentRepo, courseTeacherRepo, studentRepo, teacherRepo)
+	scheduleUsecase := usecase.NewScheduleUsecase(timeSlotRepo, courseScheduleRepo, courseSessionRepo, courseRepo, teacherRepo, classroomRepo)
+	classroomUsecase := usecase.NewClassroomUsecase(classroomRepo)
+	resourceUsecase := usecase.NewResourceUsecase(resourceRepo, resourceFileRepo, resourceFavoriteRepo, teacherRepo, fileUsecase, departmentRepo, fileRepo)
 
-	grpcServer := grpc.NewServer(
-		grpc.StreamInterceptor(grpcserver.StreamAuthInterceptor(cfg.JWTSecret, []string{string(domain.RoleStudent), string(domain.RoleTeacher), string(domain.RoleAdmin)})),
+	httpHandler := apihandlers.NewHandler(cfg.JWTSecret, authUsecase, adminUsecase, assignmentUsecase, teacherPortalUsecase, studentPortalUsecase, conversationUsecase, noteUsecase, noteCommentUsecase, ossUsecase, systemUsecase, aiSettingsUsecase, aiGradingUsecase, schoolUsecase, courseUsecase, scheduleUsecase, classroomUsecase, fileUsecase, notificationUsecase, streamHub, resourceUsecase)
+
+	httpServer := server.NewHTTPServer(cfg, httpHandler, log)
+	grpcServer := server.NewGRPCServer(
+		cfg,
+		grpcserver.NewConversationServer(conversationUsecase, streamHub),
+		grpcserver.NewNotificationServer(notificationHub),
+		log,
 	)
-	apigrpc.RegisterConversationServiceServer(grpcServer, grpcserver.NewConversationServer(conversationService, streamHub))
-	apigrpc.RegisterNotificationServiceServer(grpcServer, grpcserver.NewNotificationServer(notificationHub))
 
-	schoolService := usecase.NewSchoolService(schoolRepo, timeSlotRepo)
-	courseService := usecase.NewCourseService(courseRepo, courseStudentRepo, courseTeacherRepo, studentRepo, teacherRepo)
-	scheduleService := usecase.NewScheduleService(timeSlotRepo, courseScheduleRepo, courseSessionRepo, courseRepo, teacherRepo, classroomRepo)
-	classroomService := usecase.NewClassroomService(classroomRepo)
-	resourceService := usecase.NewResourceService(resourceRepo, resourceFileRepo, resourceFavoriteRepo, teacherRepo, fileService, departmentRepo, db)
-
-	httpHandler := apihandlers.NewHandler(cfg.JWTSecret, authService, adminService, assignmentService, teacherPortalService, studentPortalService, conversationService, noteService, noteCommentService, ossService, systemService, aiSettingsService, aiGradingService, schoolService, courseService, scheduleService, classroomService, fileService, notificationService, streamHub, resourceService)
-
-	adminGuard := middleware.JWTAuth(middleware.AuthConfig{Secret: cfg.JWTSecret, AllowedRoles: []string{string(domain.RoleAdmin)}})
-	teacherGuard := middleware.JWTAuth(middleware.AuthConfig{Secret: cfg.JWTSecret, AllowedRoles: []string{string(domain.RoleTeacher), string(domain.RoleAdmin)}})
-	studentGuard := middleware.JWTAuth(middleware.AuthConfig{Secret: cfg.JWTSecret, AllowedRoles: []string{string(domain.RoleStudent), string(domain.RoleTeacher), string(domain.RoleAdmin)}})
-
-	route.Register(engine, httpHandler, adminGuard, teacherGuard, studentGuard)
-
-	return &Application{cfg: cfg, engine: engine, db: db, log: log, grpc: grpcServer}, nil
+	return &Application{db: db, log: log, http: httpServer, grpc: grpcServer}, nil
 }
 
-// Run starts the HTTP server.
+// Run 在后台启动 gRPC 服务，并阻塞运行 HTTP 服务；HTTP 服务退出时一并关闭 gRPC 服务。
 func (a *Application) Run() error {
-	grpcAddr := fmt.Sprintf(":%s", a.cfg.GRPCPort)
-	lis, err := net.Listen("tcp", grpcAddr)
-	if err != nil {
-		return fmt.Errorf("listen grpc: %w", err)
+	if err := a.grpc.Start(); err != nil {
+		return err
 	}
+	defer a.grpc.Stop()
 
-	go func() {
-		a.log.Printf("starting grpc server on %s", grpcAddr)
-		if err := a.grpc.Serve(lis); err != nil && !errors.Is(err, grpc.ErrServerStopped) {
-			a.log.Printf("grpc server stopped: %v", err)
-		}
-	}()
-
-	// gRPC-Web (for Flutter Web)
-	grpcWebAddr := fmt.Sprintf(":%s", a.cfg.GRPCWebPort)
-	wrapped := grpcweb.WrapServer(
-		a.grpc,
-		grpcweb.WithOriginFunc(func(origin string) bool {
-			// Web 端使用 Bearer Token，不依赖 cookie；这里放开跨域由上层网关/部署策略约束。
-			return true
-		}),
-	)
-
-	grpcWebHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if wrapped.IsGrpcWebRequest(r) || wrapped.IsAcceptableGrpcCorsRequest(r) || wrapped.IsGrpcWebSocketRequest(r) {
-			wrapped.ServeHTTP(w, r)
-			return
-		}
-		w.WriteHeader(http.StatusNotFound)
-	})
-
-	grpcWebServer := &http.Server{Addr: grpcWebAddr, Handler: cors.New(cors.Options{
-		AllowedOrigins: []string{"*"},
-		AllowedMethods: []string{"POST", "OPTIONS"},
-		AllowedHeaders: []string{
-			"Accept",
-			"Content-Type",
-			"Authorization",
-			"X-Grpc-Web",
-			"X-User-Agent",
-			"Grpc-Timeout",
-		},
-		ExposedHeaders: []string{"Grpc-Status", "Grpc-Message", "Grpc-Status-Details-Bin"},
-	}).Handler(grpcWebHandler)}
-
-	go func() {
-		a.log.Printf("starting grpc-web server on %s", grpcWebAddr)
-		if err := grpcWebServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			a.log.Printf("grpc-web server stopped: %v", err)
-		}
-	}()
-	defer func() {
-		a.grpc.GracefulStop()
-		_ = lis.Close()
-		_ = grpcWebServer.Close()
-	}()
-
-	address := fmt.Sprintf(":%s", a.cfg.HTTPPort)
-	a.log.Printf("starting http server on %s", address)
-	return a.engine.Run(address)
+	return a.http.Start()
 }
 
 func migrate(db *gorm.DB) error {
-	// Legacy AI chat tables are removed from the product.
-	// Drop them if they still exist (messages first due to FK dependencies).
+	// 旧版 AI 聊天相关的表已从产品中移除。
+	// 若仍存在则删除（由于外键依赖，先删除 messages 表）。
 	migrator := db.Migrator()
 	if migrator.HasTable("ai_chat_messages") {
 		if err := migrator.DropTable("ai_chat_messages"); err != nil {
@@ -234,53 +177,53 @@ func migrate(db *gorm.DB) error {
 	}
 
 	if err := db.AutoMigrate(
-		&domain.School{},
-		&domain.Account{},
-		&domain.Teacher{},
-		&domain.Student{},
-		&domain.StudentReminder{},
-		&domain.TeacherStudentLink{},
-		&domain.Department{},
-		&domain.Class{},
-		&domain.Course{},
-		&domain.CourseChapter{},
-		&domain.CourseChapterAttachment{},
-		&domain.CourseStudent{},
-		&domain.CourseTeacher{},
-		&domain.CourseSlot{},
-		&domain.CourseSchedule{},
-		&domain.CourseSession{},
-		&domain.Assignment{},
-		&domain.AssignmentQuestion{},
-		&domain.AssignmentSubmission{},
-		&domain.SubmissionItem{},
-		&domain.SubmissionComment{},
-		&domain.Conversation{},
-		&domain.ConversationMember{},
-		&domain.Message{},
-		&domain.MessageReceipt{},
-		&domain.Note{},
-		&domain.NoteComment{},
-		&domain.OssCredential{},
-		&domain.OssPolicy{},
-		&domain.OssAuditLog{},
-		&domain.SystemSwitch{},
-		&domain.SystemParameter{},
-		&domain.SystemBroadcast{},
-		&domain.SystemAuditLog{},
-		&domain.AIAgentSetting{},
-		&domain.AIAgentSettingAudit{},
-		&domain.AIUsageLog{},
-		&domain.PasswordResetToken{},
-		&domain.TimeSlot{},
-		&domain.Classroom{},
-		&domain.File{},
-		&domain.AssignmentAttachment{},
-		&domain.SubmissionAttachment{},
-		&domain.Notification{},
-		&domain.Resource{},
-		&domain.ResourceFile{},
-		&domain.ResourceFavorite{},
+		&organization.School{},
+		&identity.Account{},
+		&roster.Teacher{},
+		&roster.Student{},
+		&roster.StudentReminder{},
+		&roster.TeacherStudentLink{},
+		&organization.Department{},
+		&organization.Class{},
+		&curriculum.Course{},
+		&curriculum.CourseChapter{},
+		&curriculum.CourseChapterAttachment{},
+		&curriculum.CourseStudent{},
+		&curriculum.CourseTeacher{},
+		&scheduling.CourseSlot{},
+		&scheduling.CourseSchedule{},
+		&scheduling.CourseSession{},
+		&coursework.Assignment{},
+		&coursework.AssignmentQuestion{},
+		&coursework.AssignmentSubmission{},
+		&coursework.SubmissionItem{},
+		&coursework.SubmissionComment{},
+		&messaging.Conversation{},
+		&messaging.ConversationMember{},
+		&messaging.Message{},
+		&messaging.MessageReceipt{},
+		&notebook.Note{},
+		&notebook.NoteComment{},
+		&storage.OssCredential{},
+		&storage.OssPolicy{},
+		&storage.OssAuditLog{},
+		&system.SystemSwitch{},
+		&system.SystemParameter{},
+		&system.SystemBroadcast{},
+		&system.SystemAuditLog{},
+		&aiagent.AIAgentSetting{},
+		&aiagent.AIAgentSettingAudit{},
+		&aiagent.AIUsageLog{},
+		&identity.PasswordResetToken{},
+		&scheduling.TimeSlot{},
+		&organization.Classroom{},
+		&storage.File{},
+		&coursework.AssignmentAttachment{},
+		&coursework.SubmissionAttachment{},
+		&notification.Notification{},
+		&library.Resource{},
+		&library.ResourceFile{},
+		&library.ResourceFavorite{},
 	); err != nil {
 		return err
 	}
@@ -295,7 +238,7 @@ func migrate(db *gorm.DB) error {
 func ensureAccountStatusIntegrity(db *gorm.DB) error {
 	dialect := db.Dialector.Name()
 
-	// Normalize legacy/invalid values before enforcing constraints.
+	// 在施加约束前，先规范化历史遗留或非法的值。
 	if err := db.Exec(
 		"UPDATE accounts SET status = 'active' WHERE status IS NULL OR TRIM(status) = '' OR status NOT IN ('active','locked','password_reset_required')",
 	).Error; err != nil {
@@ -322,15 +265,15 @@ func ensureAccountStatusIntegrity(db *gorm.DB) error {
 }
 
 func ensurePartialUniqueIndexes(db *gorm.DB) error {
-	// GORM soft-delete keeps rows with deleted_at set, but a plain UNIQUE index on
-	// identifier will still block re-registration. Replace the auto-created index
-	// with a partial unique index that applies only to active rows.
+	// GORM 软删除会保留设置了 deleted_at 的行，但 identifier 上的普通 UNIQUE 索引
+	// 仍会阻止重新注册。因此将自动创建的索引替换为
+	// 仅作用于未删除行的部分唯一索引。
 	//
-	// Postgres and modern SQLite both support partial indexes.
+	// Postgres 和较新的 SQLite 都支持部分索引。
 	dialect := db.Dialector.Name()
 	switch dialect {
 	case "postgres", "sqlite":
-		// Drop the old unique index created by gorm:"uniqueIndex".
+		// 删除由 gorm:"uniqueIndex" 创建的旧唯一索引。
 		if err := db.Exec("DROP INDEX IF EXISTS idx_accounts_identifier").Error; err != nil {
 			return err
 		}

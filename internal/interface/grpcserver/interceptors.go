@@ -12,7 +12,7 @@ import (
 	"learn-go/pkg/middleware"
 )
 
-// StreamAuthInterceptor enforces JWT authentication for streaming RPCs.
+// StreamAuthInterceptor 为流式 RPC 强制执行 JWT 认证。
 func StreamAuthInterceptor(secret string, allowedRoles []string) grpc.StreamServerInterceptor {
 	roleSet := make(map[string]struct{}, len(allowedRoles))
 	for _, role := range allowedRoles {

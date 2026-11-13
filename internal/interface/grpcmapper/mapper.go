@@ -2,13 +2,13 @@ package grpcmapper
 
 import (
 	"google.golang.org/protobuf/types/known/timestamppb"
+	"learn-go/internal/domain/messaging"
 	"learn-go/internal/interface/grpcpb"
-	"learn-go/internal/domain"
 	"learn-go/internal/usecase"
 )
 
-// Message converts a domain message to its protobuf representation.
-func Message(msg domain.Message) *grpcpb.Message {
+// Message 将领域消息转换为 protobuf 表示。
+func Message(msg messaging.Message) *grpcpb.Message {
 	return &grpcpb.Message{
 		Id:             msg.ID,
 		ConversationId: msg.ConversationID,
@@ -22,7 +22,7 @@ func Message(msg domain.Message) *grpcpb.Message {
 	}
 }
 
-// ConversationSummary converts a service conversation summary to protobuf.
+// ConversationSummary 将用例层的会话摘要转换为 protobuf。
 func ConversationSummary(summary usecase.ConversationSummary) *grpcpb.ConversationSummary {
 	members := make([]*grpcpb.ConversationMember, 0, len(summary.Members))
 	for _, member := range summary.Members {
@@ -54,8 +54,8 @@ func ConversationSummary(summary usecase.ConversationSummary) *grpcpb.Conversati
 	}
 }
 
-// Snapshot prepares a conversation snapshot combining summary and messages.
-func Snapshot(summary usecase.ConversationSummary, messages []domain.Message) *grpcpb.ConversationSnapshot {
+// Snapshot 组合会话摘要与消息，生成会话快照。
+func Snapshot(summary usecase.ConversationSummary, messages []messaging.Message) *grpcpb.ConversationSnapshot {
 	messagePayloads := make([]*grpcpb.Message, 0, len(messages))
 	for _, msg := range messages {
 		messagePayloads = append(messagePayloads, Message(msg))

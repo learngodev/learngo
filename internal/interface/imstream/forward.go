@@ -2,14 +2,12 @@ package imstream
 
 import (
 	"context"
-
 	"learn-go/internal/interface/grpcpb"
-	"learn-go/internal/infra/realtime"
 )
 
-// Forward pumps responses from the realtime hub client to an outbound send function.
-// It returns when ctx is done, client channel closes, or send returns error.
-func Forward(ctx context.Context, client *realtime.StreamClient, send func(*grpcpb.ConversationStreamResponse) error) error {
+// Forward 将实时 Hub 客户端的响应持续转发给出站发送函数。
+// 当 ctx 结束、客户端通道关闭或发送返回错误时返回。
+func Forward(ctx context.Context, client *StreamClient, send func(*grpcpb.ConversationStreamResponse) error) error {
 	if client == nil {
 		return nil
 	}

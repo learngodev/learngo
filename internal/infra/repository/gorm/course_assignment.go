@@ -3,24 +3,24 @@ package gormrepo
 import (
 	"context"
 
-	"learn-go/internal/domain"
+	"learn-go/internal/domain/curriculum"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
-// CourseStudentStore implements repository.CourseStudentRepository.
+// CourseStudentStore 实现 curriculum.CourseStudentRepository。
 type CourseStudentStore struct {
 	db *gorm.DB
 }
 
-// NewCourseStudentStore constructs CourseStudentStore.
+// NewCourseStudentStore 构造 CourseStudentStore。
 func NewCourseStudentStore(db *gorm.DB) *CourseStudentStore {
 	return &CourseStudentStore{db: db}
 }
 
-// BatchCreate enrolls multiple students in a course.
-func (s *CourseStudentStore) BatchCreate(ctx context.Context, enrollments []domain.CourseStudent) error {
+// BatchCreate 将多名学生批量加入课程。
+func (s *CourseStudentStore) BatchCreate(ctx context.Context, enrollments []curriculum.CourseStudent) error {
 	if len(enrollments) == 0 {
 		return nil
 	}
@@ -32,19 +32,21 @@ func (s *CourseStudentStore) BatchCreate(ctx context.Context, enrollments []doma
 		Create(&enrollments).Error
 }
 
-// ListByCourseID retrieves all students enrolled in a course.
-func (s *CourseStudentStore) ListByCourseID(ctx context.Context, courseID string) ([]domain.CourseStudent, error) {
-	var enrollments []domain.CourseStudent
+// ListByCourseID 查询某课程下的所有选课学生。
+func (s *CourseStudentStore) ListByCourseID(ctx context.Context, courseID string) ([]curriculum.CourseStudent, error) {
+	var enrollments []curriculum.CourseStudent
 	if err := s.db.WithContext(ctx).Where("course_id = ?", courseID).Find(&enrollments).Error; err != nil {
 		return nil, err
 	}
 	return enrollments, nil
 }
 
-// DeleteByCourseAndStudent removes students from a course.
+// DeleteByCourseAndStudent 将学生移出课程。
 func (s *CourseStudentStore) DeleteByCourseAndStudent(ctx context.Context, courseID string, studentIDs []string) error {
 	if len(studentIDs) == 0 {
 		return nil
 	}
-	return s.db.WithContext(ctx).Where("course_id = ? AND student_id IN ?", courseID, studentIDs).Delete(&domain.CourseStudent{}).Error
+	return s.db.WithContext(ctx).Where("course_id = ? AND student_id IN ?", courseID, studentIDs).Delete(&curriculum.CourseStudent{}).Error
 }
+
+var _ curriculum.CourseStudentRepository = (*CourseStudentStore)(nil)

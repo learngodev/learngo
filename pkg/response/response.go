@@ -120,12 +120,12 @@ var localizedMessages = map[string]string{
 	CodeInvalidClassScope:                                      "班级范围参数无效，请检查后重试。",
 }
 
-// Success writes a JSON success response with payload.
+// Success 写入带数据的 JSON 成功响应。
 func Success(ctx *gin.Context, status int, payload interface{}) {
 	ctx.JSON(status, gin.H{"success": true, "data": payload})
 }
 
-// Error writes an error response with message and optional details.
+// Error 写入带消息和可选详情的错误响应。
 func Error(ctx *gin.Context, status int, message string, details interface{}) {
 	friendlyMessage := localizeMessage(status, message)
 	_ = details
@@ -139,12 +139,12 @@ func Error(ctx *gin.Context, status int, message string, details interface{}) {
 	})
 }
 
-// ErrorWithCode writes an error response with explicit stable code.
+// ErrorWithCode 写入带显式稳定错误码的错误响应。
 func ErrorWithCode(ctx *gin.Context, status int, code string, details interface{}) {
 	ErrorWithCodeMessage(ctx, status, code, "", details)
 }
 
-// ErrorWithCodeMessage writes an error response with explicit stable code and optional preferred message.
+// ErrorWithCodeMessage 写入带显式稳定错误码及可选首选消息的错误响应。
 func ErrorWithCodeMessage(
 	ctx *gin.Context,
 	status int,
@@ -183,7 +183,7 @@ func localizeMessage(status int, message string) string {
 	}
 
 	if status < http.StatusInternalServerError {
-		// Keep explicit service/validation messages for 4xx responses.
+		// 4xx 响应保留明确的业务或校验错误信息。
 		return trimmed
 	}
 
@@ -196,7 +196,7 @@ func sanitizeDetails(status int, details interface{}) interface{} {
 	}
 
 	if status >= http.StatusInternalServerError {
-		// Do not expose internal implementation details to clients.
+		// 不向客户端暴露内部实现细节。
 		return nil
 	}
 

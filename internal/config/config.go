@@ -10,7 +10,7 @@ import (
 	"github.com/joho/godotenv"
 )
 
-// AppConfig holds runtime configuration flags.
+// AppConfig 保存运行时配置项。
 type AppConfig struct {
 	AppName               string
 	Environment           string
@@ -35,7 +35,7 @@ var (
 	once sync.Once
 )
 
-// Load reads configuration from environment variables. It is safe for concurrent use.
+// Load 从环境变量读取配置，可安全地并发调用。
 func Load() AppConfig {
 	once.Do(func() {
 		loadDotEnv()

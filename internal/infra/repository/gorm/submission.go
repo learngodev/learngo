@@ -4,13 +4,12 @@ import (
 	"context"
 	"time"
 
-	"learn-go/internal/domain"
-	"learn-go/internal/infra/repository"
+	"learn-go/internal/domain/coursework"
 
 	"gorm.io/gorm"
 )
 
-// SubmissionStore implements repository.SubmissionRepository with GORM.
+// SubmissionStore 基于 GORM 实现 coursework.SubmissionRepository。
 type SubmissionStore struct {
 	db *gorm.DB
 }
@@ -19,7 +18,7 @@ func NewSubmissionStore(db *gorm.DB) *SubmissionStore {
 	return &SubmissionStore{db: db}
 }
 
-func (s *SubmissionStore) CreateOrUpdate(ctx context.Context, submission *domain.AssignmentSubmission, items []domain.SubmissionItem) error {
+func (s *SubmissionStore) CreateOrUpdate(ctx context.Context, submission *coursework.AssignmentSubmission, items []coursework.SubmissionItem) error {
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if submission.ID == "" {
 			if err := tx.Create(submission).Error; err != nil {
@@ -31,7 +30,7 @@ func (s *SubmissionStore) CreateOrUpdate(ctx context.Context, submission *domain
 			}
 		}
 
-		if err := tx.Where("submission_id = ?", submission.ID).Delete(&domain.SubmissionItem{}).Error; err != nil {
+		if err := tx.Where("submission_id = ?", submission.ID).Delete(&coursework.SubmissionItem{}).Error; err != nil {
 			return err
 		}
 
@@ -47,54 +46,54 @@ func (s *SubmissionStore) CreateOrUpdate(ctx context.Context, submission *domain
 	})
 }
 
-func (s *SubmissionStore) ListByAssignment(ctx context.Context, assignmentID string) ([]domain.AssignmentSubmission, error) {
-	var submissions []domain.AssignmentSubmission
+func (s *SubmissionStore) ListByAssignment(ctx context.Context, assignmentID string) ([]coursework.AssignmentSubmission, error) {
+	var submissions []coursework.AssignmentSubmission
 	if err := s.db.WithContext(ctx).Where("assignment_id = ?", assignmentID).Order("updated_at DESC").Find(&submissions).Error; err != nil {
 		return nil, err
 	}
 	return submissions, nil
 }
 
-func (s *SubmissionStore) ListItemsBySubmissionIDs(ctx context.Context, submissionIDs []string) ([]domain.SubmissionItem, error) {
+func (s *SubmissionStore) ListItemsBySubmissionIDs(ctx context.Context, submissionIDs []string) ([]coursework.SubmissionItem, error) {
 	if len(submissionIDs) == 0 {
 		return nil, nil
 	}
-	var items []domain.SubmissionItem
+	var items []coursework.SubmissionItem
 	if err := s.db.WithContext(ctx).Where("submission_id IN ?", submissionIDs).Find(&items).Error; err != nil {
 		return nil, err
 	}
 	return items, nil
 }
 
-func (s *SubmissionStore) GetByAssignmentAndStudent(ctx context.Context, assignmentID, studentID string) (*domain.AssignmentSubmission, []domain.SubmissionItem, error) {
-	var submission domain.AssignmentSubmission
+func (s *SubmissionStore) GetByAssignmentAndStudent(ctx context.Context, assignmentID, studentID string) (*coursework.AssignmentSubmission, []coursework.SubmissionItem, error) {
+	var submission coursework.AssignmentSubmission
 	if err := s.db.WithContext(ctx).
 		Where("assignment_id = ? AND student_id = ?", assignmentID, studentID).
 		First(&submission).Error; err != nil {
-		return nil, nil, err
+		return nil, nil, notFound(err)
 	}
-	var items []domain.SubmissionItem
+	var items []coursework.SubmissionItem
 	if err := s.db.WithContext(ctx).Where("submission_id = ?", submission.ID).Find(&items).Error; err != nil {
 		return nil, nil, err
 	}
 	return &submission, items, nil
 }
 
-func (s *SubmissionStore) GetByID(ctx context.Context, submissionID string) (*domain.AssignmentSubmission, []domain.SubmissionItem, error) {
-	var submission domain.AssignmentSubmission
+func (s *SubmissionStore) GetByID(ctx context.Context, submissionID string) (*coursework.AssignmentSubmission, []coursework.SubmissionItem, error) {
+	var submission coursework.AssignmentSubmission
 	if err := s.db.WithContext(ctx).First(&submission, "id = ?", submissionID).Error; err != nil {
-		return nil, nil, err
+		return nil, nil, notFound(err)
 	}
-	var items []domain.SubmissionItem
+	var items []coursework.SubmissionItem
 	if err := s.db.WithContext(ctx).Where("submission_id = ?", submission.ID).Find(&items).Error; err != nil {
 		return nil, nil, err
 	}
 	return &submission, items, nil
 }
 
-func (s *SubmissionStore) UpdateGrades(ctx context.Context, submission *domain.AssignmentSubmission, items []domain.SubmissionItem) error {
+func (s *SubmissionStore) UpdateGrades(ctx context.Context, submission *coursework.AssignmentSubmission, items []coursework.SubmissionItem) error {
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Model(&domain.AssignmentSubmission{}).
+		if err := tx.Model(&coursework.AssignmentSubmission{}).
 			Where("id = ?", submission.ID).
 			Updates(map[string]interface{}{
 				"score":        submission.Score,
@@ -106,7 +105,7 @@ func (s *SubmissionStore) UpdateGrades(ctx context.Context, submission *domain.A
 			return err
 		}
 		for _, item := range items {
-			if err := tx.Model(&domain.SubmissionItem{}).
+			if err := tx.Model(&coursework.SubmissionItem{}).
 				Where("id = ? AND submission_id = ?", item.ID, submission.ID).
 				Updates(map[string]interface{}{
 					"score":  item.Score,
@@ -119,12 +118,12 @@ func (s *SubmissionStore) UpdateGrades(ctx context.Context, submission *domain.A
 	})
 }
 
-func (s *SubmissionStore) ListByStudentAndAssignments(ctx context.Context, studentID string, assignmentIDs []string) ([]domain.AssignmentSubmission, error) {
+func (s *SubmissionStore) ListByStudentAndAssignments(ctx context.Context, studentID string, assignmentIDs []string) ([]coursework.AssignmentSubmission, error) {
 	if len(assignmentIDs) == 0 {
-		return []domain.AssignmentSubmission{}, nil
+		return []coursework.AssignmentSubmission{}, nil
 	}
 
-	var submissions []domain.AssignmentSubmission
+	var submissions []coursework.AssignmentSubmission
 	if err := s.db.WithContext(ctx).
 		Where("student_id = ? AND assignment_id IN ?", studentID, assignmentIDs).
 		Find(&submissions).Error; err != nil {
@@ -133,9 +132,9 @@ func (s *SubmissionStore) ListByStudentAndAssignments(ctx context.Context, stude
 	return submissions, nil
 }
 
-func (s *SubmissionStore) StatsByAssignments(ctx context.Context, assignmentIDs []string) ([]repository.AssignmentSubmissionStats, error) {
+func (s *SubmissionStore) StatsByAssignments(ctx context.Context, assignmentIDs []string) ([]coursework.AssignmentSubmissionStats, error) {
 	if len(assignmentIDs) == 0 {
-		return []repository.AssignmentSubmissionStats{}, nil
+		return []coursework.AssignmentSubmissionStats{}, nil
 	}
 
 	type row struct {
@@ -156,7 +155,7 @@ func (s *SubmissionStore) StatsByAssignments(ctx context.Context, assignmentIDs 
 
 	var rows []row
 	if err := s.db.WithContext(ctx).
-		Model(&domain.AssignmentSubmission{}).
+		Model(&coursework.AssignmentSubmission{}).
 		Select("assignment_id as assignment_id",
 			"COUNT(*) as total",
 			"SUM(CASE WHEN status IN ('submitted','graded') THEN 1 ELSE 0 END) as submitted",
@@ -176,9 +175,9 @@ func (s *SubmissionStore) StatsByAssignments(ctx context.Context, assignmentIDs 
 		return nil, err
 	}
 
-	stats := make([]repository.AssignmentSubmissionStats, 0, len(rows))
+	stats := make([]coursework.AssignmentSubmissionStats, 0, len(rows))
 	for _, r := range rows {
-		stats = append(stats, repository.AssignmentSubmissionStats{
+		stats = append(stats, coursework.AssignmentSubmissionStats{
 			AssignmentID:      r.AssignmentID,
 			Total:             r.Total,
 			Submitted:         r.Submitted,
@@ -187,7 +186,7 @@ func (s *SubmissionStore) StatsByAssignments(ctx context.Context, assignmentIDs 
 			AverageScore:      r.AvgScore,
 			MaxScore:          r.MaxScore,
 			MinScore:          r.MinScore,
-			ScoreDistribution: repository.AssignmentScoreDistribution{
+			ScoreDistribution: coursework.AssignmentScoreDistribution{
 				Below60:        r.BucketLt60,
 				Between60And70: r.Bucket60To70,
 				Between70And80: r.Bucket70To80,
@@ -199,4 +198,4 @@ func (s *SubmissionStore) StatsByAssignments(ctx context.Context, assignmentIDs 
 	return stats, nil
 }
 
-var _ repository.SubmissionRepository = (*SubmissionStore)(nil)
+var _ coursework.SubmissionRepository = (*SubmissionStore)(nil)

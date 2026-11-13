@@ -3,13 +3,11 @@ package imstream
 import (
 	"context"
 	"errors"
-	"strings"
-	"time"
-
 	"learn-go/internal/interface/grpcmapper"
 	"learn-go/internal/interface/grpcpb"
-	"learn-go/internal/infra/realtime"
 	"learn-go/internal/usecase"
+	"strings"
+	"time"
 )
 
 const conversationHistoryLimit = 50
@@ -41,18 +39,18 @@ func (e *StreamError) Error() string {
 
 func (e *StreamError) Unwrap() error { return e.Err }
 
-// Session owns a single conversation stream lifecycle (first message must be join).
-// It is transport-agnostic: gRPC bidi stream and WebSocket can both drive it.
+// Session 管理单个会话流的生命周期（第一条消息必须是加入请求）。
+// 它与传输层无关：gRPC 双向流和 WebSocket 都可以驱动它。
 type Session struct {
-	conversations  *usecase.ConversationService
-	hub            *realtime.Hub
+	conversations  *usecase.ConversationUsecase
+	hub            *Hub
 	accountID      string
 	joined         bool
 	conversationID string
-	client         *realtime.StreamClient
+	client         *StreamClient
 }
 
-func NewSession(conversations *usecase.ConversationService, hub *realtime.Hub, accountID string) *Session {
+func NewSession(conversations *usecase.ConversationUsecase, hub *Hub, accountID string) *Session {
 	return &Session{conversations: conversations, hub: hub, accountID: accountID}
 }
 
@@ -60,7 +58,7 @@ func (s *Session) Joined() bool { return s.joined }
 
 func (s *Session) ConversationID() string { return s.conversationID }
 
-func (s *Session) Client() *realtime.StreamClient { return s.client }
+func (s *Session) Client() *StreamClient { return s.client }
 
 func (s *Session) Close() {
 	if s.client != nil {
@@ -125,7 +123,7 @@ func (s *Session) join(ctx context.Context, join *grpcpb.JoinConversation) error
 	}
 
 	s.conversationID = conversationID
-	s.client = realtime.NewStreamClient(conversationID)
+	s.client = NewStreamClient(conversationID)
 	s.hub.Register(s.client)
 	s.joined = true
 

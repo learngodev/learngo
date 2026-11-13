@@ -12,7 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// CreateResourceRequest represents the request body for creating a resource.
+// CreateResourceRequest 表示创建资源的请求体。
 type CreateResourceRequest struct {
 	Title        string   `json:"title" binding:"required"`
 	Description  string   `json:"description"`
@@ -21,7 +21,7 @@ type CreateResourceRequest struct {
 	FileIDs      []string `json:"file_ids" binding:"required"`
 }
 
-// UpdateResourceRequest represents the request body for updating a resource.
+// UpdateResourceRequest 表示更新资源的请求体。
 type UpdateResourceRequest struct {
 	Title        *string  `json:"title"`
 	Description  *string  `json:"description"`
@@ -29,12 +29,12 @@ type UpdateResourceRequest struct {
 	Tags         []string `json:"tags"`
 }
 
-// AddFileRequest represents the request body for adding a file to a resource.
+// AddFileRequest 表示向资源添加文件的请求体。
 type AddFileRequest struct {
 	FileID string `json:"file_id" binding:"required"`
 }
 
-// CreateTeacherResource creates a new resource.
+// CreateTeacherResource 创建新资源。
 func (h *Handler) CreateTeacherResource(c *gin.Context) {
 	accountID := c.GetString(middleware.ContextAccountID)
 	schoolID := getSchoolIDFromRequest(c)
@@ -49,7 +49,7 @@ func (h *Handler) CreateTeacherResource(c *gin.Context) {
 		return
 	}
 
-	resource, err := h.resourceService.CreateResource(c.Request.Context(), accountID, schoolID, usecase.CreateResourceRequest{
+	resource, err := h.resourceUsecase.CreateResource(c.Request.Context(), accountID, schoolID, usecase.CreateResourceRequest{
 		Title:        req.Title,
 		Description:  req.Description,
 		DepartmentID: req.DepartmentID,
@@ -62,7 +62,7 @@ func (h *Handler) CreateTeacherResource(c *gin.Context) {
 		return
 	}
 
-	// Parse tags
+	// 解析标签
 	var tags []string
 	if resource.Tags != "" {
 		_ = json.Unmarshal([]byte(resource.Tags), &tags)
@@ -90,7 +90,7 @@ func (h *Handler) CreateTeacherResource(c *gin.Context) {
 	})
 }
 
-// ListTeacherResources lists resources created by the teacher.
+// ListTeacherResources 列出当前教师创建的资源。
 func (h *Handler) ListTeacherResources(c *gin.Context) {
 	accountID := c.GetString(middleware.ContextAccountID)
 	schoolID := getSchoolIDFromRequest(c)
@@ -104,7 +104,7 @@ func (h *Handler) ListTeacherResources(c *gin.Context) {
 	departmentID := c.Query("department_id")
 	favoritedOnly := c.Query("favorited_only") == "true"
 
-	resources, total, err := h.resourceService.ListTeacherResources(
+	resources, total, err := h.resourceUsecase.ListTeacherResources(
 		c.Request.Context(),
 		accountID,
 		schoolID,
@@ -121,7 +121,7 @@ func (h *Handler) ListTeacherResources(c *gin.Context) {
 		return
 	}
 
-	// Convert resources to response format with parsed tags
+	// 将资源转换为响应格式，并解析标签
 	resourcesResponse := make([]gin.H, len(resources))
 	for i, resource := range resources {
 		var tags []string
@@ -156,7 +156,7 @@ func (h *Handler) ListTeacherResources(c *gin.Context) {
 	})
 }
 
-// GetTeacherResource gets a resource detail.
+// GetTeacherResource 获取资源详情。
 func (h *Handler) GetTeacherResource(c *gin.Context) {
 	resourceID := c.Param("id")
 	accountID := c.GetString(middleware.ContextAccountID)
@@ -166,19 +166,19 @@ func (h *Handler) GetTeacherResource(c *gin.Context) {
 		return
 	}
 
-	resource, files, err := h.resourceService.GetResourceDetail(c.Request.Context(), resourceID, accountID, schoolID)
+	resource, files, err := h.resourceUsecase.GetResourceDetail(c.Request.Context(), resourceID, accountID, schoolID)
 	if err != nil {
 		h.respondServiceError(c, err, http.StatusInternalServerError, "failed to get resource")
 		return
 	}
 
-	// Parse tags
+	// 解析标签
 	var tags []string
 	if resource.Tags != "" {
 		_ = json.Unmarshal([]byte(resource.Tags), &tags)
 	}
 
-	// Convert files to response format
+	// 将文件转换为响应格式
 	filesResponse := make([]gin.H, len(files))
 	for i, file := range files {
 		filesResponse[i] = gin.H{
@@ -208,7 +208,7 @@ func (h *Handler) GetTeacherResource(c *gin.Context) {
 	})
 }
 
-// UpdateTeacherResource updates a resource.
+// UpdateTeacherResource 更新资源。
 func (h *Handler) UpdateTeacherResource(c *gin.Context) {
 	resourceID := c.Param("id")
 	accountID := c.GetString(middleware.ContextAccountID)
@@ -224,7 +224,7 @@ func (h *Handler) UpdateTeacherResource(c *gin.Context) {
 		return
 	}
 
-	resource, err := h.resourceService.UpdateResource(
+	resource, err := h.resourceUsecase.UpdateResource(
 		c.Request.Context(),
 		resourceID,
 		accountID,
@@ -242,7 +242,7 @@ func (h *Handler) UpdateTeacherResource(c *gin.Context) {
 		return
 	}
 
-	// Parse tags
+	// 解析标签
 	var tags []string
 	if resource.Tags != "" {
 		_ = json.Unmarshal([]byte(resource.Tags), &tags)
@@ -270,7 +270,7 @@ func (h *Handler) UpdateTeacherResource(c *gin.Context) {
 	})
 }
 
-// DeleteTeacherResource deletes a resource.
+// DeleteTeacherResource 删除资源。
 func (h *Handler) DeleteTeacherResource(c *gin.Context) {
 	resourceID := c.Param("id")
 	accountID := c.GetString(middleware.ContextAccountID)
@@ -280,7 +280,7 @@ func (h *Handler) DeleteTeacherResource(c *gin.Context) {
 		return
 	}
 
-	if err := h.resourceService.DeleteResource(c.Request.Context(), resourceID, accountID, schoolID); err != nil {
+	if err := h.resourceUsecase.DeleteResource(c.Request.Context(), resourceID, accountID, schoolID); err != nil {
 		h.respondServiceError(c, err, http.StatusInternalServerError, "failed to delete resource")
 		return
 	}
@@ -288,7 +288,7 @@ func (h *Handler) DeleteTeacherResource(c *gin.Context) {
 	response.Success(c, http.StatusOK, gin.H{"message": "resource deleted"})
 }
 
-// AddFileToResource adds a file to a resource.
+// AddFileToResource 向资源添加文件。
 func (h *Handler) AddFileToResource(c *gin.Context) {
 	resourceID := c.Param("id")
 	accountID := c.GetString(middleware.ContextAccountID)
@@ -304,7 +304,7 @@ func (h *Handler) AddFileToResource(c *gin.Context) {
 		return
 	}
 
-	if err := h.resourceService.AddFileToResource(c.Request.Context(), resourceID, req.FileID, accountID, schoolID); err != nil {
+	if err := h.resourceUsecase.AddFileToResource(c.Request.Context(), resourceID, req.FileID, accountID, schoolID); err != nil {
 		h.respondServiceError(c, err, http.StatusInternalServerError, "failed to add file")
 		return
 	}
@@ -312,7 +312,7 @@ func (h *Handler) AddFileToResource(c *gin.Context) {
 	response.Success(c, http.StatusOK, gin.H{"message": "file added"})
 }
 
-// RemoveFileFromResource removes a file from a resource.
+// RemoveFileFromResource 从资源中移除文件。
 func (h *Handler) RemoveFileFromResource(c *gin.Context) {
 	resourceID := c.Param("id")
 	fileID := c.Param("fileID")
@@ -323,7 +323,7 @@ func (h *Handler) RemoveFileFromResource(c *gin.Context) {
 		return
 	}
 
-	if err := h.resourceService.RemoveFileFromResource(c.Request.Context(), resourceID, fileID, accountID, schoolID); err != nil {
+	if err := h.resourceUsecase.RemoveFileFromResource(c.Request.Context(), resourceID, fileID, accountID, schoolID); err != nil {
 		h.respondServiceError(c, err, http.StatusInternalServerError, "failed to remove file")
 		return
 	}
@@ -331,7 +331,7 @@ func (h *Handler) RemoveFileFromResource(c *gin.Context) {
 	response.Success(c, http.StatusOK, gin.H{"message": "file removed"})
 }
 
-// BrowseResources lists resources with search and filters.
+// BrowseResources 按搜索与筛选条件列出资源。
 func (h *Handler) BrowseResources(c *gin.Context) {
 	accountID := c.GetString(middleware.ContextAccountID)
 	schoolID := getSchoolIDFromRequest(c)
@@ -349,7 +349,7 @@ func (h *Handler) BrowseResources(c *gin.Context) {
 	favoritedOnly := c.Query("favorited_only") == "true"
 	myResourcesOnly := c.Query("my_resources_only") == "true"
 
-	resources, total, err := h.resourceService.BrowseResources(
+	resources, total, err := h.resourceUsecase.BrowseResources(
 		c.Request.Context(),
 		accountID,
 		schoolID,
@@ -370,7 +370,7 @@ func (h *Handler) BrowseResources(c *gin.Context) {
 		return
 	}
 
-	// Convert resources to response format with parsed tags
+	// 将资源转换为响应格式，并解析标签
 	resourcesResponse := make([]gin.H, len(resources))
 	for i, resource := range resources {
 		var tags []string
@@ -405,7 +405,7 @@ func (h *Handler) BrowseResources(c *gin.Context) {
 	})
 }
 
-// GetResourceDetail gets resource detail.
+// GetResourceDetail 获取资源详情。
 func (h *Handler) GetResourceDetail(c *gin.Context) {
 	resourceID := c.Param("id")
 	accountID := c.GetString(middleware.ContextAccountID)
@@ -415,19 +415,19 @@ func (h *Handler) GetResourceDetail(c *gin.Context) {
 		return
 	}
 
-	resource, files, err := h.resourceService.GetResourceDetail(c.Request.Context(), resourceID, accountID, schoolID)
+	resource, files, err := h.resourceUsecase.GetResourceDetail(c.Request.Context(), resourceID, accountID, schoolID)
 	if err != nil {
 		h.respondServiceError(c, err, http.StatusInternalServerError, "failed to get resource")
 		return
 	}
 
-	// Parse tags
+	// 解析标签
 	var tags []string
 	if resource.Tags != "" {
 		_ = json.Unmarshal([]byte(resource.Tags), &tags)
 	}
 
-	// Convert files to response format
+	// 将文件转换为响应格式
 	filesResponse := make([]gin.H, len(files))
 	for i, file := range files {
 		filesResponse[i] = gin.H{
@@ -458,7 +458,7 @@ func (h *Handler) GetResourceDetail(c *gin.Context) {
 	})
 }
 
-// ToggleFavorite toggles favorite status.
+// ToggleFavorite 切换收藏状态。
 func (h *Handler) ToggleFavorite(c *gin.Context) {
 	resourceID := c.Param("id")
 	accountID := c.GetString(middleware.ContextAccountID)
@@ -468,7 +468,7 @@ func (h *Handler) ToggleFavorite(c *gin.Context) {
 		return
 	}
 
-	favorited, err := h.resourceService.ToggleFavorite(c.Request.Context(), resourceID, accountID, schoolID)
+	favorited, err := h.resourceUsecase.ToggleFavorite(c.Request.Context(), resourceID, accountID, schoolID)
 	if err != nil {
 		h.respondServiceError(c, err, http.StatusInternalServerError, "failed to toggle favorite")
 		return
@@ -477,7 +477,7 @@ func (h *Handler) ToggleFavorite(c *gin.Context) {
 	response.Success(c, http.StatusOK, gin.H{"favorited": favorited})
 }
 
-// ListFavorites lists favorited resources.
+// ListFavorites 列出已收藏的资源。
 func (h *Handler) ListFavorites(c *gin.Context) {
 	accountID := c.GetString(middleware.ContextAccountID)
 	schoolID := getSchoolIDFromRequest(c)
@@ -489,13 +489,13 @@ func (h *Handler) ListFavorites(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	size, _ := strconv.Atoi(c.DefaultQuery("size", "20"))
 
-	resources, total, err := h.resourceService.ListFavorites(c.Request.Context(), accountID, schoolID, page, size)
+	resources, total, err := h.resourceUsecase.ListFavorites(c.Request.Context(), accountID, schoolID, page, size)
 	if err != nil {
 		h.respondServiceError(c, err, http.StatusInternalServerError, "failed to list favorites")
 		return
 	}
 
-	// Convert resources to response format with parsed tags
+	// 将资源转换为响应格式，并解析标签
 	resourcesResponse := make([]gin.H, len(resources))
 	for i, resource := range resources {
 		var tags []string
@@ -530,7 +530,7 @@ func (h *Handler) ListFavorites(c *gin.Context) {
 	})
 }
 
-// DownloadResourceFile handles resource file download.
+// DownloadResourceFile 处理资源文件下载。
 func (h *Handler) DownloadResourceFile(c *gin.Context) {
 	resourceID := c.Param("id")
 	fileID := c.Param("fileID")
@@ -540,19 +540,19 @@ func (h *Handler) DownloadResourceFile(c *gin.Context) {
 		return
 	}
 
-	// Increment download count asynchronously
+	// 异步增加下载次数
 	go func() {
-		_ = h.resourceService.IncrementDownloadCount(c.Request.Context(), resourceID)
+		_ = h.resourceUsecase.IncrementDownloadCount(c.Request.Context(), resourceID)
 	}()
 
-	// Get file download info using fileService
-	file, method, url, err := h.fileService.GetDownloadInfo(c.Request.Context(), schoolID, fileID)
+	// 通过 fileUsecase 获取文件下载信息
+	file, method, url, err := h.fileUsecase.GetDownloadInfo(c.Request.Context(), schoolID, fileID)
 	if err != nil {
 		response.Error(c, http.StatusNotFound, "file_not_found", gin.H{"error": "file not found"})
 		return
 	}
 
-	// Return download URL
+	// 返回下载地址
 	response.Success(c, http.StatusOK, gin.H{
 		"file_id":      file.ID,
 		"file_name":    file.Name,

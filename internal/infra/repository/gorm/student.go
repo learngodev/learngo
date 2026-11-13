@@ -4,58 +4,57 @@ import (
 	"context"
 	"errors"
 
-	"learn-go/internal/domain"
-	"learn-go/internal/infra/repository"
+	"learn-go/internal/domain/roster"
 
 	"gorm.io/gorm"
 )
 
-// StudentStore implements repository.StudentRepository using GORM.
+// StudentStore 基于 GORM 实现 roster.StudentRepository。
 type StudentStore struct {
 	db *gorm.DB
 }
 
-// NewStudentStore returns a new student store.
+// NewStudentStore 返回新的学生存储。
 func NewStudentStore(db *gorm.DB) *StudentStore {
 	return &StudentStore{db: db}
 }
 
-func (s *StudentStore) Create(ctx context.Context, student *domain.Student) error {
+func (s *StudentStore) Create(ctx context.Context, student *roster.Student) error {
 	return s.db.WithContext(ctx).Create(student).Error
 }
 
-func (s *StudentStore) Update(ctx context.Context, student *domain.Student) error {
+func (s *StudentStore) Update(ctx context.Context, student *roster.Student) error {
 	return s.db.WithContext(ctx).Save(student).Error
 }
 
-func (s *StudentStore) GetByNumber(ctx context.Context, schoolID, number string) (*domain.Student, error) {
-	var student domain.Student
+func (s *StudentStore) GetByNumber(ctx context.Context, schoolID, number string) (*roster.Student, error) {
+	var student roster.Student
 	if err := s.db.WithContext(ctx).
 		Table("students").
 		Select("students.*, accounts.display_name as name").
 		Joins("LEFT JOIN accounts ON accounts.id = students.account_id").
 		Where("students.school_id = ? AND students.number = ?", schoolID, number).
 		First(&student).Error; err != nil {
-		return nil, err
+		return nil, notFound(err)
 	}
 	return &student, nil
 }
 
-func (s *StudentStore) GetByID(ctx context.Context, id string) (*domain.Student, error) {
-	var student domain.Student
+func (s *StudentStore) GetByID(ctx context.Context, id string) (*roster.Student, error) {
+	var student roster.Student
 	if err := s.db.WithContext(ctx).
 		Table("students").
 		Select("students.*, accounts.display_name as name").
 		Joins("LEFT JOIN accounts ON accounts.id = students.account_id").
 		Where("students.id = ?", id).
 		First(&student).Error; err != nil {
-		return nil, err
+		return nil, notFound(err)
 	}
 	return &student, nil
 }
 
-func (s *StudentStore) GetByAccountID(ctx context.Context, accountID string) (*domain.Student, error) {
-	var student domain.Student
+func (s *StudentStore) GetByAccountID(ctx context.Context, accountID string) (*roster.Student, error) {
+	var student roster.Student
 	if err := s.db.WithContext(ctx).
 		Table("students").
 		Select("students.*, accounts.display_name as name").
@@ -70,11 +69,11 @@ func (s *StudentStore) GetByAccountID(ctx context.Context, accountID string) (*d
 	return &student, nil
 }
 
-func (s *StudentStore) ListByIDs(ctx context.Context, ids []string) ([]domain.Student, error) {
+func (s *StudentStore) ListByIDs(ctx context.Context, ids []string) ([]roster.Student, error) {
 	if len(ids) == 0 {
-		return []domain.Student{}, nil
+		return []roster.Student{}, nil
 	}
-	var students []domain.Student
+	var students []roster.Student
 	if err := s.db.WithContext(ctx).
 		Table("students").
 		Select("students.*, accounts.display_name as name").
@@ -98,7 +97,7 @@ func (s *StudentStore) CountByClassIDs(ctx context.Context, classIDs []string) (
 	}
 	var rows []row
 	if err := s.db.WithContext(ctx).
-		Model(&domain.Student{}).
+		Model(&roster.Student{}).
 		Select("class_id", "COUNT(*) AS count").
 		Where("class_id IN ?", classIDs).
 		Group("class_id").
@@ -113,13 +112,13 @@ func (s *StudentStore) CountByClassIDs(ctx context.Context, classIDs []string) (
 
 func (s *StudentStore) UpdateClassID(ctx context.Context, studentID string, classID string) error {
 	if classID == "" {
-		return s.db.WithContext(ctx).Model(&domain.Student{}).Where("id = ?", studentID).Update("class_id", nil).Error
+		return s.db.WithContext(ctx).Model(&roster.Student{}).Where("id = ?", studentID).Update("class_id", nil).Error
 	}
-	return s.db.WithContext(ctx).Model(&domain.Student{}).Where("id = ?", studentID).Update("class_id", classID).Error
+	return s.db.WithContext(ctx).Model(&roster.Student{}).Where("id = ?", studentID).Update("class_id", classID).Error
 }
 
-func (s *StudentStore) ListByClassID(ctx context.Context, classID string) ([]domain.Student, error) {
-	var students []domain.Student
+func (s *StudentStore) ListByClassID(ctx context.Context, classID string) ([]roster.Student, error) {
+	var students []roster.Student
 	if err := s.db.WithContext(ctx).
 		Table("students").
 		Select("students.*, accounts.display_name as name").
@@ -131,9 +130,9 @@ func (s *StudentStore) ListByClassID(ctx context.Context, classID string) ([]dom
 	return students, nil
 }
 
-func (s *StudentStore) ListByDepartmentID(ctx context.Context, departmentID string) ([]domain.Student, error) {
-	var students []domain.Student
-	// Join with classes to filter by department_id
+func (s *StudentStore) ListByDepartmentID(ctx context.Context, departmentID string) ([]roster.Student, error) {
+	var students []roster.Student
+	// 关联 classes 表以按 department_id 筛选
 	if err := s.db.WithContext(ctx).
 		Joins("JOIN classes ON classes.id = students.class_id").
 		Where("classes.department_id = ?", departmentID).
@@ -143,4 +142,4 @@ func (s *StudentStore) ListByDepartmentID(ctx context.Context, departmentID stri
 	return students, nil
 }
 
-var _ repository.StudentRepository = (*StudentStore)(nil)
+var _ roster.StudentRepository = (*StudentStore)(nil)

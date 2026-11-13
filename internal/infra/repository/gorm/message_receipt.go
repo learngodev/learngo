@@ -4,23 +4,22 @@ import (
 	"context"
 	"time"
 
-	"learn-go/internal/domain"
-	"learn-go/internal/infra/repository"
+	"learn-go/internal/domain/messaging"
 
 	"gorm.io/gorm"
 )
 
-// MessageReceiptStore implements MessageReceiptRepository using GORM.
+// MessageReceiptStore 基于 GORM 实现 messaging.MessageReceiptRepository。
 type MessageReceiptStore struct {
 	db *gorm.DB
 }
 
-// NewMessageReceiptStore creates a message receipt store instance.
+// NewMessageReceiptStore 创建消息回执存储实例。
 func NewMessageReceiptStore(db *gorm.DB) *MessageReceiptStore {
 	return &MessageReceiptStore{db: db}
 }
 
-func (s *MessageReceiptStore) CreateBatch(ctx context.Context, receipts []domain.MessageReceipt) error {
+func (s *MessageReceiptStore) CreateBatch(ctx context.Context, receipts []messaging.MessageReceipt) error {
 	if len(receipts) == 0 {
 		return nil
 	}
@@ -42,14 +41,14 @@ func (s *MessageReceiptStore) CountUnread(ctx context.Context, accountID, conver
 
 func (s *MessageReceiptStore) MarkReadUpTo(ctx context.Context, accountID, conversationID string, ts time.Time) error {
 	now := time.Now()
-	sub := s.db.WithContext(ctx).Model(&domain.Message{}).
+	sub := s.db.WithContext(ctx).Model(&messaging.Message{}).
 		Select("id").
 		Where("conversation_id = ? AND created_at <= ?", conversationID, ts)
 
-	return s.db.WithContext(ctx).Model(&domain.MessageReceipt{}).
+	return s.db.WithContext(ctx).Model(&messaging.MessageReceipt{}).
 		Where("account_id = ? AND read_at IS NULL", accountID).
 		Where("message_id IN (?)", sub).
 		Updates(map[string]interface{}{"read_at": now}).Error
 }
 
-var _ repository.MessageReceiptRepository = (*MessageReceiptStore)(nil)
+var _ messaging.MessageReceiptRepository = (*MessageReceiptStore)(nil)

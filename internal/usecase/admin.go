@@ -5,49 +5,52 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"learn-go/internal/domain"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
-	"gorm.io/gorm"
 
-	"learn-go/internal/domain"
-	"learn-go/internal/infra/repository"
-	"learn-go/pkg/crypto"
+	"learn-go/internal/domain/aiagent"
+	"learn-go/internal/domain/identity"
+	"learn-go/internal/domain/organization"
+	"learn-go/internal/domain/roster"
+	"learn-go/internal/domain/scheduling"
 )
 
-// AdminService manages administrative operations.
-type AdminService struct {
-	accounts     repository.AccountRepository
-	teachers     repository.TeacherRepository
-	students     repository.StudentRepository
-	departments  repository.DepartmentRepository
-	classes      repository.ClassRepository
-	schedules    repository.CourseScheduleRepository
-	teacherLinks repository.TeacherStudentRepository
+// AdminUsecase 负责管理端相关操作。
+type AdminUsecase struct {
+	accounts     identity.AccountRepository
+	teachers     roster.TeacherRepository
+	students     roster.StudentRepository
+	departments  organization.DepartmentRepository
+	classes      organization.ClassRepository
+	schedules    scheduling.CourseScheduleRepository
+	teacherLinks roster.TeacherStudentRepository
 	aiModel      AIChatModel
-	aiSettings   repository.AIAgentSettingRepository
+	aiSettings   aiagent.AIAgentSettingRepository
+	hasher       identity.PasswordHasher
 }
 
 var (
-	// ErrAdminAccountNotFound indicates the managed account does not exist in the given school.
+	// ErrAdminAccountNotFound 表示目标账号在该学校中不存在。
 	ErrAdminAccountNotFound = errors.New("account not found")
-	// ErrAdminAccountRoleNotSupported indicates the account is not a teacher or student.
+	// ErrAdminAccountRoleNotSupported 表示该账号既不是教师也不是学生。
 	ErrAdminAccountRoleNotSupported = errors.New("account role not supported")
-	// ErrAdminAccountAlreadyLocked indicates the account is already locked.
+	// ErrAdminAccountAlreadyLocked 表示账号已被锁定。
 	ErrAdminAccountAlreadyLocked = errors.New("account already locked")
-	// ErrAdminAccountNotLocked indicates the account is not in locked state when unlock is requested.
+	// ErrAdminAccountNotLocked 表示请求解锁时账号并未处于锁定状态。
 	ErrAdminAccountNotLocked = errors.New("account is not locked")
-	// ErrAdminPasswordResetPending indicates a reset request is already pending.
+	// ErrAdminPasswordResetPending 表示已有待处理的密码重置请求。
 	ErrAdminPasswordResetPending = errors.New("password reset already pending")
-	// ErrAdminBatchAccountIDsRequired indicates batch operations lack targets.
+	// ErrAdminBatchAccountIDsRequired 表示批量操作缺少目标账号。
 	ErrAdminBatchAccountIDsRequired = errors.New("account_ids required")
-	// ErrAdminBatchActionUnsupported indicates action field invalid.
+	// ErrAdminBatchActionUnsupported 表示 action 字段无效。
 	ErrAdminBatchActionUnsupported = errors.New("unsupported batch action")
 )
 
-// AdminBatchAction enumerates supported administrative bulk operations.
+// AdminBatchAction 枚举支持的管理批量操作。
 type AdminBatchAction string
 
 const (
@@ -64,44 +67,45 @@ var adminBatchActionSet = map[AdminBatchAction]struct{}{
 	AdminBatchActionDelete:        {},
 }
 
-// AdminBatchOperationInput wraps request parameters for batch account operations.
+// AdminBatchOperationInput 封装账号批量操作的请求参数。
 type AdminBatchOperationInput struct {
 	SchoolID   string
 	AccountIDs []string
 	Action     AdminBatchAction
 }
 
-// AdminBatchOperationResult summarizes execution outcome of a batch action.
+// AdminBatchOperationResult 汇总批量操作的执行结果。
 type AdminBatchOperationResult struct {
 	Succeeded []string          `json:"succeeded"`
 	Failed    map[string]string `json:"failed"`
 }
 
-// AIOperation represents a single operation parsed from AI instruction.
+// AIOperation 表示从 AI 指令中解析出的单个操作。
 type AIOperation struct {
 	Action string          `json:"action"`
 	Data   json.RawMessage `json:"data"`
 }
 
-// AIAnalyzeResponse represents the analysis result from AI.
+// AIAnalyzeResponse 表示 AI 的分析结果。
 type AIAnalyzeResponse struct {
 	Operations []AIOperation `json:"operations"`
 	Analysis   string        `json:"analysis"`
 }
 
-// NewAdminService constructs an AdminService.
-func NewAdminService(
-	acc repository.AccountRepository,
-	teachers repository.TeacherRepository,
-	students repository.StudentRepository,
-	departments repository.DepartmentRepository,
-	classes repository.ClassRepository,
-	schedules repository.CourseScheduleRepository,
-	links repository.TeacherStudentRepository,
+// NewAdminUsecase 构造 AdminUsecase。
+func NewAdminUsecase(
+	acc identity.AccountRepository,
+	teachers roster.TeacherRepository,
+	students roster.StudentRepository,
+	departments organization.DepartmentRepository,
+	classes organization.ClassRepository,
+	schedules scheduling.CourseScheduleRepository,
+	links roster.TeacherStudentRepository,
 	aiModel AIChatModel,
-	aiSettings repository.AIAgentSettingRepository,
-) *AdminService {
-	return &AdminService{
+	aiSettings aiagent.AIAgentSettingRepository,
+	hasher identity.PasswordHasher,
+) *AdminUsecase {
+	return &AdminUsecase{
 		accounts:     acc,
 		teachers:     teachers,
 		students:     students,
@@ -111,10 +115,11 @@ func NewAdminService(
 		teacherLinks: links,
 		aiModel:      aiModel,
 		aiSettings:   aiSettings,
+		hasher:       hasher,
 	}
 }
 
-// CreateTeacher creates a teacher account with default password.
+// CreateTeacher 使用默认密码创建教师账号。
 type CreateTeacherInput struct {
 	SchoolID   string
 	Number     string
@@ -124,21 +129,21 @@ type CreateTeacherInput struct {
 	DefaultPwd string
 }
 
-func (s *AdminService) CreateTeacher(ctx context.Context, input CreateTeacherInput) (*domain.Teacher, error) {
+func (s *AdminUsecase) CreateTeacher(ctx context.Context, input CreateTeacherInput) (*roster.Teacher, error) {
 	if input.DefaultPwd == "" {
 		return nil, errors.New("default password required")
 	}
 
-	hash, err := crypto.HashPassword(input.DefaultPwd)
+	hash, err := s.hasher.Hash(input.DefaultPwd)
 	if err != nil {
 		return nil, err
 	}
 
-	account := &domain.Account{
+	account := &identity.Account{
 		ID:           uuid.NewString(),
 		SchoolID:     input.SchoolID,
-		Role:         domain.RoleTeacher,
-		Status:       domain.AccountStatusActive,
+		Role:         identity.RoleTeacher,
+		Status:       identity.AccountStatusActive,
 		Identifier:   input.Number,
 		PasswordHash: hash,
 		DisplayName:  input.Name,
@@ -153,7 +158,7 @@ func (s *AdminService) CreateTeacher(ctx context.Context, input CreateTeacherInp
 		email = &input.Email
 	}
 
-	teacher := &domain.Teacher{
+	teacher := &roster.Teacher{
 		ID:        uuid.NewString(),
 		SchoolID:  input.SchoolID,
 		AccountID: account.ID,
@@ -169,7 +174,7 @@ func (s *AdminService) CreateTeacher(ctx context.Context, input CreateTeacherInp
 	return teacher, nil
 }
 
-// CreateStudentInput contains data for student creation.
+// CreateStudentInput 包含创建学生所需的数据。
 type CreateStudentInput struct {
 	SchoolID   string
 	Number     string
@@ -180,7 +185,7 @@ type CreateStudentInput struct {
 	DefaultPwd string
 }
 
-func (s *AdminService) CreateStudent(ctx context.Context, input CreateStudentInput) (*domain.Student, error) {
+func (s *AdminUsecase) CreateStudent(ctx context.Context, input CreateStudentInput) (*roster.Student, error) {
 	if input.DefaultPwd == "" {
 		return nil, errors.New("default password required")
 	}
@@ -197,16 +202,16 @@ func (s *AdminService) CreateStudent(ctx context.Context, input CreateStudentInp
 		}
 	}
 
-	hash, err := crypto.HashPassword(input.DefaultPwd)
+	hash, err := s.hasher.Hash(input.DefaultPwd)
 	if err != nil {
 		return nil, err
 	}
 
-	account := &domain.Account{
+	account := &identity.Account{
 		ID:           uuid.NewString(),
 		SchoolID:     input.SchoolID,
-		Role:         domain.RoleStudent,
-		Status:       domain.AccountStatusActive,
+		Role:         identity.RoleStudent,
+		Status:       identity.AccountStatusActive,
 		Identifier:   input.Number,
 		PasswordHash: hash,
 		DisplayName:  input.Name,
@@ -221,7 +226,7 @@ func (s *AdminService) CreateStudent(ctx context.Context, input CreateStudentInp
 		email = &input.Email
 	}
 
-	student := &domain.Student{
+	student := &roster.Student{
 		ID:        uuid.NewString(),
 		SchoolID:  input.SchoolID,
 		AccountID: account.ID,
@@ -241,31 +246,31 @@ func (s *AdminService) CreateStudent(ctx context.Context, input CreateStudentInp
 	return student, nil
 }
 
-// AccountDepartmentScope controls department-based filtering.
+// AccountDepartmentScope 控制按院系的筛选方式。
 type AccountDepartmentScope string
 
 const (
-	// AccountDepartmentScopeAll keeps all accounts regardless of department state.
+	// AccountDepartmentScopeAll 保留所有账号，不考虑院系归属。
 	AccountDepartmentScopeAll AccountDepartmentScope = "all"
-	// AccountDepartmentScopeUnassigned keeps accounts without department association.
+	// AccountDepartmentScopeUnassigned 仅保留未关联院系的账号。
 	AccountDepartmentScopeUnassigned AccountDepartmentScope = "unassigned"
 )
 
-// AccountClassScope controls class-based filtering.
+// AccountClassScope 控制按班级的筛选方式。
 type AccountClassScope string
 
 const (
-	// AccountClassScopeAll keeps all accounts regardless of class state.
+	// AccountClassScopeAll 保留所有账号，不考虑班级归属。
 	AccountClassScopeAll AccountClassScope = "all"
-	// AccountClassScopeUnassigned keeps accounts without class association.
+	// AccountClassScopeUnassigned 仅保留未关联班级的账号。
 	AccountClassScopeUnassigned AccountClassScope = "unassigned"
 )
 
-// ListAccountsOptions configures account listing behaviour.
+// ListAccountsOptions 配置账号列表的查询行为。
 type ListAccountsOptions struct {
 	SchoolID        string
-	Role            domain.Role
-	Status          domain.AccountStatus
+	Role            identity.Role
+	Status          identity.AccountStatus
 	DepartmentID    string
 	DepartmentScope AccountDepartmentScope
 	ClassID         string
@@ -276,30 +281,30 @@ type ListAccountsOptions struct {
 	Query           string
 }
 
-// AdminAccountSummary represents account information for admin UI.
+// AdminAccountSummary 表示管理端界面展示的账号信息。
 type AdminAccountSummary struct {
-	ID           string      `json:"id"`
-	ProfileID    string      `json:"profile_id,omitempty"`
-	Role         domain.Role `json:"role"`
-	Identifier   string      `json:"identifier"`
-	Name         string      `json:"name"`
-	Email        *string     `json:"email,omitempty"`
-	Phone        string      `json:"phone,omitempty"`
-	DepartmentID []string    `json:"department_id,omitempty"`
-	Department   []string    `json:"department,omitempty"`
-	ClassID      []string    `json:"class_id,omitempty"`
-	ClassName    []string    `json:"class_name,omitempty"`
-	Status       string      `json:"status"`
-	LastActiveAt *time.Time  `json:"last_active_at,omitempty"`
-	CreatedAt    time.Time   `json:"created_at"`
+	ID           string        `json:"id"`
+	ProfileID    string        `json:"profile_id,omitempty"`
+	Role         identity.Role `json:"role"`
+	Identifier   string        `json:"identifier"`
+	Name         string        `json:"name"`
+	Email        *string       `json:"email,omitempty"`
+	Phone        string        `json:"phone,omitempty"`
+	DepartmentID []string      `json:"department_id,omitempty"`
+	Department   []string      `json:"department,omitempty"`
+	ClassID      []string      `json:"class_id,omitempty"`
+	ClassName    []string      `json:"class_name,omitempty"`
+	Status       string        `json:"status"`
+	LastActiveAt *time.Time    `json:"last_active_at,omitempty"`
+	CreatedAt    time.Time     `json:"created_at"`
 }
 
-// ListAccounts returns accounts filtered by role for an administrator.
-func (s *AdminService) ListAccounts(ctx context.Context, opts ListAccountsOptions) ([]AdminAccountSummary, int64, error) {
+// ListAccounts 为管理员返回按角色筛选的账号。
+func (s *AdminUsecase) ListAccounts(ctx context.Context, opts ListAccountsOptions) ([]AdminAccountSummary, int64, error) {
 	if opts.SchoolID == "" {
 		return nil, 0, errors.New("school_id required")
 	}
-	if opts.Role != "" && opts.Role != domain.RoleTeacher && opts.Role != domain.RoleStudent {
+	if opts.Role != "" && opts.Role != identity.RoleTeacher && opts.Role != identity.RoleStudent {
 		return nil, 0, errors.New("unsupported role")
 	}
 
@@ -350,7 +355,7 @@ func (s *AdminService) ListAccounts(ctx context.Context, opts ListAccountsOption
 		}
 
 		switch account.Role {
-		case domain.RoleTeacher:
+		case identity.RoleTeacher:
 			profile, perr := s.teachers.GetByAccountID(ctx, account.ID)
 			if perr != nil {
 				return nil, 0, perr
@@ -409,7 +414,7 @@ func (s *AdminService) ListAccounts(ctx context.Context, opts ListAccountsOption
 				summary.DepartmentID = mapKeysSorted(departmentIDs)
 				summary.Department = mapKeysSorted(departmentNames)
 			}
-		case domain.RoleStudent:
+		case identity.RoleStudent:
 			profile, perr := s.students.GetByAccountID(ctx, account.ID)
 			if perr != nil {
 				return nil, 0, perr
@@ -433,22 +438,22 @@ func (s *AdminService) ListAccounts(ctx context.Context, opts ListAccountsOption
 				}
 			}
 		default:
-			// Skip roles that are not managed in account center.
+			// 跳过不在账号中心管理范围内的角色。
 			continue
 		}
 
 		if opts.ClassScope == AccountClassScopeUnassigned && len(summary.ClassID) > 0 {
-			// Skip if we asked for unassigned but got one with a class (defensive)
+			// 防御性处理：查询未分班账号却返回了有班级的账号时跳过
 			continue
 		}
-		// The repository layer handles filtering by ClassID for both students (membership)
-		// and teachers (schedule assignment). We should not filter by summary.ClassID here
-		// because teachers don't have a ClassID property on their profile.
+		// 仓储层已负责按 ClassID 筛选，包括学生（班级成员）
+		// 和教师（排课分配）。这里不应再按 summary.ClassID 过滤，
+		// 因为教师档案上没有 ClassID 属性。
 
 		if opts.DepartmentScope == AccountDepartmentScopeUnassigned && len(summary.DepartmentID) > 0 {
 			continue
 		}
-		// Similarly, repository handles DepartmentID filtering.
+		// 同理，DepartmentID 的筛选也由仓储层处理。
 
 		summaries = append(summaries, summary)
 	}
@@ -479,8 +484,8 @@ func mapKeysSorted(set map[string]struct{}) []string {
 	return values
 }
 
-// BatchOperateAccounts executes a single administrative action across multiple accounts.
-func (s *AdminService) BatchOperateAccounts(ctx context.Context, input AdminBatchOperationInput) (*AdminBatchOperationResult, error) {
+// BatchOperateAccounts 对多个账号执行同一项管理操作。
+func (s *AdminUsecase) BatchOperateAccounts(ctx context.Context, input AdminBatchOperationInput) (*AdminBatchOperationResult, error) {
 	if input.SchoolID == "" {
 		return nil, errors.New("school_id required")
 	}
@@ -522,18 +527,18 @@ func (s *AdminService) BatchOperateAccounts(ctx context.Context, input AdminBatc
 	return result, nil
 }
 
-func (s *AdminService) ResetAccountPassword(ctx context.Context, schoolID, accountID string) error {
+func (s *AdminUsecase) ResetAccountPassword(ctx context.Context, schoolID, accountID string) error {
 	account, err := s.ensureManageableAccount(ctx, schoolID, accountID)
 	if err != nil {
 		return err
 	}
 
-	if account.Status == domain.AccountStatusPasswordResetRequired {
+	if account.Status == identity.AccountStatusPasswordResetRequired {
 		return ErrAdminPasswordResetPending
 	}
 
-	if err := s.accounts.UpdateStatus(ctx, accountID, schoolID, domain.AccountStatusPasswordResetRequired); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+	if err := s.accounts.UpdateStatus(ctx, accountID, schoolID, identity.AccountStatusPasswordResetRequired); err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
 			return ErrAdminAccountNotFound
 		}
 		return err
@@ -541,18 +546,18 @@ func (s *AdminService) ResetAccountPassword(ctx context.Context, schoolID, accou
 	return nil
 }
 
-func (s *AdminService) LockAccount(ctx context.Context, schoolID, accountID string) error {
+func (s *AdminUsecase) LockAccount(ctx context.Context, schoolID, accountID string) error {
 	account, err := s.ensureManageableAccount(ctx, schoolID, accountID)
 	if err != nil {
 		return err
 	}
 
-	if account.Status == domain.AccountStatusLocked {
+	if account.Status == identity.AccountStatusLocked {
 		return ErrAdminAccountAlreadyLocked
 	}
 
-	if err := s.accounts.UpdateStatus(ctx, accountID, schoolID, domain.AccountStatusLocked); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+	if err := s.accounts.UpdateStatus(ctx, accountID, schoolID, identity.AccountStatusLocked); err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
 			return ErrAdminAccountNotFound
 		}
 		return err
@@ -560,18 +565,18 @@ func (s *AdminService) LockAccount(ctx context.Context, schoolID, accountID stri
 	return nil
 }
 
-func (s *AdminService) UnlockAccount(ctx context.Context, schoolID, accountID string) error {
+func (s *AdminUsecase) UnlockAccount(ctx context.Context, schoolID, accountID string) error {
 	account, err := s.ensureManageableAccount(ctx, schoolID, accountID)
 	if err != nil {
 		return err
 	}
 
-	if account.Status != domain.AccountStatusLocked {
+	if account.Status != identity.AccountStatusLocked {
 		return ErrAdminAccountNotLocked
 	}
 
-	if err := s.accounts.UpdateStatus(ctx, accountID, schoolID, domain.AccountStatusActive); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+	if err := s.accounts.UpdateStatus(ctx, accountID, schoolID, identity.AccountStatusActive); err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
 			return ErrAdminAccountNotFound
 		}
 		return err
@@ -579,13 +584,13 @@ func (s *AdminService) UnlockAccount(ctx context.Context, schoolID, accountID st
 	return nil
 }
 
-func (s *AdminService) DeleteAccount(ctx context.Context, schoolID, accountID string) error {
+func (s *AdminUsecase) DeleteAccount(ctx context.Context, schoolID, accountID string) error {
 	if _, err := s.ensureManageableAccount(ctx, schoolID, accountID); err != nil {
 		return err
 	}
 
 	if err := s.accounts.Delete(ctx, accountID, schoolID); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if errors.Is(err, domain.ErrNotFound) {
 			return ErrAdminAccountNotFound
 		}
 		return err
@@ -593,13 +598,13 @@ func (s *AdminService) DeleteAccount(ctx context.Context, schoolID, accountID st
 	return nil
 }
 
-func (s *AdminService) ensureManageableAccount(ctx context.Context, schoolID, accountID string) (*domain.Account, error) {
+func (s *AdminUsecase) ensureManageableAccount(ctx context.Context, schoolID, accountID string) (*identity.Account, error) {
 	if accountID == "" {
 		return nil, ErrAdminAccountNotFound
 	}
 	account, err := s.accounts.FindByID(ctx, accountID)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if errors.Is(err, domain.ErrNotFound) {
 			return nil, ErrAdminAccountNotFound
 		}
 		return nil, err
@@ -607,15 +612,15 @@ func (s *AdminService) ensureManageableAccount(ctx context.Context, schoolID, ac
 	if account == nil || account.SchoolID != schoolID {
 		return nil, ErrAdminAccountNotFound
 	}
-	if account.Role != domain.RoleTeacher && account.Role != domain.RoleStudent {
+	if account.Role != identity.RoleTeacher && account.Role != identity.RoleStudent {
 		return nil, ErrAdminAccountRoleNotSupported
 	}
 	return account, nil
 }
 
-// CreateDepartment registers a new department.
-func (s *AdminService) CreateDepartment(ctx context.Context, schoolID, name string) (*domain.Department, error) {
-	department := &domain.Department{
+// CreateDepartment 新建院系。
+func (s *AdminUsecase) CreateDepartment(ctx context.Context, schoolID, name string) (*organization.Department, error) {
+	department := &organization.Department{
 		ID:       uuid.NewString(),
 		SchoolID: schoolID,
 		Name:     name,
@@ -626,8 +631,8 @@ func (s *AdminService) CreateDepartment(ctx context.Context, schoolID, name stri
 	return department, nil
 }
 
-// CreateClass registers a class under department.
-func (s *AdminService) CreateClass(ctx context.Context, schoolID, departmentID, name string) (*domain.Class, error) {
+// CreateClass 在院系下新建班级。
+func (s *AdminUsecase) CreateClass(ctx context.Context, schoolID, departmentID, name string) (*organization.Class, error) {
 	if strings.TrimSpace(schoolID) == "" {
 		return nil, errors.New("school_id required")
 	}
@@ -646,7 +651,7 @@ func (s *AdminService) CreateClass(ctx context.Context, schoolID, departmentID, 
 		return nil, errors.New("department does not belong to school")
 	}
 
-	class := &domain.Class{
+	class := &organization.Class{
 		ID:           uuid.NewString(),
 		SchoolID:     schoolID,
 		DepartmentID: departmentID,
@@ -658,16 +663,16 @@ func (s *AdminService) CreateClass(ctx context.Context, schoolID, departmentID, 
 	return class, nil
 }
 
-// ListDepartments returns departments under a school.
-func (s *AdminService) ListDepartments(ctx context.Context, schoolID string) ([]domain.Department, error) {
+// ListDepartments 返回某学校下的院系。
+func (s *AdminUsecase) ListDepartments(ctx context.Context, schoolID string) ([]organization.Department, error) {
 	if schoolID == "" {
 		return nil, errors.New("school_id required")
 	}
 	return s.departments.List(ctx, schoolID)
 }
 
-// ListClasses returns classes optionally filtered by department.
-func (s *AdminService) ListClasses(ctx context.Context, schoolID, departmentID string) ([]domain.Class, error) {
+// ListClasses 返回班级列表，可按院系筛选。
+func (s *AdminUsecase) ListClasses(ctx context.Context, schoolID, departmentID string) ([]organization.Class, error) {
 	if schoolID == "" {
 		return nil, errors.New("school_id required")
 	}
@@ -677,8 +682,8 @@ func (s *AdminService) ListClasses(ctx context.Context, schoolID, departmentID s
 	return s.classes.ListByDepartment(ctx, schoolID, departmentID)
 }
 
-// UpdateDepartment renames a department within a school.
-func (s *AdminService) UpdateDepartment(ctx context.Context, schoolID, departmentID, name string) (*domain.Department, error) {
+// UpdateDepartment 重命名学校内的院系。
+func (s *AdminUsecase) UpdateDepartment(ctx context.Context, schoolID, departmentID, name string) (*organization.Department, error) {
 	trimmed := strings.TrimSpace(name)
 	if schoolID == "" || departmentID == "" {
 		return nil, errors.New("school_id and department_id required")
@@ -702,8 +707,8 @@ func (s *AdminService) UpdateDepartment(ctx context.Context, schoolID, departmen
 	return department, nil
 }
 
-// DeleteDepartment removes a department if it has no classes.
-func (s *AdminService) DeleteDepartment(ctx context.Context, schoolID, departmentID string) error {
+// DeleteDepartment 在院系下没有班级时将其删除。
+func (s *AdminUsecase) DeleteDepartment(ctx context.Context, schoolID, departmentID string) error {
 	if schoolID == "" || departmentID == "" {
 		return errors.New("school_id and department_id required")
 	}
@@ -727,8 +732,8 @@ func (s *AdminService) DeleteDepartment(ctx context.Context, schoolID, departmen
 	return s.departments.Delete(ctx, departmentID, schoolID)
 }
 
-// UpdateClass renames a class.
-func (s *AdminService) UpdateClass(ctx context.Context, schoolID, classID, name string) (*domain.Class, error) {
+// UpdateClass 重命名班级。
+func (s *AdminUsecase) UpdateClass(ctx context.Context, schoolID, classID, name string) (*organization.Class, error) {
 	trimmed := strings.TrimSpace(name)
 	if schoolID == "" || classID == "" {
 		return nil, errors.New("school_id and class_id required")
@@ -752,8 +757,8 @@ func (s *AdminService) UpdateClass(ctx context.Context, schoolID, classID, name 
 	return class, nil
 }
 
-// DeleteClass removes a class record.
-func (s *AdminService) DeleteClass(ctx context.Context, schoolID, classID string) error {
+// DeleteClass 删除班级记录。
+func (s *AdminUsecase) DeleteClass(ctx context.Context, schoolID, classID string) error {
 	if schoolID == "" || classID == "" {
 		return errors.New("school_id and class_id required")
 	}
@@ -789,7 +794,7 @@ func deduplicateStrings(values []string) []string {
 	return clean
 }
 
-// UpdateAccountInput defines parameters for updating account details.
+// UpdateAccountInput 定义更新账号详情的参数。
 type UpdateAccountInput struct {
 	SchoolID  string
 	AccountID string
@@ -799,8 +804,8 @@ type UpdateAccountInput struct {
 	Phone     *string
 }
 
-// UpdateAccount updates account basic information.
-func (s *AdminService) UpdateAccount(ctx context.Context, input UpdateAccountInput) error {
+// UpdateAccount 更新账号基本信息。
+func (s *AdminUsecase) UpdateAccount(ctx context.Context, input UpdateAccountInput) error {
 	account, err := s.accounts.FindByID(ctx, input.AccountID)
 	if err != nil {
 		return err
@@ -809,7 +814,7 @@ func (s *AdminService) UpdateAccount(ctx context.Context, input UpdateAccountInp
 		return ErrAdminAccountNotFound
 	}
 
-	// Update Account fields
+	// 更新 Account 字段
 	updatedAccount := false
 	if input.Name != nil {
 		account.DisplayName = *input.Name
@@ -826,8 +831,8 @@ func (s *AdminService) UpdateAccount(ctx context.Context, input UpdateAccountInp
 		}
 	}
 
-	// Update Role specific fields
-	if account.Role == domain.RoleStudent {
+	// 更新角色特有字段
+	if account.Role == identity.RoleStudent {
 		student, err := s.students.GetByAccountID(ctx, input.AccountID)
 		if err != nil {
 			return err
@@ -852,7 +857,7 @@ func (s *AdminService) UpdateAccount(ctx context.Context, input UpdateAccountInp
 				}
 			}
 		}
-	} else if account.Role == domain.RoleTeacher {
+	} else if account.Role == identity.RoleTeacher {
 		teacher, err := s.teachers.GetByAccountID(ctx, input.AccountID)
 		if err != nil {
 			return err
@@ -882,15 +887,15 @@ func (s *AdminService) UpdateAccount(ctx context.Context, input UpdateAccountInp
 	return nil
 }
 
-// UpdateAccountStructureInput defines parameters for updating account belonging.
+// UpdateAccountStructureInput 定义更新账号归属的参数。
 type UpdateAccountStructureInput struct {
 	SchoolID  string
 	AccountID string
 	ClassID   *string
 }
 
-// UpdateAccountStructure updates the belonging structure (class/department) of an account.
-func (s *AdminService) UpdateAccountStructure(ctx context.Context, input UpdateAccountStructureInput) error {
+// UpdateAccountStructure 更新账号的归属（班级/院系）。
+func (s *AdminUsecase) UpdateAccountStructure(ctx context.Context, input UpdateAccountStructureInput) error {
 	account, err := s.accounts.FindByID(ctx, input.AccountID)
 	if err != nil {
 		return err
@@ -899,7 +904,7 @@ func (s *AdminService) UpdateAccountStructure(ctx context.Context, input UpdateA
 		return ErrAdminAccountNotFound
 	}
 
-	if account.Role == domain.RoleStudent {
+	if account.Role == identity.RoleStudent {
 		if input.ClassID == nil {
 			return nil
 		}
@@ -928,8 +933,8 @@ func (s *AdminService) UpdateAccountStructure(ctx context.Context, input UpdateA
 	return nil
 }
 
-// AnalyzeBatchInstruction analyzes natural language instructions and returns proposed operations.
-func (s *AdminService) AnalyzeBatchInstruction(ctx context.Context, schoolID uuid.UUID, instruction string) (*AIAnalyzeResponse, error) {
+// AnalyzeBatchInstruction 分析自然语言指令并返回建议执行的操作。
+func (s *AdminUsecase) AnalyzeBatchInstruction(ctx context.Context, schoolID uuid.UUID, instruction string) (*AIAnalyzeResponse, error) {
 	setting, err := s.aiSettings.GetBySchoolID(ctx, schoolID.String())
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch ai settings: %w", err)
@@ -1012,7 +1017,7 @@ Do not include any markdown formatting or explanation outside the JSON.`
 	var aiResp AIAnalyzeResponse
 
 	if err := json.Unmarshal([]byte(content), &aiResp); err != nil {
-		// Fallback for backward compatibility or malformed response
+		// 兼容旧格式或响应格式异常时的回退处理
 		var ops []AIOperation
 		if err2 := json.Unmarshal([]byte(content), &ops); err2 == nil {
 			aiResp.Operations = ops
@@ -1024,8 +1029,8 @@ Do not include any markdown formatting or explanation outside the JSON.`
 	return &aiResp, nil
 }
 
-// ExecuteBatchOperations executes a list of pre-approved operations.
-func (s *AdminService) resolveAccount(ctx context.Context, schoolID, number, name string) (*domain.Account, error) {
+// ExecuteBatchOperations 执行一组已确认的操作。
+func (s *AdminUsecase) resolveAccount(ctx context.Context, schoolID, number, name string) (*identity.Account, error) {
 	if number != "" {
 		return s.accounts.FindByIdentifier(ctx, schoolID, number)
 	}
@@ -1064,7 +1069,7 @@ func getActionNameCN(action string) string {
 	}
 }
 
-func (s *AdminService) ExecuteBatchOperations(ctx context.Context, schoolID uuid.UUID, operations []AIOperation) ([]string, error) {
+func (s *AdminUsecase) ExecuteBatchOperations(ctx context.Context, schoolID uuid.UUID, operations []AIOperation) ([]string, error) {
 	var results []string
 	for _, op := range operations {
 		var res string
@@ -1222,7 +1227,7 @@ func (s *AdminService) ExecuteBatchOperations(ctx context.Context, schoolID uuid
 	return results, nil
 }
 
-func (s *AdminService) resolveClassID(ctx context.Context, schoolID, deptName, className string) (string, error) {
+func (s *AdminUsecase) resolveClassID(ctx context.Context, schoolID, deptName, className string) (string, error) {
 	if className == "" {
 		return "", nil
 	}
@@ -1246,7 +1251,7 @@ func (s *AdminService) resolveClassID(ctx context.Context, schoolID, deptName, c
 
 	candidateDepts := depts
 	if targetDeptID != "" {
-		candidateDepts = []domain.Department{}
+		candidateDepts = []organization.Department{}
 		for _, d := range depts {
 			if d.ID == targetDeptID {
 				candidateDepts = append(candidateDepts, d)

@@ -1,4 +1,4 @@
-package realtime
+package imstream
 
 import (
 	"sync"
@@ -6,14 +6,14 @@ import (
 	"learn-go/internal/interface/grpcpb"
 )
 
-// StreamClient represents an active gRPC stream subscription for a conversation.
+// StreamClient 表示某个会话上的一个活跃 gRPC 流订阅。
 type StreamClient struct {
 	conversationID string
 	send           chan *grpcpb.ConversationStreamResponse
 	once           sync.Once
 }
 
-// NewStreamClient constructs a StreamClient for the given conversation.
+// NewStreamClient 为指定会话构造一个 StreamClient。
 func NewStreamClient(conversationID string) *StreamClient {
 	return &StreamClient{
 		conversationID: conversationID,
@@ -21,17 +21,17 @@ func NewStreamClient(conversationID string) *StreamClient {
 	}
 }
 
-// ConversationID returns the conversation identifier for the client.
+// ConversationID 返回该客户端订阅的会话 ID。
 func (c *StreamClient) ConversationID() string {
 	return c.conversationID
 }
 
-// Messages exposes the outbound message channel for the client.
+// Messages 返回该客户端的出站消息通道。
 func (c *StreamClient) Messages() <-chan *grpcpb.ConversationStreamResponse {
 	return c.send
 }
 
-// Send enqueues a response for delivery to the client.
+// Send 将响应放入队列，等待投递给客户端。
 func (c *StreamClient) Send(resp *grpcpb.ConversationStreamResponse) bool {
 	select {
 	case c.send <- resp:
@@ -41,27 +41,27 @@ func (c *StreamClient) Send(resp *grpcpb.ConversationStreamResponse) bool {
 	}
 }
 
-// Close terminates the client channel.
+// Close 关闭客户端通道。
 func (c *StreamClient) Close() {
 	c.once.Do(func() {
 		close(c.send)
 	})
 }
 
-// Hub manages active conversation stream clients.
+// Hub 管理所有活跃的会话流客户端。
 type Hub struct {
 	mu      sync.RWMutex
 	clients map[string]map[*StreamClient]struct{}
 }
 
-// NewHub constructs an empty Hub instance.
+// NewHub 构造一个空的 Hub 实例。
 func NewHub() *Hub {
 	return &Hub{
 		clients: make(map[string]map[*StreamClient]struct{}),
 	}
 }
 
-// Register adds a stream client to the hub.
+// Register 将流客户端注册到 Hub。
 func (h *Hub) Register(client *StreamClient) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -74,7 +74,7 @@ func (h *Hub) Register(client *StreamClient) {
 	convClients[client] = struct{}{}
 }
 
-// Unregister removes a client from the hub and closes its channel.
+// Unregister 从 Hub 中移除客户端并关闭其通道。
 func (h *Hub) Unregister(client *StreamClient) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -93,7 +93,7 @@ func (h *Hub) Unregister(client *StreamClient) {
 	client.Close()
 }
 
-// Broadcast delivers the response to all clients subscribed to the conversation.
+// Broadcast 将响应投递给订阅该会话的所有客户端。
 func (h *Hub) Broadcast(conversationID string, resp *grpcpb.ConversationStreamResponse) {
 	h.mu.RLock()
 	clients := h.clients[conversationID]

@@ -7,7 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"learn-go/internal/domain"
+	"learn-go/internal/domain/identity"
 	"learn-go/pkg/response"
 )
 
@@ -46,7 +46,7 @@ func (h *Handler) CreateCourse(c *gin.Context) {
 		imageURL = strings.TrimSpace(*req.ImageURL)
 	}
 
-	course, err := h.courseService.CreateCourse(
+	course, err := h.courseUsecase.CreateCourse(
 		c.Request.Context(),
 		schoolID,
 		req.Name,
@@ -76,7 +76,7 @@ func (h *Handler) JoinCourse(c *gin.Context) {
 		return
 	}
 
-	if err := h.courseService.JoinCourseByCode(c.Request.Context(), student.ID, req.Code); err != nil {
+	if err := h.courseUsecase.JoinCourseByCode(c.Request.Context(), student.ID, req.Code); err != nil {
 		h.respondServiceError(c, err, http.StatusInternalServerError, "failed_to_join_course")
 		return
 	}
@@ -92,7 +92,7 @@ func (h *Handler) ListStudentCourses(c *gin.Context) {
 		return
 	}
 
-	courses, err := h.courseService.ListStudentCourses(c.Request.Context(), student.ID)
+	courses, err := h.courseUsecase.ListStudentCourses(c.Request.Context(), student.ID)
 	if err != nil {
 		h.respondServiceError(c, err, http.StatusInternalServerError, "failed_to_list_courses")
 		return
@@ -115,7 +115,7 @@ func (h *Handler) ListCourses(c *gin.Context) {
 	departmentID := c.Query("department_id")
 	classID := c.Query("class_id")
 
-	courses, total, err := h.courseService.ListCoursesWithDetails(c.Request.Context(), schoolID, departmentID, classID, page, size)
+	courses, total, err := h.courseUsecase.ListCoursesWithDetails(c.Request.Context(), schoolID, departmentID, classID, page, size)
 	if err != nil {
 		h.respondServiceError(c, err, http.StatusInternalServerError, "failed_to_list_courses")
 		return
@@ -135,7 +135,7 @@ func (h *Handler) UpdateCourse(c *gin.Context) {
 		return
 	}
 
-	if err := h.courseService.UpdateCourseFields(c.Request.Context(), id, req.Name, req.Description, req.ImageURL); err != nil {
+	if err := h.courseUsecase.UpdateCourseFields(c.Request.Context(), id, req.Name, req.Description, req.ImageURL); err != nil {
 		h.respondServiceError(c, err, http.StatusInternalServerError, "failed_to_update_course")
 		return
 	}
@@ -156,8 +156,8 @@ func (h *Handler) ListAssignments(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	size, _ := strconv.Atoi(c.DefaultQuery("size", "20"))
 
-	// Use ListCourseAssignments which now queries course_schedules
-	assignments, total, err := h.courseService.ListCourseAssignments(c.Request.Context(), schoolID, courseID, departmentID, classID, true, page, size)
+	// 使用 ListCourseAssignments，它现在会查询 course_schedules
+	assignments, total, err := h.courseUsecase.ListCourseAssignments(c.Request.Context(), schoolID, courseID, departmentID, classID, true, page, size)
 	if err != nil {
 		h.respondServiceError(c, err, http.StatusInternalServerError, "failed_to_list_assignments")
 		return
@@ -171,7 +171,7 @@ func (h *Handler) ListAssignments(c *gin.Context) {
 
 func (h *Handler) DeleteCourse(c *gin.Context) {
 	id := c.Param("id")
-	if err := h.courseService.DeleteCourse(c.Request.Context(), id); err != nil {
+	if err := h.courseUsecase.DeleteCourse(c.Request.Context(), id); err != nil {
 		h.respondServiceError(c, err, http.StatusInternalServerError, "failed_to_delete_course")
 		return
 	}
@@ -196,9 +196,9 @@ func (h *Handler) AssignStudents(c *gin.Context) {
 	var err error
 
 	if req.ClassID != "" {
-		err = h.courseService.AssignStudentsByClass(ctx, courseID, req.ClassID)
+		err = h.courseUsecase.AssignStudentsByClass(ctx, courseID, req.ClassID)
 	} else if req.DepartmentID != "" {
-		err = h.courseService.AssignStudentsByDepartment(ctx, courseID, req.DepartmentID)
+		err = h.courseUsecase.AssignStudentsByDepartment(ctx, courseID, req.DepartmentID)
 	} else {
 		response.Error(c, http.StatusBadRequest, "missing_assignment_target", nil)
 		return
@@ -213,12 +213,12 @@ func (h *Handler) AssignStudents(c *gin.Context) {
 }
 
 func (h *Handler) getSchoolID(c *gin.Context) string {
-	// First try query param
+	// 优先读取查询参数
 	if sid := c.Query("school_id"); sid != "" {
 		return sid
 	}
 
-	// Then try context (middleware)
+	// 其次从 context 中读取（由中间件设置）
 	schoolID := c.GetString("schoolID")
 	if schoolID != "" {
 		return schoolID
@@ -226,7 +226,7 @@ func (h *Handler) getSchoolID(c *gin.Context) string {
 
 	user, exists := c.Get("user")
 	if exists {
-		if u, ok := user.(*domain.Account); ok {
+		if u, ok := user.(*identity.Account); ok {
 			return u.SchoolID
 		}
 	}

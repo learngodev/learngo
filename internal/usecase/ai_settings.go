@@ -4,25 +4,25 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"learn-go/internal/domain"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
-	"gorm.io/gorm"
 
-	"learn-go/internal/domain"
-	"learn-go/internal/infra/repository"
+	"learn-go/internal/domain/aiagent"
+	"learn-go/internal/domain/identity"
 )
 
 var (
-	// ErrAISettingNotConfigured signals that the AI setting is absent.
+	// ErrAISettingNotConfigured 表示尚未配置 AI。
 	ErrAISettingNotConfigured = errors.New("ai setting not configured")
 )
 
-// UpdateAIAgentSettingInput collects configuration updates from administrators.
+// UpdateAIAgentSettingInput 收集管理员提交的配置更新。
 type UpdateAIAgentSettingInput struct {
 	SchoolID                string
-	Provider                domain.AIProvider
+	Provider                aiagent.AIProvider
 	Model                   string
 	APIKey                  string
 	BaseURL                 string
@@ -38,29 +38,29 @@ type UpdateAIAgentSettingInput struct {
 	OperatorName            string
 }
 
-// AISettingsService owns AI configuration (settings + audits).
-type AISettingsService struct {
-	settings repository.AIAgentSettingRepository
-	audits   repository.AIAgentSettingAuditRepository
-	accounts repository.AccountRepository
+// AISettingsUsecase 负责 AI 配置（配置项与审计记录）。
+type AISettingsUsecase struct {
+	settings aiagent.AIAgentSettingRepository
+	audits   aiagent.AIAgentSettingAuditRepository
+	accounts identity.AccountRepository
 }
 
-func NewAISettingsService(
-	settings repository.AIAgentSettingRepository,
-	audits repository.AIAgentSettingAuditRepository,
-	accounts repository.AccountRepository,
-) *AISettingsService {
-	return &AISettingsService{settings: settings, audits: audits, accounts: accounts}
+func NewAISettingsUsecase(
+	settings aiagent.AIAgentSettingRepository,
+	audits aiagent.AIAgentSettingAuditRepository,
+	accounts identity.AccountRepository,
+) *AISettingsUsecase {
+	return &AISettingsUsecase{settings: settings, audits: audits, accounts: accounts}
 }
 
-// GetSetting returns the AI setting for a given school (if any).
-func (s *AISettingsService) GetSetting(ctx context.Context, schoolID string) (*domain.AIAgentSetting, error) {
+// GetSetting 返回指定学校的 AI 配置（如有）。
+func (s *AISettingsUsecase) GetSetting(ctx context.Context, schoolID string) (*aiagent.AIAgentSetting, error) {
 	if strings.TrimSpace(schoolID) == "" {
 		return nil, errors.New("school_id required")
 	}
 
 	setting, err := s.settings.GetBySchoolID(ctx, schoolID)
-	if errors.Is(err, gorm.ErrRecordNotFound) {
+	if errors.Is(err, domain.ErrNotFound) {
 		return nil, nil
 	}
 	if err != nil {
@@ -69,9 +69,9 @@ func (s *AISettingsService) GetSetting(ctx context.Context, schoolID string) (*d
 	return setting, nil
 }
 
-// UpdateSetting creates or updates the AI configuration.
-func (s *AISettingsService) UpdateSetting(ctx context.Context, input UpdateAIAgentSettingInput) (*domain.AIAgentSetting, error) {
-	// Sanitize API Key
+// UpdateSetting 创建或更新 AI 配置。
+func (s *AISettingsUsecase) UpdateSetting(ctx context.Context, input UpdateAIAgentSettingInput) (*aiagent.AIAgentSetting, error) {
+	// 清理 API Key
 	if input.APIKey != "" {
 		input.APIKey = strings.TrimSpace(input.APIKey)
 		if strings.HasPrefix(strings.ToLower(input.APIKey), "bearer ") {
@@ -90,7 +90,7 @@ func (s *AISettingsService) UpdateSetting(ctx context.Context, input UpdateAIAge
 	}
 
 	switch input.Provider {
-	case domain.AIProviderQwen, domain.AIProviderDeepSeek:
+	case aiagent.AIProviderQwen, aiagent.AIProviderDeepSeek:
 	default:
 		return nil, errors.New("unsupported provider")
 	}
@@ -118,17 +118,17 @@ func (s *AISettingsService) UpdateSetting(ctx context.Context, input UpdateAIAge
 	}
 
 	existing, err := s.settings.GetBySchoolID(ctx, input.SchoolID)
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+	if err != nil && !errors.Is(err, domain.ErrNotFound) {
 		return nil, err
 	}
 
 	now := time.Now()
-	var setting *domain.AIAgentSetting
-	if existing == nil || errors.Is(err, gorm.ErrRecordNotFound) {
+	var setting *aiagent.AIAgentSetting
+	if existing == nil || errors.Is(err, domain.ErrNotFound) {
 		if input.APIKey == "" {
 			return nil, errors.New("api_key required for initial configuration")
 		}
-		setting = &domain.AIAgentSetting{
+		setting = &aiagent.AIAgentSetting{
 			ID:       uuid.NewString(),
 			SchoolID: input.SchoolID,
 		}
@@ -168,7 +168,7 @@ func (s *AISettingsService) UpdateSetting(ctx context.Context, input UpdateAIAge
 		return nil, err
 	}
 
-	audit := &domain.AIAgentSettingAudit{
+	audit := &aiagent.AIAgentSettingAudit{
 		ID:           uuid.NewString(),
 		SchoolID:     input.SchoolID,
 		OperatorID:   input.OperatorID,
@@ -184,8 +184,8 @@ func (s *AISettingsService) UpdateSetting(ctx context.Context, input UpdateAIAge
 	return setting, nil
 }
 
-// ListSettingAudits returns recent audit entries for AI configuration.
-func (s *AISettingsService) ListSettingAudits(ctx context.Context, schoolID string, limit int) ([]domain.AIAgentSettingAudit, error) {
+// ListSettingAudits 返回 AI 配置最近的审计记录。
+func (s *AISettingsUsecase) ListSettingAudits(ctx context.Context, schoolID string, limit int) ([]aiagent.AIAgentSettingAudit, error) {
 	if strings.TrimSpace(schoolID) == "" {
 		return nil, errors.New("school_id required")
 	}

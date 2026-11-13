@@ -66,10 +66,10 @@ func main() {
 		grpcAddr = fmt.Sprintf("%s:%d", stringsTrimSpace(*host), *grpcPort)
 	}
 
-	// Token resolution priority:
-	// 1) explicit -token
-	// 2) if identifier/password provided => login via HTTP (preferred)
-	// 3) fallback to TOKEN env var
+	// Token 解析优先级：
+	// 1) 显式传入 -token
+	// 2) 若提供了 identifier/password，则通过 HTTP 登录获取（推荐）
+	// 3) 回退到 TOKEN 环境变量
 	if stringsTrimSpace(*token) == "" {
 		if stringsTrimSpace(*identifier) != "" || stringsTrimSpace(*password) != "" {
 			if stringsTrimSpace(*identifier) == "" {
@@ -186,7 +186,7 @@ func loginForToken(loginURL, schoolID, identifier, password string, timeout time
 		return "", "", "", fmt.Errorf("decode login response: %w", err)
 	}
 	if !out.Success {
-		// Avoid printing tokens; include http status to help debugging.
+		// 避免打印 token；附带 HTTP 状态码便于排查。
 		return "", "", "", fmt.Errorf("login unsuccessful (http=%d)", resp.StatusCode)
 	}
 	if stringsTrimSpace(out.Data.AccessToken) == "" {
@@ -229,7 +229,7 @@ func runOne(ctx context.Context, addr, token, conversationID string, joinTimeout
 	active.Add(1)
 	defer active.Add(-1)
 
-	// Join conversation.
+	// 加入会话。
 	if err := stream.Send(&grpcpb.ConversationStreamRequest{
 		Payload: &grpcpb.ConversationStreamRequest_Join{
 			Join: &grpcpb.JoinConversation{ConversationId: conversationID},
@@ -246,7 +246,7 @@ func runOne(ctx context.Context, addr, token, conversationID string, joinTimeout
 	}
 	c.joinOK.Add(1)
 
-	// Wait for initial snapshot (or any first response) to ensure server accepted join.
+	// 等待初始快照（或任意首个响应），确认服务端已接受加入请求。
 	firstRespCh := make(chan error, 1)
 	go func() {
 		resp, err := stream.Recv()
@@ -262,7 +262,7 @@ func runOne(ctx context.Context, addr, token, conversationID string, joinTimeout
 		if resp.GetSnapshot() != nil {
 			c.snapshotOK.Add(1)
 		} else {
-			// Some servers may send other first payloads; treat as ok but record.
+			// 部分服务端可能先发送其他负载；视为成功但记录下来。
 			c.snapshotFail.Add(1)
 		}
 		firstRespCh <- nil
@@ -281,7 +281,7 @@ func runOne(ctx context.Context, addr, token, conversationID string, joinTimeout
 		}
 	}
 
-	// Soak: keep receiving until context is done or server closes.
+	// 浸泡测试：持续接收，直到 context 结束或服务端关闭连接。
 	for {
 		_, err := stream.Recv()
 		if err != nil {

@@ -9,30 +9,30 @@ import (
 
 	"github.com/google/uuid"
 
-	"learn-go/internal/domain"
-	"learn-go/internal/infra/repository"
+	"learn-go/internal/domain/identity"
+	"learn-go/internal/domain/storage"
 )
 
 var (
 	ErrOssPrimaryCredentialDeletion = errors.New("cannot delete primary credential")
 )
 
-// AdminOssService manages administrator OSS configuration operations.
-type AdminOssService struct {
-	credentials repository.OssCredentialRepository
-	policies    repository.OssPolicyRepository
-	audits      repository.OssAuditRepository
-	accounts    repository.AccountRepository
+// AdminOssUsecase 负责管理员的 OSS 配置操作。
+type AdminOssUsecase struct {
+	credentials storage.OssCredentialRepository
+	policies    storage.OssPolicyRepository
+	audits      storage.OssAuditRepository
+	accounts    identity.AccountRepository
 }
 
-// NewAdminOssService constructs an AdminOssService.
-func NewAdminOssService(
-	credentials repository.OssCredentialRepository,
-	policies repository.OssPolicyRepository,
-	audits repository.OssAuditRepository,
-	accounts repository.AccountRepository,
-) *AdminOssService {
-	return &AdminOssService{
+// NewAdminOssUsecase 构造 AdminOssUsecase。
+func NewAdminOssUsecase(
+	credentials storage.OssCredentialRepository,
+	policies storage.OssPolicyRepository,
+	audits storage.OssAuditRepository,
+	accounts identity.AccountRepository,
+) *AdminOssUsecase {
+	return &AdminOssUsecase{
 		credentials: credentials,
 		policies:    policies,
 		audits:      audits,
@@ -40,7 +40,7 @@ func NewAdminOssService(
 	}
 }
 
-// AdminOssCredentialView represents credential data returned to clients.
+// AdminOssCredentialView 表示返回给客户端的凭据数据。
 type AdminOssCredentialView struct {
 	ID                   string     `json:"id"`
 	Name                 string     `json:"name"`
@@ -59,17 +59,17 @@ type AdminOssCredentialView struct {
 	LastRotatedAt        *time.Time `json:"last_rotated_at,omitempty"`
 }
 
-// AdminOssPolicyView represents policy data returned to clients.
+// AdminOssPolicyView 表示返回给客户端的策略数据。
 type AdminOssPolicyView struct {
-	ID            string                 `json:"id"`
-	Name          string                 `json:"name"`
-	Description   string                 `json:"description"`
-	AppliesTo     string                 `json:"applies_to"`
-	Status        domain.OssPolicyStatus `json:"status"`
-	LastUpdatedAt time.Time              `json:"last_updated_at"`
+	ID            string                  `json:"id"`
+	Name          string                  `json:"name"`
+	Description   string                  `json:"description"`
+	AppliesTo     string                  `json:"applies_to"`
+	Status        storage.OssPolicyStatus `json:"status"`
+	LastUpdatedAt time.Time               `json:"last_updated_at"`
 }
 
-// AdminOssAuditLogView represents audit log data returned to clients.
+// AdminOssAuditLogView 表示返回给客户端的审计日志数据。
 type AdminOssAuditLogView struct {
 	ID           string    `json:"id"`
 	Action       string    `json:"action"`
@@ -78,7 +78,7 @@ type AdminOssAuditLogView struct {
 	CreatedAt    time.Time `json:"created_at"`
 }
 
-// UpdateOssCredentialInput collects optional updates for a credential.
+// UpdateOssCredentialInput 收集凭据的可选更新字段。
 type UpdateOssCredentialInput struct {
 	SchoolID             string
 	CredentialID         string
@@ -99,7 +99,7 @@ type UpdateOssCredentialInput struct {
 	OperatorID           string
 }
 
-// CreateOssCredentialInput collects fields required to create a credential.
+// CreateOssCredentialInput 收集创建凭据所需的字段。
 type CreateOssCredentialInput struct {
 	SchoolID             string
 	Name                 string
@@ -119,26 +119,26 @@ type CreateOssCredentialInput struct {
 	OperatorID           string
 }
 
-// UpdateOssPolicyStatusInput collects updates for policy status.
+// UpdateOssPolicyStatusInput 收集策略状态的更新。
 type UpdateOssPolicyStatusInput struct {
 	SchoolID   string
 	PolicyID   string
-	Status     domain.OssPolicyStatus
+	Status     storage.OssPolicyStatus
 	OperatorID string
 }
 
-// CreateOssPolicyInput collects fields required to create a policy.
+// CreateOssPolicyInput 收集创建策略所需的字段。
 type CreateOssPolicyInput struct {
 	SchoolID    string
 	Name        string
 	Description string
 	AppliesTo   string
-	Status      domain.OssPolicyStatus
+	Status      storage.OssPolicyStatus
 	OperatorID  string
 }
 
-// ListCredentials returns all credentials for a school.
-func (s *AdminOssService) ListCredentials(ctx context.Context, schoolID string) ([]AdminOssCredentialView, error) {
+// ListCredentials 返回某学校的所有凭据。
+func (s *AdminOssUsecase) ListCredentials(ctx context.Context, schoolID string) ([]AdminOssCredentialView, error) {
 	if strings.TrimSpace(schoolID) == "" {
 		return nil, errors.New("school_id required")
 	}
@@ -153,8 +153,8 @@ func (s *AdminOssService) ListCredentials(ctx context.Context, schoolID string) 
 	return out, nil
 }
 
-// UpdateCredential applies partial updates to a credential.
-func (s *AdminOssService) UpdateCredential(ctx context.Context, input UpdateOssCredentialInput) (*AdminOssCredentialView, error) {
+// UpdateCredential 对凭据进行部分更新。
+func (s *AdminOssUsecase) UpdateCredential(ctx context.Context, input UpdateOssCredentialInput) (*AdminOssCredentialView, error) {
 	if strings.TrimSpace(input.SchoolID) == "" {
 		return nil, errors.New("school_id required")
 	}
@@ -251,7 +251,7 @@ func (s *AdminOssService) UpdateCredential(ctx context.Context, input UpdateOssC
 		}
 	}
 
-	var cred *domain.OssCredential
+	var cred *storage.OssCredential
 	var err error
 
 	if len(updates) > 0 {
@@ -292,8 +292,8 @@ func (s *AdminOssService) UpdateCredential(ctx context.Context, input UpdateOssC
 	return &view, nil
 }
 
-// CreateCredential adds a new OSS credential for a school.
-func (s *AdminOssService) CreateCredential(ctx context.Context, input CreateOssCredentialInput) (*AdminOssCredentialView, error) {
+// CreateCredential 为学校新增 OSS 凭据。
+func (s *AdminOssUsecase) CreateCredential(ctx context.Context, input CreateOssCredentialInput) (*AdminOssCredentialView, error) {
 	schoolID := strings.TrimSpace(input.SchoolID)
 	if schoolID == "" {
 		return nil, errors.New("school_id required")
@@ -321,7 +321,7 @@ func (s *AdminOssService) CreateCredential(ctx context.Context, input CreateOssC
 	accessKeySecret := strings.TrimSpace(input.AccessKeySecret)
 	accessKeyDisplay := strings.TrimSpace(input.AccessKeyDisplay)
 
-	credential := &domain.OssCredential{
+	credential := &storage.OssCredential{
 		ID:                   uuid.NewString(),
 		SchoolID:             schoolID,
 		Name:                 name,
@@ -382,8 +382,8 @@ func (s *AdminOssService) CreateCredential(ctx context.Context, input CreateOssC
 	return &view, nil
 }
 
-// DeleteCredential removes a credential that is not primary.
-func (s *AdminOssService) DeleteCredential(ctx context.Context, schoolID, credentialID, operatorID string) error {
+// DeleteCredential 删除非主凭据。
+func (s *AdminOssUsecase) DeleteCredential(ctx context.Context, schoolID, credentialID, operatorID string) error {
 	schoolID = strings.TrimSpace(schoolID)
 	credentialID = strings.TrimSpace(credentialID)
 	if schoolID == "" {
@@ -409,8 +409,8 @@ func (s *AdminOssService) DeleteCredential(ctx context.Context, schoolID, creden
 	return s.recordAudit(ctx, schoolID, operatorID, "删除访问凭证", detail)
 }
 
-// ListPolicies returns all policies for a school.
-func (s *AdminOssService) ListPolicies(ctx context.Context, schoolID string) ([]AdminOssPolicyView, error) {
+// ListPolicies 返回某学校的所有策略。
+func (s *AdminOssUsecase) ListPolicies(ctx context.Context, schoolID string) ([]AdminOssPolicyView, error) {
 	if strings.TrimSpace(schoolID) == "" {
 		return nil, errors.New("school_id required")
 	}
@@ -425,8 +425,8 @@ func (s *AdminOssService) ListPolicies(ctx context.Context, schoolID string) ([]
 	return out, nil
 }
 
-// CreatePolicy adds a new OSS policy definition.
-func (s *AdminOssService) CreatePolicy(ctx context.Context, input CreateOssPolicyInput) (*AdminOssPolicyView, error) {
+// CreatePolicy 新增 OSS 策略定义。
+func (s *AdminOssUsecase) CreatePolicy(ctx context.Context, input CreateOssPolicyInput) (*AdminOssPolicyView, error) {
 	schoolID := strings.TrimSpace(input.SchoolID)
 	if schoolID == "" {
 		return nil, errors.New("school_id required")
@@ -443,16 +443,16 @@ func (s *AdminOssService) CreatePolicy(ctx context.Context, input CreateOssPolic
 	description := strings.TrimSpace(input.Description)
 	status := input.Status
 	if status == "" {
-		status = domain.OssPolicyStatusEnabled
+		status = storage.OssPolicyStatusEnabled
 	}
 	switch status {
-	case domain.OssPolicyStatusEnabled, domain.OssPolicyStatusReadOnly, domain.OssPolicyStatusDisabled:
+	case storage.OssPolicyStatusEnabled, storage.OssPolicyStatusReadOnly, storage.OssPolicyStatusDisabled:
 	default:
 		return nil, errors.New("invalid status")
 	}
 
 	now := time.Now()
-	policy := &domain.OssPolicy{
+	policy := &storage.OssPolicy{
 		ID:            uuid.NewString(),
 		SchoolID:      schoolID,
 		Name:          name,
@@ -475,8 +475,8 @@ func (s *AdminOssService) CreatePolicy(ctx context.Context, input CreateOssPolic
 	return &view, nil
 }
 
-// DeletePolicy removes an OSS policy.
-func (s *AdminOssService) DeletePolicy(ctx context.Context, schoolID, policyID, operatorID string) error {
+// DeletePolicy 删除 OSS 策略。
+func (s *AdminOssUsecase) DeletePolicy(ctx context.Context, schoolID, policyID, operatorID string) error {
 	schoolID = strings.TrimSpace(schoolID)
 	policyID = strings.TrimSpace(policyID)
 	if schoolID == "" {
@@ -499,8 +499,8 @@ func (s *AdminOssService) DeletePolicy(ctx context.Context, schoolID, policyID, 
 	return s.recordAudit(ctx, schoolID, operatorID, "删除安全策略", detail)
 }
 
-// UpdatePolicyStatus updates policy status and logs the change.
-func (s *AdminOssService) UpdatePolicyStatus(ctx context.Context, input UpdateOssPolicyStatusInput) (*AdminOssPolicyView, error) {
+// UpdatePolicyStatus 更新策略状态并记录变更。
+func (s *AdminOssUsecase) UpdatePolicyStatus(ctx context.Context, input UpdateOssPolicyStatusInput) (*AdminOssPolicyView, error) {
 	if strings.TrimSpace(input.SchoolID) == "" {
 		return nil, errors.New("school_id required")
 	}
@@ -525,8 +525,8 @@ func (s *AdminOssService) UpdatePolicyStatus(ctx context.Context, input UpdateOs
 	return &view, nil
 }
 
-// ListAuditLogs returns recent audit logs for a school.
-func (s *AdminOssService) ListAuditLogs(ctx context.Context, schoolID string, limit int) ([]AdminOssAuditLogView, error) {
+// ListAuditLogs 返回某学校最近的审计日志。
+func (s *AdminOssUsecase) ListAuditLogs(ctx context.Context, schoolID string, limit int) ([]AdminOssAuditLogView, error) {
 	if strings.TrimSpace(schoolID) == "" {
 		return nil, errors.New("school_id required")
 	}
@@ -547,7 +547,7 @@ func (s *AdminOssService) ListAuditLogs(ctx context.Context, schoolID string, li
 	return out, nil
 }
 
-func (s *AdminOssService) recordAudit(ctx context.Context, schoolID, operatorID, action string, details []string) error {
+func (s *AdminOssUsecase) recordAudit(ctx context.Context, schoolID, operatorID, action string, details []string) error {
 	if schoolID == "" {
 		return errors.New("school_id required for audit log")
 	}
@@ -560,7 +560,7 @@ func (s *AdminOssService) recordAudit(ctx context.Context, schoolID, operatorID,
 	}
 
 	detail := strings.Join(details, "；")
-	log := &domain.OssAuditLog{
+	log := &storage.OssAuditLog{
 		ID:           uuid.NewString(),
 		SchoolID:     schoolID,
 		Action:       action,
@@ -572,7 +572,7 @@ func (s *AdminOssService) recordAudit(ctx context.Context, schoolID, operatorID,
 	return s.audits.Create(ctx, log)
 }
 
-func toOssCredentialView(cred *domain.OssCredential) AdminOssCredentialView {
+func toOssCredentialView(cred *storage.OssCredential) AdminOssCredentialView {
 	var masked string
 	if trimmed := strings.TrimSpace(cred.AccessKeyDisplay); trimmed != "" {
 		masked = maskAccessKey(trimmed)
@@ -596,7 +596,7 @@ func toOssCredentialView(cred *domain.OssCredential) AdminOssCredentialView {
 	}
 }
 
-func toOssPolicyView(policy *domain.OssPolicy) AdminOssPolicyView {
+func toOssPolicyView(policy *storage.OssPolicy) AdminOssPolicyView {
 	return AdminOssPolicyView{
 		ID:            policy.ID,
 		Name:          policy.Name,

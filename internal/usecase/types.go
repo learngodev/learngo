@@ -5,15 +5,15 @@ import (
 	"strings"
 	"time"
 
-	"learn-go/internal/domain"
+	"learn-go/internal/domain/coursework"
 )
 
-// TimeISO8601 helps parse ISO8601 timestamps from JSON.
+// TimeISO8601 用于从 JSON 中解析 ISO8601 时间戳。
 type TimeISO8601 struct {
 	Time time.Time
 }
 
-// UnmarshalJSON implements json.Unmarshaler.
+// UnmarshalJSON 实现 json.Unmarshaler。
 func (t *TimeISO8601) UnmarshalJSON(b []byte) error {
 	if string(b) == "null" {
 		return nil
@@ -30,26 +30,26 @@ func (t *TimeISO8601) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// ToAssignmentType maps string to AssignmentType.
-func ToAssignmentType(v string) domain.AssignmentType {
+// ToAssignmentType 将字符串转换为 AssignmentType。
+func ToAssignmentType(v string) coursework.AssignmentType {
 	switch strings.ToLower(v) {
-	case string(domain.AssignmentExam):
-		return domain.AssignmentExam
+	case string(coursework.AssignmentExam):
+		return coursework.AssignmentExam
 	default:
-		return domain.AssignmentHomework
+		return coursework.AssignmentHomework
 	}
 }
 
-// ToQuestionType maps string to QuestionType.
-func ToQuestionType(v string) domain.QuestionType {
+// ToQuestionType 将字符串转换为 QuestionType。
+func ToQuestionType(v string) coursework.QuestionType {
 	switch strings.ToLower(v) {
-	case string(domain.QuestionChoice):
-		return domain.QuestionChoice
-	case string(domain.QuestionJudgement):
-		return domain.QuestionJudgement
-	case string(domain.QuestionEssay):
-		return domain.QuestionEssay
+	case string(coursework.QuestionChoice):
+		return coursework.QuestionChoice
+	case string(coursework.QuestionJudgement):
+		return coursework.QuestionJudgement
+	case string(coursework.QuestionEssay):
+		return coursework.QuestionEssay
 	default:
-		return domain.QuestionFill
+		return coursework.QuestionFill
 	}
 }

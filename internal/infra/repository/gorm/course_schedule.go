@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"learn-go/internal/domain"
+	"learn-go/internal/domain/scheduling"
 
 	"gorm.io/gorm"
 )
@@ -17,16 +17,16 @@ func NewCourseScheduleStore(db *gorm.DB) *CourseScheduleStore {
 	return &CourseScheduleStore{db: db}
 }
 
-func (s *CourseScheduleStore) Create(ctx context.Context, schedule *domain.CourseSchedule) error {
+func (s *CourseScheduleStore) Create(ctx context.Context, schedule *scheduling.CourseSchedule) error {
 	return s.db.WithContext(ctx).Create(schedule).Error
 }
 
-func (s *CourseScheduleStore) Update(ctx context.Context, schedule *domain.CourseSchedule) error {
+func (s *CourseScheduleStore) Update(ctx context.Context, schedule *scheduling.CourseSchedule) error {
 	return s.db.WithContext(ctx).Save(schedule).Error
 }
 
-func (s *CourseScheduleStore) GetByID(ctx context.Context, id string) (*domain.CourseSchedule, error) {
-	var schedule domain.CourseSchedule
+func (s *CourseScheduleStore) GetByID(ctx context.Context, id string) (*scheduling.CourseSchedule, error) {
+	var schedule scheduling.CourseSchedule
 	err := s.db.WithContext(ctx).First(&schedule, "id = ?", id).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil
@@ -38,29 +38,23 @@ func (s *CourseScheduleStore) GetByID(ctx context.Context, id string) (*domain.C
 }
 
 func (s *CourseScheduleStore) Delete(ctx context.Context, id string) error {
-	return s.db.WithContext(ctx).Delete(&domain.CourseSchedule{}, "id = ?", id).Error
+	return s.db.WithContext(ctx).Delete(&scheduling.CourseSchedule{}, "id = ?", id).Error
 }
 
-func (s *CourseScheduleStore) ListByCourse(ctx context.Context, courseID string) ([]domain.CourseSchedule, error) {
-	var schedules []domain.CourseSchedule
+func (s *CourseScheduleStore) ListByCourse(ctx context.Context, courseID string) ([]scheduling.CourseSchedule, error) {
+	var schedules []scheduling.CourseSchedule
 	err := s.db.WithContext(ctx).Where("course_id = ?", courseID).Find(&schedules).Error
 	return schedules, err
 }
 
-func (s *CourseScheduleStore) ListBySchool(ctx context.Context, schoolID string) ([]domain.CourseSchedule, error) {
-	var schedules []domain.CourseSchedule
+func (s *CourseScheduleStore) ListBySchool(ctx context.Context, schoolID string) ([]scheduling.CourseSchedule, error) {
+	var schedules []scheduling.CourseSchedule
 	err := s.db.WithContext(ctx).Where("school_id = ?", schoolID).Find(&schedules).Error
 	return schedules, err
 }
 
-func (s *CourseScheduleStore) ListByTeacherID(ctx context.Context, teacherID string) ([]domain.CourseSchedule, error) {
-	var schedules []domain.CourseSchedule
-	err := s.db.WithContext(ctx).Where("teacher_id = ?", teacherID).Find(&schedules).Error
-	return schedules, err
-}
-
-func (s *CourseScheduleStore) ListDetailsBySchool(ctx context.Context, schoolID string, courseID string) ([]domain.CourseScheduleDetail, error) {
-	var details []domain.CourseScheduleDetail
+func (s *CourseScheduleStore) ListDetailsBySchool(ctx context.Context, schoolID string, courseID string) ([]scheduling.CourseScheduleDetail, error) {
+	var details []scheduling.CourseScheduleDetail
 	query := s.db.WithContext(ctx).
 		Table("course_schedules").
 		Select("course_schedules.*, courses.name as course_name, classes.name as class_name, accounts.display_name as teacher_name, time_slots.name as slot_name, classrooms.location as classroom_loc").
@@ -80,39 +74,39 @@ func (s *CourseScheduleStore) ListDetailsBySchool(ctx context.Context, schoolID 
 	return details, err
 }
 
-func (s *CourseScheduleStore) ListByClassroom(ctx context.Context, classroomID string) ([]domain.CourseSchedule, error) {
-	var schedules []domain.CourseSchedule
+func (s *CourseScheduleStore) ListByClassroom(ctx context.Context, classroomID string) ([]scheduling.CourseSchedule, error) {
+	var schedules []scheduling.CourseSchedule
 	err := s.db.WithContext(ctx).Where("classroom_id = ?", classroomID).Find(&schedules).Error
 	return schedules, err
 }
 
-func (s *CourseScheduleStore) ListByTeacher(ctx context.Context, teacherID string) ([]domain.CourseSchedule, error) {
-	var schedules []domain.CourseSchedule
+func (s *CourseScheduleStore) ListByTeacher(ctx context.Context, teacherID string) ([]scheduling.CourseSchedule, error) {
+	var schedules []scheduling.CourseSchedule
 	err := s.db.WithContext(ctx).Where("teacher_id = ?", teacherID).Find(&schedules).Error
 	return schedules, err
 }
 
-func (s *CourseScheduleStore) ListByClass(ctx context.Context, classID string) ([]domain.CourseSchedule, error) {
-	var schedules []domain.CourseSchedule
+func (s *CourseScheduleStore) ListByClass(ctx context.Context, classID string) ([]scheduling.CourseSchedule, error) {
+	var schedules []scheduling.CourseSchedule
 	err := s.db.WithContext(ctx).Where("class_id = ?", classID).Find(&schedules).Error
 	return schedules, err
 }
 
-func (s *CourseScheduleStore) GetStats(ctx context.Context, schoolID string) (*domain.ScheduleStats, error) {
-	var stats domain.ScheduleStats
+func (s *CourseScheduleStore) GetStats(ctx context.Context, schoolID string) (*scheduling.ScheduleStats, error) {
+	var stats scheduling.ScheduleStats
 
-	// Total rules
-	if err := s.db.WithContext(ctx).Model(&domain.CourseSchedule{}).Where("school_id = ?", schoolID).Count(&stats.TotalRules).Error; err != nil {
+	// 规则总数
+	if err := s.db.WithContext(ctx).Model(&scheduling.CourseSchedule{}).Where("school_id = ?", schoolID).Count(&stats.TotalRules).Error; err != nil {
 		return nil, err
 	}
 
-	// Scheduled courses count (distinct course_id)
-	if err := s.db.WithContext(ctx).Model(&domain.CourseSchedule{}).Where("school_id = ?", schoolID).Distinct("course_id").Count(&stats.ScheduledCoursesCount).Error; err != nil {
+	// 已排课的课程数（按 course_id 去重）
+	if err := s.db.WithContext(ctx).Model(&scheduling.CourseSchedule{}).Where("school_id = ?", schoolID).Distinct("course_id").Count(&stats.ScheduledCoursesCount).Error; err != nil {
 		return nil, err
 	}
 
-	// Rules by day
-	rows, err := s.db.WithContext(ctx).Model(&domain.CourseSchedule{}).
+	// 按星期统计规则数
+	rows, err := s.db.WithContext(ctx).Model(&scheduling.CourseSchedule{}).
 		Select("day_of_week, count(*) as count").
 		Where("school_id = ?", schoolID).
 		Group("day_of_week").
@@ -134,3 +128,5 @@ func (s *CourseScheduleStore) GetStats(ctx context.Context, schoolID string) (*d
 
 	return &stats, nil
 }
+
+var _ scheduling.CourseScheduleRepository = (*CourseScheduleStore)(nil)

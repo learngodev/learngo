@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"learn-go/internal/domain"
-	"learn-go/internal/infra/repository"
+	"learn-go/internal/domain/curriculum"
+	"learn-go/internal/domain/roster"
 
 	"github.com/google/uuid"
 )
@@ -16,22 +16,22 @@ func normalizeCourseImageURL(imageURL string) string {
 	return strings.TrimSpace(imageURL)
 }
 
-type CourseService struct {
-	courseRepo        repository.CourseRepository
-	courseStudentRepo repository.CourseStudentRepository
-	courseTeacherRepo repository.CourseTeacherRepository
-	studentRepo       repository.StudentRepository
-	teacherRepo       repository.TeacherRepository
+type CourseUsecase struct {
+	courseRepo        curriculum.CourseRepository
+	courseStudentRepo curriculum.CourseStudentRepository
+	courseTeacherRepo curriculum.CourseTeacherRepository
+	studentRepo       roster.StudentRepository
+	teacherRepo       roster.TeacherRepository
 }
 
-func NewCourseService(
-	courseRepo repository.CourseRepository,
-	courseStudentRepo repository.CourseStudentRepository,
-	courseTeacherRepo repository.CourseTeacherRepository,
-	studentRepo repository.StudentRepository,
-	teacherRepo repository.TeacherRepository,
-) *CourseService {
-	return &CourseService{
+func NewCourseUsecase(
+	courseRepo curriculum.CourseRepository,
+	courseStudentRepo curriculum.CourseStudentRepository,
+	courseTeacherRepo curriculum.CourseTeacherRepository,
+	studentRepo roster.StudentRepository,
+	teacherRepo roster.TeacherRepository,
+) *CourseUsecase {
+	return &CourseUsecase{
 		courseRepo:        courseRepo,
 		courseStudentRepo: courseStudentRepo,
 		courseTeacherRepo: courseTeacherRepo,
@@ -40,9 +40,9 @@ func NewCourseService(
 	}
 }
 
-func (s *CourseService) CreateCourse(ctx context.Context, schoolID string, name, description, imageURL string, classIDs []string) (*domain.Course, error) {
+func (s *CourseUsecase) CreateCourse(ctx context.Context, schoolID string, name, description, imageURL string, classIDs []string) (*curriculum.Course, error) {
 	imageURL = normalizeCourseImageURL(imageURL)
-	course := &domain.Course{
+	course := &curriculum.Course{
 		ID:             uuid.New().String(),
 		SchoolID:       schoolID,
 		Name:           name,
@@ -67,7 +67,7 @@ func (s *CourseService) CreateCourse(ctx context.Context, schoolID string, name,
 	return course, nil
 }
 
-func (s *CourseService) JoinCourseByCode(ctx context.Context, studentID, code string) error {
+func (s *CourseUsecase) JoinCourseByCode(ctx context.Context, studentID, code string) error {
 	course, err := s.courseRepo.GetByInvitationCode(ctx, code)
 	if err != nil {
 		return err
@@ -75,7 +75,7 @@ func (s *CourseService) JoinCourseByCode(ctx context.Context, studentID, code st
 	return s.assignStudents(ctx, course.ID, []string{studentID})
 }
 
-func (s *CourseService) generateInvitationCode() string {
+func (s *CourseUsecase) generateInvitationCode() string {
 	const charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	b := make([]byte, 6)
 	for i := range b {
@@ -84,7 +84,7 @@ func (s *CourseService) generateInvitationCode() string {
 	return string(b)
 }
 
-func (s *CourseService) ListCourses(ctx context.Context, schoolID string, page, size int) ([]domain.Course, int64, error) {
+func (s *CourseUsecase) ListCourses(ctx context.Context, schoolID string, page, size int) ([]curriculum.Course, int64, error) {
 	courses, total, err := s.courseRepo.List(ctx, schoolID, page, size)
 	if err != nil {
 		return nil, 0, err
@@ -95,7 +95,7 @@ func (s *CourseService) ListCourses(ctx context.Context, schoolID string, page, 
 	return courses, total, nil
 }
 
-func (s *CourseService) ListStudentCourses(ctx context.Context, studentID string) ([]domain.Course, error) {
+func (s *CourseUsecase) ListStudentCourses(ctx context.Context, studentID string) ([]curriculum.Course, error) {
 	courses, err := s.courseRepo.ListByStudentID(ctx, studentID)
 	if err != nil {
 		return nil, err
@@ -106,18 +106,18 @@ func (s *CourseService) ListStudentCourses(ctx context.Context, studentID string
 	return courses, nil
 }
 
-func (s *CourseService) ListCourseAssignments(ctx context.Context, schoolID, courseID, departmentID, classID string, onlyAssigned bool, page, size int) ([]domain.CourseAssignmentInfo, int64, error) {
+func (s *CourseUsecase) ListCourseAssignments(ctx context.Context, schoolID, courseID, departmentID, classID string, onlyAssigned bool, page, size int) ([]curriculum.CourseAssignmentInfo, int64, error) {
 	return s.courseRepo.ListAssignments(ctx, schoolID, courseID, departmentID, classID, onlyAssigned, page, size)
 }
 
-func (s *CourseService) ListCoursesWithDetails(ctx context.Context, schoolID, departmentID, classID string, page, size int) ([]domain.CourseAssignmentInfo, int64, error) {
+func (s *CourseUsecase) ListCoursesWithDetails(ctx context.Context, schoolID, departmentID, classID string, page, size int) ([]curriculum.CourseAssignmentInfo, int64, error) {
 	courses, total, err := s.courseRepo.ListWithFilters(ctx, schoolID, departmentID, classID, page, size)
 	if err != nil {
 		return nil, 0, err
 	}
 
 	if len(courses) == 0 {
-		return []domain.CourseAssignmentInfo{}, total, nil
+		return []curriculum.CourseAssignmentInfo{}, total, nil
 	}
 
 	courseIDs := make([]string, len(courses))
@@ -130,11 +130,11 @@ func (s *CourseService) ListCoursesWithDetails(ctx context.Context, schoolID, de
 		return nil, 0, err
 	}
 
-	assignmentMap := make(map[string]*domain.CourseAssignmentInfo)
+	assignmentMap := make(map[string]*curriculum.CourseAssignmentInfo)
 	countedClasses := make(map[string]map[string]bool)
 
 	for _, c := range courses {
-		assignmentMap[c.ID] = &domain.CourseAssignmentInfo{
+		assignmentMap[c.ID] = &curriculum.CourseAssignmentInfo{
 			CourseID:    c.ID,
 			CourseName:  c.Name,
 			Description: c.Description,
@@ -155,7 +155,7 @@ func (s *CourseService) ListCoursesWithDetails(ctx context.Context, schoolID, de
 		}
 	}
 
-	result := make([]domain.CourseAssignmentInfo, len(courses))
+	result := make([]curriculum.CourseAssignmentInfo, len(courses))
 	for i, c := range courses {
 		result[i] = *assignmentMap[c.ID]
 	}
@@ -179,7 +179,7 @@ func mergeUnique(existing, newStr string) string {
 	return existing + ", " + newStr
 }
 
-func (s *CourseService) UpdateCourse(ctx context.Context, id, name, description, imageURL string) error {
+func (s *CourseUsecase) UpdateCourse(ctx context.Context, id, name, description, imageURL string) error {
 	course, err := s.courseRepo.GetByID(ctx, id)
 	if err != nil {
 		return err
@@ -191,7 +191,7 @@ func (s *CourseService) UpdateCourse(ctx context.Context, id, name, description,
 	return s.courseRepo.Update(ctx, course)
 }
 
-func (s *CourseService) UpdateCourseFields(
+func (s *CourseUsecase) UpdateCourseFields(
 	ctx context.Context,
 	id string,
 	name *string,
@@ -225,18 +225,18 @@ func (s *CourseService) UpdateCourseFields(
 	return s.courseRepo.Update(ctx, course)
 }
 
-func (s *CourseService) DeleteCourse(ctx context.Context, id string) error {
+func (s *CourseUsecase) DeleteCourse(ctx context.Context, id string) error {
 	return s.courseRepo.Delete(ctx, id)
 }
 
-func (s *CourseService) assignStudents(ctx context.Context, courseID string, studentIDs []string) error {
+func (s *CourseUsecase) assignStudents(ctx context.Context, courseID string, studentIDs []string) error {
 	if len(studentIDs) == 0 {
 		return nil
 	}
-	enrollments := make([]domain.CourseStudent, len(studentIDs))
+	enrollments := make([]curriculum.CourseStudent, len(studentIDs))
 	now := time.Now()
 	for i, studentID := range studentIDs {
-		enrollments[i] = domain.CourseStudent{
+		enrollments[i] = curriculum.CourseStudent{
 			ID:        uuid.New().String(),
 			CourseID:  courseID,
 			StudentID: studentID,
@@ -246,7 +246,7 @@ func (s *CourseService) assignStudents(ctx context.Context, courseID string, stu
 	return s.courseStudentRepo.BatchCreate(ctx, enrollments)
 }
 
-func (s *CourseService) AssignStudentsByClass(ctx context.Context, courseID string, classID string) error {
+func (s *CourseUsecase) AssignStudentsByClass(ctx context.Context, courseID string, classID string) error {
 	students, err := s.studentRepo.ListByClassID(ctx, classID)
 	if err != nil {
 		return err
@@ -258,7 +258,7 @@ func (s *CourseService) AssignStudentsByClass(ctx context.Context, courseID stri
 	return s.assignStudents(ctx, courseID, studentIDs)
 }
 
-func (s *CourseService) AssignStudentsByDepartment(ctx context.Context, courseID string, departmentID string) error {
+func (s *CourseUsecase) AssignStudentsByDepartment(ctx context.Context, courseID string, departmentID string) error {
 	students, err := s.studentRepo.ListByDepartmentID(ctx, departmentID)
 	if err != nil {
 		return err

@@ -10,10 +10,10 @@ import (
 	"time"
 
 	"learn-go/internal/domain"
-	"learn-go/internal/infra/repository"
+	"learn-go/internal/domain/system"
 )
 
-// AdminSystemSwitch represents a feature toggle in the admin console.
+// AdminSystemSwitch 表示管理后台中的功能开关。
 type AdminSystemSwitch struct {
 	ID               string   `json:"id"`
 	Title            string   `json:"title"`
@@ -26,7 +26,7 @@ type AdminSystemSwitch struct {
 	Environment      string   `json:"environment"`
 }
 
-// AdminSystemParameter represents a configurable runtime parameter.
+// AdminSystemParameter 表示可配置的运行参数。
 type AdminSystemParameter struct {
 	ID               string `json:"id"`
 	Key              string `json:"key"`
@@ -37,7 +37,7 @@ type AdminSystemParameter struct {
 	Locked           bool   `json:"locked"`
 }
 
-// AdminSystemBroadcastStatus enumerates broadcast states.
+// AdminSystemBroadcastStatus 枚举公告状态。
 type AdminSystemBroadcastStatus string
 
 const (
@@ -46,7 +46,7 @@ const (
 	AdminSystemBroadcastDraft     AdminSystemBroadcastStatus = "draft"
 )
 
-// AdminSystemBroadcast represents announcement message metadata.
+// AdminSystemBroadcast 表示公告消息的元数据。
 type AdminSystemBroadcast struct {
 	ID             string                     `json:"id"`
 	Title          string                     `json:"title"`
@@ -58,7 +58,7 @@ type AdminSystemBroadcast struct {
 	Pinned         bool                       `json:"pinned"`
 }
 
-// AdminSystemAuditLog captures admin modifications for auditing.
+// AdminSystemAuditLog 记录管理员的修改，用于审计。
 type AdminSystemAuditLog struct {
 	Category  string `json:"category"`
 	Action    string `json:"action"`
@@ -70,33 +70,33 @@ type AdminSystemAuditLog struct {
 }
 
 var (
-	// ErrSystemSwitchNotFound indicates toggle is missing.
+	// ErrSystemSwitchNotFound 表示开关不存在。
 	ErrSystemSwitchNotFound = errors.New("system switch not found")
-	// ErrSystemParameterNotFound indicates parameter is missing.
+	// ErrSystemParameterNotFound 表示参数不存在。
 	ErrSystemParameterNotFound = errors.New("system parameter not found")
-	// ErrSystemBroadcastNotFound indicates broadcast is missing.
+	// ErrSystemBroadcastNotFound 表示公告不存在。
 	ErrSystemBroadcastNotFound = errors.New("system broadcast not found")
 )
 
-// AdminSystemService manages system configuration with persistence.
-type AdminSystemService struct {
-	switchRepo    repository.SystemSwitchRepository
-	parameterRepo repository.SystemParameterRepository
-	broadcastRepo repository.SystemBroadcastRepository
-	auditRepo     repository.SystemAuditRepository
+// AdminSystemUsecase 管理系统配置并负责持久化。
+type AdminSystemUsecase struct {
+	switchRepo    system.SystemSwitchRepository
+	parameterRepo system.SystemParameterRepository
+	broadcastRepo system.SystemBroadcastRepository
+	auditRepo     system.SystemAuditRepository
 
 	seedMu sync.Mutex
 	seeded map[string]bool
 }
 
-// NewAdminSystemService constructs a service backed by repositories.
-func NewAdminSystemService(
-	switches repository.SystemSwitchRepository,
-	parameters repository.SystemParameterRepository,
-	broadcasts repository.SystemBroadcastRepository,
-	audits repository.SystemAuditRepository,
-) *AdminSystemService {
-	return &AdminSystemService{
+// NewAdminSystemUsecase 基于仓储构造系统配置用例。
+func NewAdminSystemUsecase(
+	switches system.SystemSwitchRepository,
+	parameters system.SystemParameterRepository,
+	broadcasts system.SystemBroadcastRepository,
+	audits system.SystemAuditRepository,
+) *AdminSystemUsecase {
+	return &AdminSystemUsecase{
 		switchRepo:    switches,
 		parameterRepo: parameters,
 		broadcastRepo: broadcasts,
@@ -105,8 +105,8 @@ func NewAdminSystemService(
 	}
 }
 
-// ListSwitches returns switches for a school.
-func (s *AdminSystemService) ListSwitches(ctx context.Context, schoolID string) ([]AdminSystemSwitch, error) {
+// ListSwitches 返回某学校的功能开关。
+func (s *AdminSystemUsecase) ListSwitches(ctx context.Context, schoolID string) ([]AdminSystemSwitch, error) {
 	schoolID = normalizeSchoolID(schoolID)
 	if err := s.ensureDefaults(ctx, schoolID); err != nil {
 		return nil, err
@@ -122,8 +122,8 @@ func (s *AdminSystemService) ListSwitches(ctx context.Context, schoolID string) 
 	return out, nil
 }
 
-// UpdateSwitchState toggles a switch and records audit log.
-func (s *AdminSystemService) UpdateSwitchState(ctx context.Context, schoolID, switchID string, enabled bool, operator string) (*AdminSystemSwitch, error) {
+// UpdateSwitchState 切换开关并记录审计日志。
+func (s *AdminSystemUsecase) UpdateSwitchState(ctx context.Context, schoolID, switchID string, enabled bool, operator string) (*AdminSystemSwitch, error) {
 	schoolID = normalizeSchoolID(schoolID)
 	if err := s.ensureDefaults(ctx, schoolID); err != nil {
 		return nil, err
@@ -137,7 +137,7 @@ func (s *AdminSystemService) UpdateSwitchState(ctx context.Context, schoolID, sw
 		"last_updated_label": label,
 	})
 	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
+		if errors.Is(err, domain.ErrNotFound) {
 			return nil, ErrSystemSwitchNotFound
 		}
 		return nil, err
@@ -149,8 +149,8 @@ func (s *AdminSystemService) UpdateSwitchState(ctx context.Context, schoolID, sw
 	return &mapped, nil
 }
 
-// ListParameters returns runtime parameters for a school.
-func (s *AdminSystemService) ListParameters(ctx context.Context, schoolID string) ([]AdminSystemParameter, error) {
+// ListParameters 返回某学校的运行参数。
+func (s *AdminSystemUsecase) ListParameters(ctx context.Context, schoolID string) ([]AdminSystemParameter, error) {
 	schoolID = normalizeSchoolID(schoolID)
 	if err := s.ensureDefaults(ctx, schoolID); err != nil {
 		return nil, err
@@ -166,8 +166,8 @@ func (s *AdminSystemService) ListParameters(ctx context.Context, schoolID string
 	return out, nil
 }
 
-// UpdateParameter changes parameter value.
-func (s *AdminSystemService) UpdateParameter(ctx context.Context, schoolID, parameterID, value, operator string) (*AdminSystemParameter, error) {
+// UpdateParameter 修改参数值。
+func (s *AdminSystemUsecase) UpdateParameter(ctx context.Context, schoolID, parameterID, value, operator string) (*AdminSystemParameter, error) {
 	schoolID = normalizeSchoolID(schoolID)
 	if err := s.ensureDefaults(ctx, schoolID); err != nil {
 		return nil, err
@@ -178,7 +178,7 @@ func (s *AdminSystemService) UpdateParameter(ctx context.Context, schoolID, para
 	trimmed := strings.TrimSpace(value)
 	param, err := s.parameterRepo.Get(ctx, schoolID, parameterID)
 	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
+		if errors.Is(err, domain.ErrNotFound) {
 			return nil, ErrSystemParameterNotFound
 		}
 		return nil, err
@@ -192,7 +192,7 @@ func (s *AdminSystemService) UpdateParameter(ctx context.Context, schoolID, para
 		"last_updated_label": label,
 	})
 	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
+		if errors.Is(err, domain.ErrNotFound) {
 			return nil, ErrSystemParameterNotFound
 		}
 		return nil, err
@@ -204,8 +204,8 @@ func (s *AdminSystemService) UpdateParameter(ctx context.Context, schoolID, para
 	return &mapped, nil
 }
 
-// ListBroadcasts returns announcements for a school.
-func (s *AdminSystemService) ListBroadcasts(ctx context.Context, schoolID string) ([]AdminSystemBroadcast, error) {
+// ListBroadcasts 返回某学校的公告。
+func (s *AdminSystemUsecase) ListBroadcasts(ctx context.Context, schoolID string) ([]AdminSystemBroadcast, error) {
 	schoolID = normalizeSchoolID(schoolID)
 	if err := s.ensureDefaults(ctx, schoolID); err != nil {
 		return nil, err
@@ -221,8 +221,8 @@ func (s *AdminSystemService) ListBroadcasts(ctx context.Context, schoolID string
 	return out, nil
 }
 
-// UpdateBroadcast updates broadcast status or pin state.
-func (s *AdminSystemService) UpdateBroadcast(ctx context.Context, schoolID, broadcastID string, status *AdminSystemBroadcastStatus, pinned *bool, operator string) (*AdminSystemBroadcast, error) {
+// UpdateBroadcast 更新公告状态或置顶状态。
+func (s *AdminSystemUsecase) UpdateBroadcast(ctx context.Context, schoolID, broadcastID string, status *AdminSystemBroadcastStatus, pinned *bool, operator string) (*AdminSystemBroadcast, error) {
 	schoolID = normalizeSchoolID(schoolID)
 	if err := s.ensureDefaults(ctx, schoolID); err != nil {
 		return nil, err
@@ -232,7 +232,7 @@ func (s *AdminSystemService) UpdateBroadcast(ctx context.Context, schoolID, broa
 	}
 	existing, err := s.broadcastRepo.Get(ctx, schoolID, broadcastID)
 	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
+		if errors.Is(err, domain.ErrNotFound) {
 			return nil, ErrSystemBroadcastNotFound
 		}
 		return nil, err
@@ -258,7 +258,7 @@ func (s *AdminSystemService) UpdateBroadcast(ctx context.Context, schoolID, broa
 	}
 	updated, err := s.broadcastRepo.UpdateFields(ctx, schoolID, broadcastID, updates)
 	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
+		if errors.Is(err, domain.ErrNotFound) {
 			return nil, ErrSystemBroadcastNotFound
 		}
 		return nil, err
@@ -272,8 +272,8 @@ func (s *AdminSystemService) UpdateBroadcast(ctx context.Context, schoolID, broa
 	return &mapped, nil
 }
 
-// ListAuditLogs returns audit logs sorted by time desc. limit <=0 returns all.
-func (s *AdminSystemService) ListAuditLogs(ctx context.Context, schoolID string, limit int) ([]AdminSystemAuditLog, error) {
+// ListAuditLogs 按时间倒序返回审计日志；limit <= 0 时返回全部。
+func (s *AdminSystemUsecase) ListAuditLogs(ctx context.Context, schoolID string, limit int) ([]AdminSystemAuditLog, error) {
 	schoolID = normalizeSchoolID(schoolID)
 	if err := s.ensureDefaults(ctx, schoolID); err != nil {
 		return nil, err
@@ -302,11 +302,11 @@ func (s *AdminSystemService) ListAuditLogs(ctx context.Context, schoolID string,
 	return out, nil
 }
 
-func (s *AdminSystemService) appendAudit(ctx context.Context, schoolID, category, action, operator, detail string) error {
+func (s *AdminSystemUsecase) appendAudit(ctx context.Context, schoolID, category, action, operator, detail string) error {
 	if operator == "" {
 		operator = "系统管理员"
 	}
-	entry := &domain.SystemAuditLog{
+	entry := &system.SystemAuditLog{
 		SchoolID:  schoolID,
 		Category:  category,
 		Action:    action,
@@ -332,7 +332,7 @@ func normalizeSchoolID(id string) string {
 	return id
 }
 
-func mapSwitchModel(model domain.SystemSwitch) AdminSystemSwitch {
+func mapSwitchModel(model system.SystemSwitch) AdminSystemSwitch {
 	return AdminSystemSwitch{
 		ID:               model.ID,
 		Title:            model.Title,
@@ -346,7 +346,7 @@ func mapSwitchModel(model domain.SystemSwitch) AdminSystemSwitch {
 	}
 }
 
-func mapParameterModel(model domain.SystemParameter) AdminSystemParameter {
+func mapParameterModel(model system.SystemParameter) AdminSystemParameter {
 	return AdminSystemParameter{
 		ID:               model.ID,
 		Key:              model.Key,
@@ -358,7 +358,7 @@ func mapParameterModel(model domain.SystemParameter) AdminSystemParameter {
 	}
 }
 
-func mapBroadcastModel(model domain.SystemBroadcast) AdminSystemBroadcast {
+func mapBroadcastModel(model system.SystemBroadcast) AdminSystemBroadcast {
 	return AdminSystemBroadcast{
 		ID:             model.ID,
 		Title:          model.Title,
@@ -405,7 +405,7 @@ func buildBroadcastScheduleLabel(status AdminSystemBroadcastStatus) string {
 	}
 }
 
-func (s *AdminSystemService) ensureDefaults(ctx context.Context, schoolID string) error {
+func (s *AdminSystemUsecase) ensureDefaults(ctx context.Context, schoolID string) error {
 	s.seedMu.Lock()
 	if s.seeded[schoolID] {
 		s.seedMu.Unlock()
@@ -432,11 +432,11 @@ func (s *AdminSystemService) ensureDefaults(ctx context.Context, schoolID string
 	return nil
 }
 
-func seedSwitchModels() []domain.SystemSwitch {
+func seedSwitchModels() []system.SystemSwitch {
 	now := time.Now()
-	out := make([]domain.SystemSwitch, len(defaultSystemSwitches))
+	out := make([]system.SystemSwitch, len(defaultSystemSwitches))
 	for i, sw := range defaultSystemSwitches {
-		out[i] = domain.SystemSwitch{
+		out[i] = system.SystemSwitch{
 			ID:               sw.ID,
 			Title:            sw.Title,
 			Description:      sw.Description,
@@ -454,11 +454,11 @@ func seedSwitchModels() []domain.SystemSwitch {
 	return out
 }
 
-func seedParameterModels() []domain.SystemParameter {
+func seedParameterModels() []system.SystemParameter {
 	now := time.Now()
-	out := make([]domain.SystemParameter, len(defaultSystemParameters))
+	out := make([]system.SystemParameter, len(defaultSystemParameters))
 	for i, param := range defaultSystemParameters {
-		out[i] = domain.SystemParameter{
+		out[i] = system.SystemParameter{
 			ID:               param.ID,
 			Key:              param.Key,
 			Value:            param.Value,
@@ -474,11 +474,11 @@ func seedParameterModels() []domain.SystemParameter {
 	return out
 }
 
-func seedBroadcastModels() []domain.SystemBroadcast {
+func seedBroadcastModels() []system.SystemBroadcast {
 	now := time.Now()
-	out := make([]domain.SystemBroadcast, len(defaultSystemBroadcasts))
+	out := make([]system.SystemBroadcast, len(defaultSystemBroadcasts))
 	for i, b := range defaultSystemBroadcasts {
-		out[i] = domain.SystemBroadcast{
+		out[i] = system.SystemBroadcast{
 			ID:             b.ID,
 			Title:          b.Title,
 			MessagePreview: b.MessagePreview,
@@ -495,10 +495,10 @@ func seedBroadcastModels() []domain.SystemBroadcast {
 	return out
 }
 
-func seedAuditLogModels() []domain.SystemAuditLog {
-	out := make([]domain.SystemAuditLog, len(defaultSystemAuditLogs))
+func seedAuditLogModels() []system.SystemAuditLog {
+	out := make([]system.SystemAuditLog, len(defaultSystemAuditLogs))
 	for i, log := range defaultSystemAuditLogs {
-		out[i] = domain.SystemAuditLog{
+		out[i] = system.SystemAuditLog{
 			Category:  log.Category,
 			Action:    log.Action,
 			Operator:  log.Operator,

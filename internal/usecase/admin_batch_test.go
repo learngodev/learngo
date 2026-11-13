@@ -3,18 +3,18 @@ package usecase
 import (
 	"context"
 	"errors"
+	"learn-go/internal/domain"
 	"reflect"
 	"strings"
 	"testing"
 
-	"learn-go/internal/domain"
-	"learn-go/internal/infra/repository"
-
-	"gorm.io/gorm"
+	"learn-go/internal/domain/identity"
+	"learn-go/internal/domain/organization"
+	"learn-go/internal/domain/roster"
 )
 
 func TestBatchOperateAccountsRequiresIDs(t *testing.T) {
-	svc := newTestAdminService(newMemoryAccountRepo())
+	svc := newTestAdminUsecase(newMemoryAccountRepo())
 	_, err := svc.BatchOperateAccounts(context.Background(), AdminBatchOperationInput{
 		SchoolID: "school",
 		Action:   AdminBatchActionLock,
@@ -26,9 +26,9 @@ func TestBatchOperateAccountsRequiresIDs(t *testing.T) {
 
 func TestBatchOperateAccountsExecutesActions(t *testing.T) {
 	repo := newMemoryAccountRepo()
-	repo.accounts["t1"] = &domain.Account{ID: "t1", SchoolID: "school", Role: domain.RoleTeacher, Status: domain.AccountStatusActive}
-	repo.accounts["s1"] = &domain.Account{ID: "s1", SchoolID: "school", Role: domain.RoleStudent, Status: domain.AccountStatusActive}
-	svc := newTestAdminService(repo)
+	repo.accounts["t1"] = &identity.Account{ID: "t1", SchoolID: "school", Role: identity.RoleTeacher, Status: identity.AccountStatusActive}
+	repo.accounts["s1"] = &identity.Account{ID: "s1", SchoolID: "school", Role: identity.RoleStudent, Status: identity.AccountStatusActive}
+	svc := newTestAdminUsecase(repo)
 
 	result, err := svc.BatchOperateAccounts(context.Background(), AdminBatchOperationInput{
 		SchoolID:   "school",
@@ -44,19 +44,19 @@ func TestBatchOperateAccountsExecutesActions(t *testing.T) {
 	if len(result.Failed) != 0 {
 		t.Fatalf("expected no failures, got %v", result.Failed)
 	}
-	if repo.accounts["t1"].Status != domain.AccountStatusLocked {
+	if repo.accounts["t1"].Status != identity.AccountStatusLocked {
 		t.Fatalf("expected t1 to be locked")
 	}
-	if repo.accounts["s1"].Status != domain.AccountStatusLocked {
+	if repo.accounts["s1"].Status != identity.AccountStatusLocked {
 		t.Fatalf("expected s1 to be locked")
 	}
 }
 
 func TestBatchOperateAccountsCollectsFailures(t *testing.T) {
 	repo := newMemoryAccountRepo()
-	repo.accounts["t1"] = &domain.Account{ID: "t1", SchoolID: "school", Role: domain.RoleTeacher, Status: domain.AccountStatusActive}
-	repo.accounts["s1"] = &domain.Account{ID: "s1", SchoolID: "other", Role: domain.RoleStudent, Status: domain.AccountStatusActive}
-	svc := newTestAdminService(repo)
+	repo.accounts["t1"] = &identity.Account{ID: "t1", SchoolID: "school", Role: identity.RoleTeacher, Status: identity.AccountStatusActive}
+	repo.accounts["s1"] = &identity.Account{ID: "s1", SchoolID: "other", Role: identity.RoleStudent, Status: identity.AccountStatusActive}
+	svc := newTestAdminUsecase(repo)
 
 	result, err := svc.BatchOperateAccounts(context.Background(), AdminBatchOperationInput{
 		SchoolID:   "school",
@@ -72,7 +72,7 @@ func TestBatchOperateAccountsCollectsFailures(t *testing.T) {
 	if len(result.Failed) != 2 {
 		t.Fatalf("expected 2 failures, got %d", len(result.Failed))
 	}
-	if repo.accounts["t1"].Status != domain.AccountStatusPasswordResetRequired {
+	if repo.accounts["t1"].Status != identity.AccountStatusPasswordResetRequired {
 		t.Fatalf("expected password reset status")
 	}
 	if _, ok := repo.accounts["missing"]; ok {
@@ -81,51 +81,51 @@ func TestBatchOperateAccountsCollectsFailures(t *testing.T) {
 }
 
 type memoryAccountRepo struct {
-	accounts map[string]*domain.Account
+	accounts map[string]*identity.Account
 }
 
 func newMemoryAccountRepo() *memoryAccountRepo {
-	return &memoryAccountRepo{accounts: make(map[string]*domain.Account)}
+	return &memoryAccountRepo{accounts: make(map[string]*identity.Account)}
 }
 
-func (m *memoryAccountRepo) Create(ctx context.Context, account *domain.Account) error {
+func (m *memoryAccountRepo) Create(ctx context.Context, account *identity.Account) error {
 	cp := *account
 	m.accounts[account.ID] = &cp
 	return nil
 }
 
-func (m *memoryAccountRepo) FindByIdentifier(context.Context, string, string) (*domain.Account, error) {
-	return nil, gorm.ErrRecordNotFound
+func (m *memoryAccountRepo) FindByIdentifier(context.Context, string, string) (*identity.Account, error) {
+	return nil, domain.ErrNotFound
 }
 
-func (m *memoryAccountRepo) FindByID(ctx context.Context, id string) (*domain.Account, error) {
+func (m *memoryAccountRepo) FindByID(ctx context.Context, id string) (*identity.Account, error) {
 	if acc, ok := m.accounts[id]; ok {
 		cp := *acc
 		return &cp, nil
 	}
-	return nil, gorm.ErrRecordNotFound
+	return nil, domain.ErrNotFound
 }
 
-func (m *memoryAccountRepo) ListByIDs(context.Context, []string) ([]domain.Account, error) {
+func (m *memoryAccountRepo) ListByIDs(context.Context, []string) ([]identity.Account, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (m *memoryAccountRepo) ListByRole(ctx context.Context, schoolID string, role domain.Role, status domain.AccountStatus, deptID, classID, courseID string, onlyClassless, onlyDeptless bool, page, size int, query string) ([]domain.Account, int64, error) {
-	var result []domain.Account
+func (m *memoryAccountRepo) ListByRole(ctx context.Context, schoolID string, role identity.Role, status identity.AccountStatus, deptID, classID, courseID string, onlyClassless, onlyDeptless bool, page, size int, query string) ([]identity.Account, int64, error) {
+	var result []identity.Account
 	for _, acc := range m.accounts {
 		if acc.SchoolID == schoolID {
 			if query != "" {
-				// Mock search by name/identifier
-				// Assuming DisplayName is populated in test data
-				// But memoryAccountRepo only sets ID, SchoolID, Role, Status in tests usually.
-				// We need to ensure test data has DisplayName if we want to test name lookup.
-				// For now, let's just check if query matches ID or DisplayName (if present)
+				// 模拟按姓名/编号搜索
+				// 假定测试数据中已填充 DisplayName
+				// 但测试中 memoryAccountRepo 通常只设置 ID、SchoolID、Role、Status。
+				// 若要测试按姓名查找，需确保测试数据带有 DisplayName。
+				// 目前仅检查查询是否匹配 ID 或 DisplayName（若存在）
 				match := false
 				if strings.Contains(acc.Identifier, query) {
 					match = true
 				}
-				// We don't have DisplayName in Account struct in this file context,
-				// but domain.Account has it.
+				// 本文件上下文中的 Account 结构体没有 DisplayName，
+				// 但 identity.Account 有该字段。
 				if strings.Contains(acc.DisplayName, query) {
 					match = true
 				}
@@ -139,10 +139,10 @@ func (m *memoryAccountRepo) ListByRole(ctx context.Context, schoolID string, rol
 	return result, int64(len(result)), nil
 }
 
-func (m *memoryAccountRepo) UpdateStatus(ctx context.Context, accountID, schoolID string, status domain.AccountStatus) error {
+func (m *memoryAccountRepo) UpdateStatus(ctx context.Context, accountID, schoolID string, status identity.AccountStatus) error {
 	acc, ok := m.accounts[accountID]
 	if !ok || acc.SchoolID != schoolID {
-		return gorm.ErrRecordNotFound
+		return domain.ErrNotFound
 	}
 	acc.Status = status
 	return nil
@@ -152,7 +152,7 @@ func (m *memoryAccountRepo) UpdatePasswordHash(context.Context, string, string) 
 	return nil
 }
 
-func (m *memoryAccountRepo) Update(ctx context.Context, account *domain.Account) error {
+func (m *memoryAccountRepo) Update(ctx context.Context, account *identity.Account) error {
 	m.accounts[account.ID] = account
 	return nil
 }
@@ -160,95 +160,112 @@ func (m *memoryAccountRepo) Update(ctx context.Context, account *domain.Account)
 func (m *memoryAccountRepo) Delete(ctx context.Context, accountID, schoolID string) error {
 	acc, ok := m.accounts[accountID]
 	if !ok || acc.SchoolID != schoolID {
-		return gorm.ErrRecordNotFound
+		return domain.ErrNotFound
 	}
 	delete(m.accounts, accountID)
 	return nil
 }
 
-var _ repository.AccountRepository = (*memoryAccountRepo)(nil)
+var _ identity.AccountRepository = (*memoryAccountRepo)(nil)
 
 type noopTeacherRepo struct{}
 
-func (noopTeacherRepo) Create(context.Context, *domain.Teacher) error { return nil }
-func (noopTeacherRepo) GetByNumber(context.Context, string, string) (*domain.Teacher, error) {
+func (noopTeacherRepo) Create(context.Context, *roster.Teacher) error { return nil }
+func (noopTeacherRepo) GetByNumber(context.Context, string, string) (*roster.Teacher, error) {
 	return nil, nil
 }
-func (noopTeacherRepo) GetByID(context.Context, string) (*domain.Teacher, error) { return nil, nil }
-func (noopTeacherRepo) GetByAccountID(context.Context, string) (*domain.Teacher, error) {
+func (noopTeacherRepo) GetByID(context.Context, string) (*roster.Teacher, error) { return nil, nil }
+func (noopTeacherRepo) GetByAccountID(context.Context, string) (*roster.Teacher, error) {
 	return nil, nil
 }
-func (noopTeacherRepo) Update(context.Context, *domain.Teacher) error { return nil }
+func (noopTeacherRepo) Update(context.Context, *roster.Teacher) error { return nil }
 
-var _ repository.TeacherRepository = (*noopTeacherRepo)(nil)
+var _ roster.TeacherRepository = (*noopTeacherRepo)(nil)
 
 type noopStudentRepo struct{}
 
-func (noopStudentRepo) Create(context.Context, *domain.Student) error { return nil }
-func (noopStudentRepo) GetByNumber(context.Context, string, string) (*domain.Student, error) {
+func (noopStudentRepo) Create(context.Context, *roster.Student) error { return nil }
+func (noopStudentRepo) GetByNumber(context.Context, string, string) (*roster.Student, error) {
 	return nil, nil
 }
-func (noopStudentRepo) GetByID(context.Context, string) (*domain.Student, error) { return nil, nil }
-func (noopStudentRepo) GetByAccountID(context.Context, string) (*domain.Student, error) {
+func (noopStudentRepo) GetByID(context.Context, string) (*roster.Student, error) { return nil, nil }
+func (noopStudentRepo) GetByAccountID(context.Context, string) (*roster.Student, error) {
 	return nil, nil
 }
-func (noopStudentRepo) ListByIDs(context.Context, []string) ([]domain.Student, error) {
-	return []domain.Student{}, nil
+func (noopStudentRepo) ListByIDs(context.Context, []string) ([]roster.Student, error) {
+	return []roster.Student{}, nil
 }
 func (noopStudentRepo) CountByClassIDs(context.Context, []string) (map[string]int64, error) {
 	return map[string]int64{}, nil
 }
 func (noopStudentRepo) UpdateClassID(context.Context, string, string) error { return nil }
-func (noopStudentRepo) ListByClassID(context.Context, string) ([]domain.Student, error) {
+func (noopStudentRepo) ListByClassID(context.Context, string) ([]roster.Student, error) {
 	return nil, nil
 }
-func (noopStudentRepo) ListByDepartmentID(context.Context, string) ([]domain.Student, error) {
+func (noopStudentRepo) ListByDepartmentID(context.Context, string) ([]roster.Student, error) {
 	return nil, nil
 }
-func (noopStudentRepo) Update(context.Context, *domain.Student) error { return nil }
+func (noopStudentRepo) Update(context.Context, *roster.Student) error { return nil }
 
-var _ repository.StudentRepository = (*noopStudentRepo)(nil)
+var _ roster.StudentRepository = (*noopStudentRepo)(nil)
 
 type noopDepartmentRepo struct{}
 
-func (noopDepartmentRepo) Create(context.Context, *domain.Department) error          { return nil }
-func (noopDepartmentRepo) List(context.Context, string) ([]domain.Department, error) { return nil, nil }
-func (noopDepartmentRepo) GetByID(context.Context, string) (*domain.Department, error) {
-	return &domain.Department{SchoolID: "school"}, nil
+func (noopDepartmentRepo) Create(context.Context, *organization.Department) error { return nil }
+func (noopDepartmentRepo) List(context.Context, string) ([]organization.Department, error) {
+	return nil, nil
+}
+func (noopDepartmentRepo) GetByID(context.Context, string) (*organization.Department, error) {
+	return &organization.Department{SchoolID: "school"}, nil
 }
 func (noopDepartmentRepo) UpdateName(context.Context, string, string, string) error { return nil }
 func (noopDepartmentRepo) Delete(context.Context, string, string) error             { return nil }
 
-var _ repository.DepartmentRepository = (*noopDepartmentRepo)(nil)
+var _ organization.DepartmentRepository = (*noopDepartmentRepo)(nil)
 
 type noopClassRepo struct{}
 
-func (noopClassRepo) Create(context.Context, *domain.Class) error { return nil }
-func (noopClassRepo) ListByDepartment(context.Context, string, string) ([]domain.Class, error) {
+func (noopClassRepo) Create(context.Context, *organization.Class) error { return nil }
+func (noopClassRepo) ListByDepartment(context.Context, string, string) ([]organization.Class, error) {
 	return nil, nil
 }
-func (noopClassRepo) GetByID(context.Context, string) (*domain.Class, error) {
-	return &domain.Class{SchoolID: "school"}, nil
+func (noopClassRepo) GetByID(context.Context, string) (*organization.Class, error) {
+	return &organization.Class{SchoolID: "school"}, nil
 }
-func (noopClassRepo) ListByIDs(context.Context, []string) ([]domain.Class, error) { return nil, nil }
-func (noopClassRepo) UpdateName(context.Context, string, string, string) error    { return nil }
-func (noopClassRepo) Delete(context.Context, string, string) error                { return nil }
+func (noopClassRepo) ListByIDs(context.Context, []string) ([]organization.Class, error) {
+	return nil, nil
+}
+func (noopClassRepo) UpdateName(context.Context, string, string, string) error { return nil }
+func (noopClassRepo) Delete(context.Context, string, string) error             { return nil }
 
-var _ repository.ClassRepository = (*noopClassRepo)(nil)
+var _ organization.ClassRepository = (*noopClassRepo)(nil)
 
 type noopTeacherStudentRepo struct{}
 
 func (noopTeacherStudentRepo) BindTeachers(context.Context, string, []string) error { return nil }
 
-var _ repository.TeacherStudentRepository = (*noopTeacherStudentRepo)(nil)
+var _ roster.TeacherStudentRepository = (*noopTeacherStudentRepo)(nil)
 
-func newTestAdminService(acc repository.AccountRepository) *AdminService {
-	return &AdminService{
+func newTestAdminUsecase(acc identity.AccountRepository) *AdminUsecase {
+	return &AdminUsecase{
 		accounts:     acc,
 		teachers:     noopTeacherRepo{},
 		students:     noopStudentRepo{},
 		departments:  noopDepartmentRepo{},
 		classes:      noopClassRepo{},
 		teacherLinks: noopTeacherStudentRepo{},
+		hasher:       plainHasher{},
 	}
 }
+
+type plainHasher struct{}
+
+func (plainHasher) Hash(plain string) (string, error) { return "hashed:" + plain, nil }
+func (plainHasher) Compare(hash, plain string) error {
+	if hash != "hashed:"+plain {
+		return errors.New("password mismatch")
+	}
+	return nil
+}
+
+var _ identity.PasswordHasher = plainHasher{}

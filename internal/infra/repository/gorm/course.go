@@ -5,7 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"learn-go/internal/domain"
+	"learn-go/internal/domain/curriculum"
+	"learn-go/internal/domain/scheduling"
 
 	"gorm.io/gorm"
 )
@@ -18,32 +19,32 @@ func isMissingCourseStudentsTable(err error) bool {
 	if !strings.Contains(msg, "course_students") {
 		return false
 	}
-	// PostgreSQL: pq: relation "course_students" does not exist
-	// SQLite: no such table: course_students
+	// PostgreSQL：pq: relation "course_students" does not exist
+	// SQLite：no such table: course_students
 	return strings.Contains(msg, "does not exist") || strings.Contains(msg, "no such table")
 }
 
-// CourseStore implements repository.CourseRepository.
+// CourseStore 实现 curriculum.CourseRepository。
 type CourseStore struct {
 	db *gorm.DB
 }
 
-// NewCourseStore constructs CourseStore.
+// NewCourseStore 构造 CourseStore。
 func NewCourseStore(db *gorm.DB) *CourseStore {
 	return &CourseStore{db: db}
 }
 
-// Create persists a new course.
-func (s *CourseStore) Create(ctx context.Context, course *domain.Course) error {
+// Create 持久化一门新课程。
+func (s *CourseStore) Create(ctx context.Context, course *curriculum.Course) error {
 	return s.db.WithContext(ctx).Create(course).Error
 }
 
-// List returns a paginated list of courses for a school.
-func (s *CourseStore) List(ctx context.Context, schoolID string, page, size int) ([]domain.Course, int64, error) {
-	var courses []domain.Course
+// List 分页返回某学校的课程列表。
+func (s *CourseStore) List(ctx context.Context, schoolID string, page, size int) ([]curriculum.Course, int64, error) {
+	var courses []curriculum.Course
 	var total int64
 
-	query := s.db.WithContext(ctx).Model(&domain.Course{}).Where("school_id = ?", schoolID)
+	query := s.db.WithContext(ctx).Model(&curriculum.Course{}).Where("school_id = ?", schoolID)
 
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
@@ -61,62 +62,62 @@ func (s *CourseStore) List(ctx context.Context, schoolID string, page, size int)
 	return courses, total, nil
 }
 
-// GetByID retrieves a course by ID.
-func (s *CourseStore) GetByID(ctx context.Context, id string) (*domain.Course, error) {
-	var course domain.Course
+// GetByID 按 ID 查询课程。
+func (s *CourseStore) GetByID(ctx context.Context, id string) (*curriculum.Course, error) {
+	var course curriculum.Course
 	if err := s.db.WithContext(ctx).Preload("Teachers").First(&course, "id = ?", id).Error; err != nil {
-		return nil, err
+		return nil, notFound(err)
 	}
 	return &course, nil
 }
 
-// GetByInvitationCode retrieves a course by invitation code.
-func (s *CourseStore) GetByInvitationCode(ctx context.Context, code string) (*domain.Course, error) {
-	var course domain.Course
+// GetByInvitationCode 按邀请码查询课程。
+func (s *CourseStore) GetByInvitationCode(ctx context.Context, code string) (*curriculum.Course, error) {
+	var course curriculum.Course
 	if err := s.db.WithContext(ctx).First(&course, "invitation_code = ?", code).Error; err != nil {
-		return nil, err
+		return nil, notFound(err)
 	}
 	return &course, nil
 }
 
-// Update modifies an existing course.
-func (s *CourseStore) Update(ctx context.Context, course *domain.Course) error {
+// Update 修改已有课程。
+func (s *CourseStore) Update(ctx context.Context, course *curriculum.Course) error {
 	return s.db.WithContext(ctx).Save(course).Error
 }
 
-// Delete removes a course.
+// Delete 删除课程。
 func (s *CourseStore) Delete(ctx context.Context, id string) error {
-	return s.db.WithContext(ctx).Delete(&domain.Course{}, "id = ?", id).Error
+	return s.db.WithContext(ctx).Delete(&curriculum.Course{}, "id = ?", id).Error
 }
 
-// ListByIDs returns course metadata for the provided identifiers.
-func (s *CourseStore) ListByIDs(ctx context.Context, ids []string) ([]domain.Course, error) {
+// ListByIDs 返回指定 ID 对应的课程信息。
+func (s *CourseStore) ListByIDs(ctx context.Context, ids []string) ([]curriculum.Course, error) {
 	if len(ids) == 0 {
-		return []domain.Course{}, nil
+		return []curriculum.Course{}, nil
 	}
 
-	var courses []domain.Course
+	var courses []curriculum.Course
 	if err := s.db.WithContext(ctx).Where("id IN ?", ids).Find(&courses).Error; err != nil {
 		return nil, err
 	}
 	return courses, nil
 }
 
-// ListAssignments returns enriched course assignment data.
-func (s *CourseStore) ListAssignments(ctx context.Context, schoolID string, courseID, departmentID, classID string, onlyAssigned bool, page, size int) ([]domain.CourseAssignmentInfo, int64, error) {
-	var results []domain.CourseAssignmentInfo
+// ListAssignments 返回补充了关联信息的课程分配数据。
+func (s *CourseStore) ListAssignments(ctx context.Context, schoolID string, courseID, departmentID, classID string, onlyAssigned bool, page, size int) ([]curriculum.CourseAssignmentInfo, int64, error) {
+	var results []curriculum.CourseAssignmentInfo
 	var total int64
 
-	// Base query: Join courses, teaching_assignments, teachers, accounts, classes
-	// Note: We use LEFT JOIN to include courses even if they are not assigned (if no class filter is applied).
-	// However, if we want to show "Assigned Teacher", we are primarily interested in assignments.
-	// If the user wants "Course Management", they might want to see unassigned courses too.
-	// But the requirement "Show assigned teacher and student count" implies looking at assignments.
-	// If we filter by class, we definitely look at assignments.
-	// If we don't filter, we might want to list all assignments.
+	// 基础查询：关联 courses、teaching_assignments、teachers、accounts、classes
+	// 注意：使用 LEFT JOIN，以便在未按班级筛选时也包含尚未分配的课程。
+	// 但若要展示“授课教师”，我们主要关心的是分配记录。
+	// 在“课程管理”场景下，用户可能也希望看到未分配的课程。
+	// 但“显示授课教师和学生人数”的需求意味着要查看分配记录。
+	// 按班级筛选时，必然查询分配记录。
+	// 不筛选时，可能需要列出所有分配记录。
 
-	// Let's construct a query that selects from course_schedules primarily, joined with others.
-	// We group by course, class, and teacher to avoid duplicates from multiple schedule slots.
+	// 因此以 course_schedules 为主表构造查询，并关联其他表。
+	// 按课程、班级、教师分组，避免多个排课节次导致重复。
 
 	db := s.db.WithContext(ctx).Table("courses c").
 		Select(`
@@ -153,7 +154,7 @@ func (s *CourseStore) ListAssignments(ctx context.Context, schoolID string, cour
 		db = db.Where("cl.id = ?", classID)
 	}
 
-	// Count total rows (assignments + unassigned courses)
+	// 统计总行数（分配记录 + 未分配课程）
 	if err := db.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
@@ -170,11 +171,11 @@ func (s *CourseStore) ListAssignments(ctx context.Context, schoolID string, cour
 	return results, total, nil
 }
 
-func (s *CourseStore) ListWithFilters(ctx context.Context, schoolID string, departmentID, classID string, page, size int) ([]domain.Course, int64, error) {
-	var courses []domain.Course
+func (s *CourseStore) ListWithFilters(ctx context.Context, schoolID string, departmentID, classID string, page, size int) ([]curriculum.Course, int64, error) {
+	var courses []curriculum.Course
 	var total int64
 
-	db := s.db.WithContext(ctx).Model(&domain.Course{}).
+	db := s.db.WithContext(ctx).Model(&curriculum.Course{}).
 		Joins("LEFT JOIN course_schedules cs ON courses.id = cs.course_id").
 		Joins("LEFT JOIN classes cl ON cs.class_id = cl.id").
 		Where("courses.school_id = ?", schoolID)
@@ -202,8 +203,8 @@ func (s *CourseStore) ListWithFilters(ctx context.Context, schoolID string, depa
 	return courses, total, nil
 }
 
-func (s *CourseStore) ListAssignmentsByCourseIDs(ctx context.Context, courseIDs []string) ([]domain.CourseAssignmentInfo, error) {
-	var results []domain.CourseAssignmentInfo
+func (s *CourseStore) ListAssignmentsByCourseIDs(ctx context.Context, courseIDs []string) ([]curriculum.CourseAssignmentInfo, error) {
+	var results []curriculum.CourseAssignmentInfo
 	if len(courseIDs) == 0 {
 		return results, nil
 	}
@@ -236,10 +237,10 @@ func (s *CourseStore) ListAssignmentsByCourseIDs(ctx context.Context, courseIDs 
 	return results, nil
 }
 
-func (s *CourseStore) ListByStudentID(ctx context.Context, studentID string) ([]domain.Course, error) {
-	var courses []domain.Course
+func (s *CourseStore) ListByStudentID(ctx context.Context, studentID string) ([]curriculum.Course, error) {
+	var courses []curriculum.Course
 	err := s.db.WithContext(ctx).
-		Model(&domain.Course{}).
+		Model(&curriculum.Course{}).
 		Joins("JOIN course_students ON course_students.course_id = courses.id").
 		Where("course_students.student_id = ?", studentID).
 		Find(&courses).Error
@@ -250,11 +251,11 @@ func (s *CourseStore) ListByStudentID(ctx context.Context, studentID string) ([]
 		return nil, err
 	}
 
-	// Fallback: infer courses from the student's class schedule.
-	// This keeps sample databases (which may not seed enrollments) usable.
+	// 回退：根据学生所在班级的课表推断课程。
+	// 这样示例数据库（可能未预置选课数据）也能正常使用。
 	courses = nil
 	if err2 := s.db.WithContext(ctx).
-		Model(&domain.Course{}).
+		Model(&curriculum.Course{}).
 		Distinct("courses.*").
 		Joins("JOIN course_schedules cs ON cs.course_id = courses.id").
 		Joins("JOIN students st ON st.class_id = cs.class_id").
@@ -266,18 +267,18 @@ func (s *CourseStore) ListByStudentID(ctx context.Context, studentID string) ([]
 	return courses, nil
 }
 
-// CourseSessionStore implements repository.CourseSessionRepository.
+// CourseSessionStore 实现 scheduling.CourseSessionRepository。
 type CourseSessionStore struct {
 	db *gorm.DB
 }
 
-// NewCourseSessionStore constructs CourseSessionStore.
+// NewCourseSessionStore 构造 CourseSessionStore。
 func NewCourseSessionStore(db *gorm.DB) *CourseSessionStore {
 	return &CourseSessionStore{db: db}
 }
 
-// ListBetween returns sessions within the provided time window.
-func (s *CourseSessionStore) ListBetween(ctx context.Context, start, end time.Time) ([]domain.CourseSession, error) {
+// ListBetween 返回指定时间窗口内的课次。
+func (s *CourseSessionStore) ListBetween(ctx context.Context, start, end time.Time) ([]scheduling.CourseSession, error) {
 	query := s.db.WithContext(ctx)
 	if !end.IsZero() {
 		query = query.Where("starts_at < ?", end)
@@ -287,15 +288,15 @@ func (s *CourseSessionStore) ListBetween(ctx context.Context, start, end time.Ti
 	}
 	query = query.Order("starts_at ASC")
 
-	var sessions []domain.CourseSession
+	var sessions []scheduling.CourseSession
 	if err := query.Find(&sessions).Error; err != nil {
 		return nil, err
 	}
 	return sessions, nil
 }
 
-// ListByClassBetween returns sessions for a class within the provided time window.
-func (s *CourseSessionStore) ListByClassBetween(ctx context.Context, classID string, start, end time.Time) ([]domain.CourseSession, error) {
+// ListByClassBetween 返回某班级在指定时间窗口内的课次。
+func (s *CourseSessionStore) ListByClassBetween(ctx context.Context, classID string, start, end time.Time) ([]scheduling.CourseSession, error) {
 	query := s.db.WithContext(ctx).Where("class_id = ?", classID)
 	if !start.IsZero() {
 		query = query.Where("starts_at >= ?", start)
@@ -305,15 +306,15 @@ func (s *CourseSessionStore) ListByClassBetween(ctx context.Context, classID str
 	}
 	query = query.Order("starts_at ASC")
 
-	var sessions []domain.CourseSession
+	var sessions []scheduling.CourseSession
 	if err := query.Find(&sessions).Error; err != nil {
 		return nil, err
 	}
 	return sessions, nil
 }
 
-// ListByTeacherBetween returns sessions taught by a teacher within the time window.
-func (s *CourseSessionStore) ListByTeacherBetween(ctx context.Context, teacherID string, start, end time.Time) ([]domain.CourseSession, error) {
+// ListByTeacherBetween 返回某教师在指定时间窗口内的授课课次。
+func (s *CourseSessionStore) ListByTeacherBetween(ctx context.Context, teacherID string, start, end time.Time) ([]scheduling.CourseSession, error) {
 	query := s.db.WithContext(ctx).Where("teacher_id = ?", teacherID)
 	if !start.IsZero() {
 		query = query.Where("starts_at >= ?", start)
@@ -323,20 +324,20 @@ func (s *CourseSessionStore) ListByTeacherBetween(ctx context.Context, teacherID
 	}
 	query = query.Order("starts_at ASC")
 
-	var sessions []domain.CourseSession
+	var sessions []scheduling.CourseSession
 	if err := query.Find(&sessions).Error; err != nil {
 		return nil, err
 	}
 	return sessions, nil
 }
 
-func (s *CourseSessionStore) Create(ctx context.Context, session *domain.CourseSession) error {
+func (s *CourseSessionStore) Create(ctx context.Context, session *scheduling.CourseSession) error {
 	return s.db.WithContext(ctx).Create(session).Error
 }
 
 func (s *CourseSessionStore) Exists(ctx context.Context, courseID, classID string, teacherID *string, slotID string, startsAt time.Time) (bool, error) {
 	var count int64
-	err := s.db.WithContext(ctx).Model(&domain.CourseSession{}).
+	err := s.db.WithContext(ctx).Model(&scheduling.CourseSession{}).
 		Where("course_id = ? AND class_id = ? AND teacher_id = ? AND slot_id = ? AND starts_at = ?",
 			courseID, classID, teacherID, slotID, startsAt).
 		Count(&count).Error
@@ -346,7 +347,7 @@ func (s *CourseSessionStore) Exists(ctx context.Context, courseID, classID strin
 	return count > 0, nil
 }
 
-func (s *CourseSessionStore) Update(ctx context.Context, session *domain.CourseSession) error {
+func (s *CourseSessionStore) Update(ctx context.Context, session *scheduling.CourseSession) error {
 	return s.db.WithContext(ctx).Save(session).Error
 }
 
@@ -354,13 +355,18 @@ func (s *CourseSessionStore) DeleteByIDs(ctx context.Context, ids []string) erro
 	if len(ids) == 0 {
 		return nil
 	}
-	return s.db.WithContext(ctx).Where("id IN ?", ids).Delete(&domain.CourseSession{}).Error
+	return s.db.WithContext(ctx).Where("id IN ?", ids).Delete(&scheduling.CourseSession{}).Error
 }
 
-func (s *CourseSessionStore) GetByID(ctx context.Context, id string) (*domain.CourseSession, error) {
-	var session domain.CourseSession
+func (s *CourseSessionStore) GetByID(ctx context.Context, id string) (*scheduling.CourseSession, error) {
+	var session scheduling.CourseSession
 	if err := s.db.WithContext(ctx).First(&session, "id = ?", id).Error; err != nil {
-		return nil, err
+		return nil, notFound(err)
 	}
 	return &session, nil
 }
+
+var (
+	_ curriculum.CourseRepository        = (*CourseStore)(nil)
+	_ scheduling.CourseSessionRepository = (*CourseSessionStore)(nil)
+)

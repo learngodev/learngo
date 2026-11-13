@@ -1,73 +1,71 @@
 package realtime
 
 import (
-	"learn-go/internal/interface/grpcpb"
 	"sync"
+
+	"learn-go/internal/domain/notification"
 )
 
-type NotificationStream struct {
+type subscription struct {
 	userID string
-	send   chan *grpcpb.NotificationStreamResponse
+	ch     chan *notification.Notification
 	once   sync.Once
 }
 
-func NewNotificationStream(userID string) *NotificationStream {
-	return &NotificationStream{
-		userID: userID,
-		send:   make(chan *grpcpb.NotificationStreamResponse, 32),
-	}
+func (s *subscription) close() {
+	s.once.Do(func() { close(s.ch) })
 }
 
-func (s *NotificationStream) UserID() string                                      { return s.userID }
-func (s *NotificationStream) Messages() <-chan *grpcpb.NotificationStreamResponse { return s.send }
-func (s *NotificationStream) Send(msg *grpcpb.NotificationStreamResponse) bool {
-	select {
-	case s.send <- msg:
-		return true
-	default:
-		return false
-	}
-}
-func (s *NotificationStream) Close() {
-	s.once.Do(func() { close(s.send) })
-}
-
+// NotificationHub 基于内存实现 notification.Publisher 与 notification.Subscriber。
 type NotificationHub struct {
-	mu      sync.RWMutex
-	clients map[string]map[*NotificationStream]struct{}
+	mu   sync.RWMutex
+	subs map[string]map[*subscription]struct{}
 }
 
+// NewNotificationHub 构造一个空的 NotificationHub。
 func NewNotificationHub() *NotificationHub {
 	return &NotificationHub{
-		clients: make(map[string]map[*NotificationStream]struct{}),
+		subs: make(map[string]map[*subscription]struct{}),
 	}
 }
 
-func (h *NotificationHub) Register(client *NotificationStream) {
+// Subscribe 为用户注册一个订阅，返回通知通道及取消订阅函数。
+func (h *NotificationHub) Subscribe(userID string) (<-chan *notification.Notification, func()) {
+	sub := &subscription{userID: userID, ch: make(chan *notification.Notification, 32)}
 	h.mu.Lock()
-	defer h.mu.Unlock()
-	if h.clients[client.userID] == nil {
-		h.clients[client.userID] = make(map[*NotificationStream]struct{})
+	if h.subs[userID] == nil {
+		h.subs[userID] = make(map[*subscription]struct{})
 	}
-	h.clients[client.userID][client] = struct{}{}
+	h.subs[userID][sub] = struct{}{}
+	h.mu.Unlock()
+	return sub.ch, func() { h.unsubscribe(sub) }
 }
 
-func (h *NotificationHub) Unregister(client *NotificationStream) {
+func (h *NotificationHub) unsubscribe(sub *subscription) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if clients, ok := h.clients[client.userID]; ok {
-		delete(clients, client)
-		if len(clients) == 0 {
-			delete(h.clients, client.userID)
+	if subs, ok := h.subs[sub.userID]; ok {
+		delete(subs, sub)
+		if len(subs) == 0 {
+			delete(h.subs, sub.userID)
 		}
 	}
-	client.Close()
+	sub.close()
 }
 
-func (h *NotificationHub) SendToUser(userID string, msg *grpcpb.NotificationStreamResponse) {
+// Publish 将通知推送给用户的所有在线订阅；缓冲区已满的订阅会被跳过。
+func (h *NotificationHub) Publish(userID string, n *notification.Notification) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
-	for client := range h.clients[userID] {
-		client.Send(msg)
+	for sub := range h.subs[userID] {
+		select {
+		case sub.ch <- n:
+		default:
+		}
 	}
 }
+
+var (
+	_ notification.Publisher  = (*NotificationHub)(nil)
+	_ notification.Subscriber = (*NotificationHub)(nil)
+)

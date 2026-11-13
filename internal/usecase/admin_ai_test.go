@@ -8,12 +8,12 @@ import (
 
 	"github.com/google/uuid"
 
-	"learn-go/internal/domain"
+	"learn-go/internal/domain/identity"
 )
 
 func TestExecuteBatchOperations_GeneratedNumber(t *testing.T) {
 	repo := newMemoryAccountRepo()
-	svc := newTestAdminService(repo)
+	svc := newTestAdminUsecase(repo)
 
 	schoolID := uuid.New()
 	ops := []AIOperation{
@@ -52,7 +52,7 @@ func TestExecuteBatchOperations_GeneratedNumber(t *testing.T) {
 		t.Fatalf("expected 3 results, got %d", len(results))
 	}
 
-	// Verify accounts were created with generated numbers
+	// 校验账号已按生成的编号创建
 	if len(repo.accounts) != 3 {
 		t.Fatalf("expected 3 accounts created, got %d", len(repo.accounts))
 	}
@@ -77,17 +77,17 @@ func TestExecuteBatchOperations_NameLookup(t *testing.T) {
 	repo := newMemoryAccountRepo()
 	schoolID := uuid.New()
 
-	// Setup existing account
-	repo.accounts["acc1"] = &domain.Account{
+	// 准备已存在的账号
+	repo.accounts["acc1"] = &identity.Account{
 		ID:          "acc1",
 		SchoolID:    schoolID.String(),
-		Role:        domain.RoleStudent,
-		Status:      domain.AccountStatusActive,
+		Role:        identity.RoleStudent,
+		Status:      identity.AccountStatusActive,
 		DisplayName: "Zhang San",
 		Identifier:  "S123",
 	}
 
-	svc := newTestAdminService(repo)
+	svc := newTestAdminUsecase(repo)
 
 	ops := []AIOperation{
 		{
@@ -111,7 +111,7 @@ func TestExecuteBatchOperations_NameLookup(t *testing.T) {
 		t.Errorf("expected result to contain '已锁定账号 S123', got %s", results[0])
 	}
 
-	if repo.accounts["acc1"].Status != domain.AccountStatusLocked {
+	if repo.accounts["acc1"].Status != identity.AccountStatusLocked {
 		t.Errorf("expected account to be locked")
 	}
 }

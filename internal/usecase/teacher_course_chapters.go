@@ -5,16 +5,17 @@ import (
 	"time"
 
 	"learn-go/internal/domain"
-	"learn-go/internal/infra/repository"
+	"learn-go/internal/domain/curriculum"
+	"learn-go/internal/domain/storage"
 
 	"github.com/google/uuid"
 )
 
-func (s *TeacherPortalService) ListCourseChapters(
+func (s *TeacherPortalUsecase) ListCourseChapters(
 	ctx context.Context,
 	accountID string,
 	courseID string,
-) ([]domain.CourseChapter, error) {
+) ([]curriculum.CourseChapter, error) {
 	_, _, err := s.ensureTeacherCourseAccess(ctx, accountID, courseID)
 	if err != nil {
 		return nil, err
@@ -23,12 +24,12 @@ func (s *TeacherPortalService) ListCourseChapters(
 	return s.chapters.ListByCourse(ctx, courseID)
 }
 
-func (s *TeacherPortalService) GetCourseChapter(
+func (s *TeacherPortalUsecase) GetCourseChapter(
 	ctx context.Context,
 	accountID string,
 	courseID string,
 	chapterID string,
-) (*domain.CourseChapter, []domain.File, error) {
+) (*curriculum.CourseChapter, []storage.File, error) {
 	_, _, err := s.ensureTeacherCourseAccess(ctx, accountID, courseID)
 	if err != nil {
 		return nil, nil, err
@@ -39,7 +40,7 @@ func (s *TeacherPortalService) GetCourseChapter(
 		return nil, nil, err
 	}
 	if chapter == nil {
-		return nil, nil, repository.ErrNotFound
+		return nil, nil, domain.ErrNotFound
 	}
 
 	files, err := s.chapters.ListFiles(ctx, chapterID)
@@ -50,21 +51,21 @@ func (s *TeacherPortalService) GetCourseChapter(
 	return chapter, files, nil
 }
 
-func (s *TeacherPortalService) CreateCourseChapter(
+func (s *TeacherPortalUsecase) CreateCourseChapter(
 	ctx context.Context,
 	accountID string,
 	courseID string,
 	title string,
 	content string,
 	orderIndex int,
-) (*domain.CourseChapter, error) {
+) (*curriculum.CourseChapter, error) {
 	teacher, _, err := s.ensureTeacherCourseAccess(ctx, accountID, courseID)
 	if err != nil {
 		return nil, err
 	}
 
 	now := time.Now()
-	chapter := &domain.CourseChapter{
+	chapter := &curriculum.CourseChapter{
 		ID:         uuid.NewString(),
 		CourseID:   courseID,
 		TeacherID:  teacher.ID,
@@ -82,13 +83,13 @@ func (s *TeacherPortalService) CreateCourseChapter(
 	return chapter, nil
 }
 
-func (s *TeacherPortalService) UpdateCourseChapter(
+func (s *TeacherPortalUsecase) UpdateCourseChapter(
 	ctx context.Context,
 	accountID string,
 	courseID string,
 	chapterID string,
 	updates map[string]any,
-) (*domain.CourseChapter, error) {
+) (*curriculum.CourseChapter, error) {
 	_, _, err := s.ensureTeacherCourseAccess(ctx, accountID, courseID)
 	if err != nil {
 		return nil, err
@@ -97,7 +98,7 @@ func (s *TeacherPortalService) UpdateCourseChapter(
 	return s.chapters.UpdateFields(ctx, courseID, chapterID, updates)
 }
 
-func (s *TeacherPortalService) DeleteCourseChapter(
+func (s *TeacherPortalUsecase) DeleteCourseChapter(
 	ctx context.Context,
 	accountID string,
 	courseID string,
@@ -108,19 +109,19 @@ func (s *TeacherPortalService) DeleteCourseChapter(
 		return err
 	}
 
-	// Ensure chapter belongs to the course.
+	// 确保章节属于该课程。
 	chapter, err := s.chapters.GetByID(ctx, courseID, chapterID)
 	if err != nil {
 		return err
 	}
 	if chapter == nil {
-		return repository.ErrNotFound
+		return domain.ErrNotFound
 	}
 
 	return s.chapters.Delete(ctx, courseID, chapterID)
 }
 
-func (s *TeacherPortalService) AttachCourseChapterFile(
+func (s *TeacherPortalUsecase) AttachCourseChapterFile(
 	ctx context.Context,
 	accountID string,
 	courseID string,
@@ -137,13 +138,13 @@ func (s *TeacherPortalService) AttachCourseChapterFile(
 		return err
 	}
 	if chapter == nil {
-		return repository.ErrNotFound
+		return domain.ErrNotFound
 	}
 
 	return s.chapters.AttachFile(ctx, chapterID, fileID)
 }
 
-func (s *TeacherPortalService) DetachCourseChapterFile(
+func (s *TeacherPortalUsecase) DetachCourseChapterFile(
 	ctx context.Context,
 	accountID string,
 	courseID string,
@@ -160,7 +161,7 @@ func (s *TeacherPortalService) DetachCourseChapterFile(
 		return err
 	}
 	if chapter == nil {
-		return repository.ErrNotFound
+		return domain.ErrNotFound
 	}
 
 	return s.chapters.DetachFile(ctx, chapterID, fileID)

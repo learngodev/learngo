@@ -4,8 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"learn-go/internal/domain"
-	"learn-go/internal/infra/repository"
+	"learn-go/internal/domain/aiagent"
 
 	"gorm.io/gorm"
 )
@@ -18,7 +17,7 @@ func NewAIUsageLogStore(db *gorm.DB) *AIUsageLogStore {
 	return &AIUsageLogStore{db: db}
 }
 
-func (s *AIUsageLogStore) Create(ctx context.Context, log *domain.AIUsageLog) error {
+func (s *AIUsageLogStore) Create(ctx context.Context, log *aiagent.AIUsageLog) error {
 	if log == nil {
 		return errors.New("log required")
 	}
@@ -28,4 +27,4 @@ func (s *AIUsageLogStore) Create(ctx context.Context, log *domain.AIUsageLog) er
 	return s.db.WithContext(ctx).Create(log).Error
 }
 
-var _ repository.AIUsageLogRepository = (*AIUsageLogStore)(nil)
+var _ aiagent.AIUsageLogRepository = (*AIUsageLogStore)(nil)

@@ -4,48 +4,47 @@ import (
 	"context"
 	"errors"
 
-	"learn-go/internal/domain"
-	"learn-go/internal/infra/repository"
+	"learn-go/internal/domain/roster"
 
 	"gorm.io/gorm"
 )
 
-// TeacherStore implements repository.TeacherRepository using GORM.
+// TeacherStore 基于 GORM 实现 roster.TeacherRepository。
 type TeacherStore struct {
 	db *gorm.DB
 }
 
-// NewTeacherStore returns a new teacher store.
+// NewTeacherStore 返回新的教师存储。
 func NewTeacherStore(db *gorm.DB) *TeacherStore {
 	return &TeacherStore{db: db}
 }
 
-func (s *TeacherStore) Create(ctx context.Context, teacher *domain.Teacher) error {
+func (s *TeacherStore) Create(ctx context.Context, teacher *roster.Teacher) error {
 	return s.db.WithContext(ctx).Create(teacher).Error
 }
 
-func (s *TeacherStore) Update(ctx context.Context, teacher *domain.Teacher) error {
+func (s *TeacherStore) Update(ctx context.Context, teacher *roster.Teacher) error {
 	return s.db.WithContext(ctx).Save(teacher).Error
 }
 
-func (s *TeacherStore) GetByNumber(ctx context.Context, schoolID, number string) (*domain.Teacher, error) {
-	var teacher domain.Teacher
+func (s *TeacherStore) GetByNumber(ctx context.Context, schoolID, number string) (*roster.Teacher, error) {
+	var teacher roster.Teacher
 	if err := s.db.WithContext(ctx).Where("school_id = ? AND number = ?", schoolID, number).First(&teacher).Error; err != nil {
-		return nil, err
+		return nil, notFound(err)
 	}
 	return &teacher, nil
 }
 
-func (s *TeacherStore) GetByID(ctx context.Context, id string) (*domain.Teacher, error) {
-	var teacher domain.Teacher
+func (s *TeacherStore) GetByID(ctx context.Context, id string) (*roster.Teacher, error) {
+	var teacher roster.Teacher
 	if err := s.db.WithContext(ctx).First(&teacher, "id = ?", id).Error; err != nil {
-		return nil, err
+		return nil, notFound(err)
 	}
 	return &teacher, nil
 }
 
-func (s *TeacherStore) GetByAccountID(ctx context.Context, accountID string) (*domain.Teacher, error) {
-	var teacher domain.Teacher
+func (s *TeacherStore) GetByAccountID(ctx context.Context, accountID string) (*roster.Teacher, error) {
+	var teacher roster.Teacher
 	if err := s.db.WithContext(ctx).Where("account_id = ?", accountID).First(&teacher).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
@@ -55,4 +54,4 @@ func (s *TeacherStore) GetByAccountID(ctx context.Context, accountID string) (*d
 	return &teacher, nil
 }
 
-var _ repository.TeacherRepository = (*TeacherStore)(nil)
+var _ roster.TeacherRepository = (*TeacherStore)(nil)

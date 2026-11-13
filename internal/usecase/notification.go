@@ -4,26 +4,22 @@ import (
 	"context"
 	"time"
 
-	"learn-go/internal/interface/grpcpb"
-	"learn-go/internal/domain"
-	"learn-go/internal/infra/realtime"
-	"learn-go/internal/infra/repository"
+	"learn-go/internal/domain/notification"
 
 	"github.com/google/uuid"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-type NotificationService struct {
-	notifications repository.NotificationRepository
-	hub           *realtime.NotificationHub
+type NotificationUsecase struct {
+	notifications notification.NotificationRepository
+	publisher     notification.Publisher
 }
 
-func NewNotificationService(notifications repository.NotificationRepository, hub *realtime.NotificationHub) *NotificationService {
-	return &NotificationService{notifications: notifications, hub: hub}
+func NewNotificationUsecase(notifications notification.NotificationRepository, publisher notification.Publisher) *NotificationUsecase {
+	return &NotificationUsecase{notifications: notifications, publisher: publisher}
 }
 
-func (s *NotificationService) Create(ctx context.Context, userID, title, content string, notifType domain.NotificationType, refID string) error {
-	notification := &domain.Notification{
+func (s *NotificationUsecase) Create(ctx context.Context, userID, title, content string, notifType notification.NotificationType, refID string) error {
+	notification := &notification.Notification{
 		ID:          uuid.NewString(),
 		UserID:      userID,
 		Title:       title,
@@ -37,38 +33,26 @@ func (s *NotificationService) Create(ctx context.Context, userID, title, content
 		return err
 	}
 
-	// Push to gRPC stream
-	if s.hub != nil {
-		s.hub.SendToUser(userID, &grpcpb.NotificationStreamResponse{
-			Payload: &grpcpb.NotificationStreamResponse_Notification{
-				Notification: &grpcpb.NotificationEvent{
-					Id:          notification.ID,
-					Title:       notification.Title,
-					Content:     notification.Content,
-					Type:        string(notification.Type),
-					ReferenceId: notification.ReferenceID,
-					IsRead:      notification.IsRead,
-					CreatedAt:   timestamppb.New(notification.CreatedAt),
-				},
-			},
-		})
+	// 实时推送给在线用户
+	if s.publisher != nil {
+		s.publisher.Publish(userID, notification)
 	}
 
 	return nil
 }
 
-func (s *NotificationService) ListByUser(ctx context.Context, userID string, limit, offset int) ([]domain.Notification, int64, error) {
+func (s *NotificationUsecase) ListByUser(ctx context.Context, userID string, limit, offset int) ([]notification.Notification, int64, error) {
 	return s.notifications.ListByUser(ctx, userID, limit, offset)
 }
 
-func (s *NotificationService) MarkAsRead(ctx context.Context, id, userID string) error {
+func (s *NotificationUsecase) MarkAsRead(ctx context.Context, id, userID string) error {
 	return s.notifications.MarkAsRead(ctx, id, userID)
 }
 
-func (s *NotificationService) MarkAllAsRead(ctx context.Context, userID string) error {
+func (s *NotificationUsecase) MarkAllAsRead(ctx context.Context, userID string) error {
 	return s.notifications.MarkAllAsRead(ctx, userID)
 }
 
-func (s *NotificationService) CountUnread(ctx context.Context, userID string) (int64, error) {
+func (s *NotificationUsecase) CountUnread(ctx context.Context, userID string) (int64, error) {
 	return s.notifications.CountUnread(ctx, userID)
 }

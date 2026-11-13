@@ -4,22 +4,21 @@ import (
 	"context"
 	"time"
 
-	"learn-go/internal/domain"
-	"learn-go/internal/infra/repository"
+	"learn-go/internal/domain/organization"
 
 	"github.com/google/uuid"
 )
 
-type ClassroomService struct {
-	classroomRepo repository.ClassroomRepository
+type ClassroomUsecase struct {
+	classroomRepo organization.ClassroomRepository
 }
 
-func NewClassroomService(classroomRepo repository.ClassroomRepository) *ClassroomService {
-	return &ClassroomService{classroomRepo: classroomRepo}
+func NewClassroomUsecase(classroomRepo organization.ClassroomRepository) *ClassroomUsecase {
+	return &ClassroomUsecase{classroomRepo: classroomRepo}
 }
 
-func (s *ClassroomService) Create(ctx context.Context, schoolID, location string) (*domain.Classroom, error) {
-	classroom := &domain.Classroom{
+func (s *ClassroomUsecase) Create(ctx context.Context, schoolID, location string) (*organization.Classroom, error) {
+	classroom := &organization.Classroom{
 		ID:        uuid.New().String(),
 		SchoolID:  schoolID,
 		Location:  location,
@@ -32,11 +31,11 @@ func (s *ClassroomService) Create(ctx context.Context, schoolID, location string
 	return classroom, nil
 }
 
-func (s *ClassroomService) List(ctx context.Context, schoolID string, page, size int) ([]domain.Classroom, int64, error) {
+func (s *ClassroomUsecase) List(ctx context.Context, schoolID string, page, size int) ([]organization.Classroom, int64, error) {
 	return s.classroomRepo.List(ctx, schoolID, page, size)
 }
 
-func (s *ClassroomService) Update(ctx context.Context, id, location string) (*domain.Classroom, error) {
+func (s *ClassroomUsecase) Update(ctx context.Context, id, location string) (*organization.Classroom, error) {
 	classroom, err := s.classroomRepo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
@@ -49,6 +48,6 @@ func (s *ClassroomService) Update(ctx context.Context, id, location string) (*do
 	return classroom, nil
 }
 
-func (s *ClassroomService) Delete(ctx context.Context, id string) error {
+func (s *ClassroomUsecase) Delete(ctx context.Context, id string) error {
 	return s.classroomRepo.Delete(ctx, id)
 }

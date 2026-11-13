@@ -5,12 +5,12 @@ import (
 	"os"
 )
 
-// Logger wraps the standard library logger to allow future replacement.
+// Logger 封装标准库 logger，便于日后替换。
 type Logger struct {
 	*log.Logger
 }
 
-// New creates a configured logger instance.
+// New 创建已配置的 logger 实例。
 func New() *Logger {
 	return &Logger{Logger: log.New(os.Stdout, "[learn-go] ", log.LstdFlags|log.Lshortfile)}
 }

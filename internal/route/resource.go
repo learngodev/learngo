@@ -8,7 +8,7 @@ import (
 
 // RegisterResourceRoutes 注册资源相关路由。
 func RegisterResourceRoutes(api *gin.RouterGroup, h *handler.Handler, teacherGuard, studentGuard gin.HandlerFunc) {
-	// Teacher routes
+	// 教师端路由
 	teacher := api.Group("/teacher", teacherGuard)
 	{
 		teacher.POST("/resources", h.CreateTeacherResource)
@@ -20,7 +20,7 @@ func RegisterResourceRoutes(api *gin.RouterGroup, h *handler.Handler, teacherGua
 		teacher.DELETE("/resources/:id/files/:fileID", h.RemoveFileFromResource)
 	}
 
-	// Student routes (accessible by both students and teachers)
+	// 学生端路由（学生和教师均可访问）
 	student := api.Group("", studentGuard)
 	{
 		student.GET("/resources", h.BrowseResources)

@@ -3,143 +3,143 @@ package usecase
 import (
 	"context"
 	"errors"
+	"learn-go/internal/domain"
 	"math"
 	"testing"
 	"time"
 
-	"learn-go/internal/domain"
-	"learn-go/internal/infra/repository"
-
-	"gorm.io/gorm"
+	"learn-go/internal/domain/coursework"
+	"learn-go/internal/domain/identity"
+	"learn-go/internal/domain/storage"
 )
 
 type scoreValidationAssignmentRepo struct {
-	assignment *domain.Assignment
-	questions  []domain.AssignmentQuestion
+	assignment *coursework.Assignment
+	questions  []coursework.AssignmentQuestion
 }
 
-func (f *scoreValidationAssignmentRepo) Create(context.Context, *domain.Assignment, []domain.AssignmentQuestion, []domain.AssignmentAttachment) error {
+func (f *scoreValidationAssignmentRepo) Create(context.Context, *coursework.Assignment, []coursework.AssignmentQuestion, []coursework.AssignmentAttachment) error {
 	return nil
 }
 
-func (f *scoreValidationAssignmentRepo) Get(context.Context, string) (*domain.Assignment, []domain.AssignmentQuestion, []domain.File, error) {
+func (f *scoreValidationAssignmentRepo) Get(context.Context, string) (*coursework.Assignment, []coursework.AssignmentQuestion, []storage.File, error) {
 	if f.assignment == nil {
-		return nil, nil, nil, gorm.ErrRecordNotFound
+		return nil, nil, nil, domain.ErrNotFound
 	}
 	return f.assignment, f.questions, nil, nil
 }
 
-func (f *scoreValidationAssignmentRepo) ListByClass(context.Context, string, int, []domain.AssignmentType) ([]domain.Assignment, error) {
+func (f *scoreValidationAssignmentRepo) ListByClass(context.Context, string, int, []coursework.AssignmentType) ([]coursework.Assignment, error) {
 	return nil, nil
 }
 
-func (f *scoreValidationAssignmentRepo) ListDueBetween(context.Context, string, time.Time, time.Time, []domain.AssignmentType) ([]domain.Assignment, error) {
+func (f *scoreValidationAssignmentRepo) ListDueBetween(context.Context, string, time.Time, time.Time, []coursework.AssignmentType) ([]coursework.Assignment, error) {
 	return nil, nil
 }
 
-func (f *scoreValidationAssignmentRepo) ListByTeacher(context.Context, string, int, string, []domain.AssignmentType) ([]domain.Assignment, error) {
+func (f *scoreValidationAssignmentRepo) ListByTeacher(context.Context, string, int, string, []coursework.AssignmentType) ([]coursework.Assignment, error) {
 	return nil, nil
 }
 
-func (f *scoreValidationAssignmentRepo) ListDueBetweenByTeacher(context.Context, string, time.Time, time.Time, []domain.AssignmentType) ([]domain.Assignment, error) {
+func (f *scoreValidationAssignmentRepo) ListDueBetweenByTeacher(context.Context, string, time.Time, time.Time, []coursework.AssignmentType) ([]coursework.Assignment, error) {
 	return nil, nil
 }
 
-func (f *scoreValidationAssignmentRepo) Search(context.Context, string, string) ([]domain.Assignment, error) {
+func (f *scoreValidationAssignmentRepo) Search(context.Context, string, string) ([]coursework.Assignment, error) {
 	return nil, nil
 }
 
-func (f *scoreValidationAssignmentRepo) Update(context.Context, *domain.Assignment) error {
+func (f *scoreValidationAssignmentRepo) Update(context.Context, *coursework.Assignment) error {
 	return nil
 }
 
 type scoreValidationSubmissionRepo struct {
-	submission           *domain.AssignmentSubmission
-	items                []domain.SubmissionItem
-	byAssignmentStudent  *domain.AssignmentSubmission
-	byAssignmentStudentI []domain.SubmissionItem
-	createdSubmission    *domain.AssignmentSubmission
-	createdItems         []domain.SubmissionItem
-	updatedSubmission    *domain.AssignmentSubmission
-	updatedItems         []domain.SubmissionItem
+	submission           *coursework.AssignmentSubmission
+	items                []coursework.SubmissionItem
+	byAssignmentStudent  *coursework.AssignmentSubmission
+	byAssignmentStudentI []coursework.SubmissionItem
+	createdSubmission    *coursework.AssignmentSubmission
+	createdItems         []coursework.SubmissionItem
+	updatedSubmission    *coursework.AssignmentSubmission
+	updatedItems         []coursework.SubmissionItem
 }
 
-func (f *scoreValidationSubmissionRepo) CreateOrUpdate(_ context.Context, submission *domain.AssignmentSubmission, items []domain.SubmissionItem) error {
+func (f *scoreValidationSubmissionRepo) CreateOrUpdate(_ context.Context, submission *coursework.AssignmentSubmission, items []coursework.SubmissionItem) error {
 	if submission != nil {
 		copySubmission := *submission
 		f.createdSubmission = &copySubmission
 	}
-	f.createdItems = append([]domain.SubmissionItem(nil), items...)
+	f.createdItems = append([]coursework.SubmissionItem(nil), items...)
 	return nil
 }
 
-func (f *scoreValidationSubmissionRepo) ListByAssignment(context.Context, string) ([]domain.AssignmentSubmission, error) {
+func (f *scoreValidationSubmissionRepo) ListByAssignment(context.Context, string) ([]coursework.AssignmentSubmission, error) {
 	return nil, nil
 }
 
-func (f *scoreValidationSubmissionRepo) ListItemsBySubmissionIDs(context.Context, []string) ([]domain.SubmissionItem, error) {
+func (f *scoreValidationSubmissionRepo) ListItemsBySubmissionIDs(context.Context, []string) ([]coursework.SubmissionItem, error) {
 	return nil, nil
 }
 
-func (f *scoreValidationSubmissionRepo) GetByAssignmentAndStudent(context.Context, string, string) (*domain.AssignmentSubmission, []domain.SubmissionItem, error) {
+func (f *scoreValidationSubmissionRepo) GetByAssignmentAndStudent(context.Context, string, string) (*coursework.AssignmentSubmission, []coursework.SubmissionItem, error) {
 	if f.byAssignmentStudent != nil {
 		return f.byAssignmentStudent, f.byAssignmentStudentI, nil
 	}
-	return nil, nil, gorm.ErrRecordNotFound
+	return nil, nil, domain.ErrNotFound
 }
 
-func (f *scoreValidationSubmissionRepo) GetByID(context.Context, string) (*domain.AssignmentSubmission, []domain.SubmissionItem, error) {
+func (f *scoreValidationSubmissionRepo) GetByID(context.Context, string) (*coursework.AssignmentSubmission, []coursework.SubmissionItem, error) {
 	if f.submission == nil {
-		return nil, nil, gorm.ErrRecordNotFound
+		return nil, nil, domain.ErrNotFound
 	}
 	return f.submission, f.items, nil
 }
 
-func (f *scoreValidationSubmissionRepo) UpdateGrades(_ context.Context, submission *domain.AssignmentSubmission, items []domain.SubmissionItem) error {
+func (f *scoreValidationSubmissionRepo) UpdateGrades(_ context.Context, submission *coursework.AssignmentSubmission, items []coursework.SubmissionItem) error {
 	if submission != nil {
 		copySubmission := *submission
 		f.updatedSubmission = &copySubmission
 	}
-	f.updatedItems = append([]domain.SubmissionItem(nil), items...)
+	f.updatedItems = append([]coursework.SubmissionItem(nil), items...)
 	return nil
 }
 
-func (f *scoreValidationSubmissionRepo) ListByStudentAndAssignments(context.Context, string, []string) ([]domain.AssignmentSubmission, error) {
+func (f *scoreValidationSubmissionRepo) ListByStudentAndAssignments(context.Context, string, []string) ([]coursework.AssignmentSubmission, error) {
 	return nil, nil
 }
 
-func (f *scoreValidationSubmissionRepo) StatsByAssignments(context.Context, []string) ([]repository.AssignmentSubmissionStats, error) {
+func (f *scoreValidationSubmissionRepo) StatsByAssignments(context.Context, []string) ([]coursework.AssignmentSubmissionStats, error) {
 	return nil, nil
 }
 
 type scoreValidationCommentRepo struct {
-	comments map[string][]domain.SubmissionComment
+	comments map[string][]coursework.SubmissionComment
 }
 
-func (f *scoreValidationCommentRepo) Create(_ context.Context, comment *domain.SubmissionComment) error {
+func (f *scoreValidationCommentRepo) Create(_ context.Context, comment *coursework.SubmissionComment) error {
 	if comment == nil {
 		return nil
 	}
 	if f.comments == nil {
-		f.comments = make(map[string][]domain.SubmissionComment)
+		f.comments = make(map[string][]coursework.SubmissionComment)
 	}
 	copyComment := *comment
 	f.comments[comment.SubmissionID] = append(f.comments[comment.SubmissionID], copyComment)
 	return nil
 }
 
-func (f *scoreValidationCommentRepo) ListBySubmission(_ context.Context, submissionID string) ([]domain.SubmissionComment, error) {
+func (f *scoreValidationCommentRepo) ListBySubmission(_ context.Context, submissionID string) ([]coursework.SubmissionComment, error) {
 	if f.comments == nil {
-		return []domain.SubmissionComment{}, nil
+		return []coursework.SubmissionComment{}, nil
 	}
 	items := f.comments[submissionID]
-	result := make([]domain.SubmissionComment, len(items))
+	result := make([]coursework.SubmissionComment, len(items))
 	copy(result, items)
 	return result, nil
 }
 
 func TestCreateAssignmentRejectsWhenQuestionTotalExceedsMaxScore(t *testing.T) {
-	svc := NewAssignmentService(
+	svc := NewAssignmentUsecase(
 		&scoreValidationAssignmentRepo{},
 		&scoreValidationSubmissionRepo{},
 		&scoreValidationCommentRepo{},
@@ -154,8 +154,8 @@ func TestCreateAssignmentRejectsWhenQuestionTotalExceedsMaxScore(t *testing.T) {
 		ClassID:   "class-1",
 		MaxScore:  100,
 		Questions: []QuestionInput{
-			{Type: domain.QuestionEssay, Prompt: "q1", Score: 60},
-			{Type: domain.QuestionEssay, Prompt: "q2", Score: 50},
+			{Type: coursework.QuestionEssay, Prompt: "q1", Score: 60},
+			{Type: coursework.QuestionEssay, Prompt: "q2", Score: 50},
 		},
 	})
 	if !errors.Is(err, ErrScoreOutOfRange) {
@@ -164,7 +164,7 @@ func TestCreateAssignmentRejectsWhenQuestionTotalExceedsMaxScore(t *testing.T) {
 }
 
 func TestCreateAssignmentRejectsWhenQuestionScoreExceedsAssignmentMax(t *testing.T) {
-	svc := NewAssignmentService(
+	svc := NewAssignmentUsecase(
 		&scoreValidationAssignmentRepo{},
 		&scoreValidationSubmissionRepo{},
 		&scoreValidationCommentRepo{},
@@ -178,7 +178,7 @@ func TestCreateAssignmentRejectsWhenQuestionScoreExceedsAssignmentMax(t *testing
 		TeacherID: "teacher-1",
 		ClassID:   "class-1",
 		MaxScore:  100,
-		Questions: []QuestionInput{{Type: domain.QuestionEssay, Prompt: "q1", Score: 120}},
+		Questions: []QuestionInput{{Type: coursework.QuestionEssay, Prompt: "q1", Score: 120}},
 	})
 	if !errors.Is(err, ErrScoreOutOfRange) {
 		t.Fatalf("expected ErrScoreOutOfRange, got %v", err)
@@ -186,7 +186,7 @@ func TestCreateAssignmentRejectsWhenQuestionScoreExceedsAssignmentMax(t *testing
 }
 
 func TestCreateAssignmentRejectsWhenMaxScoreNegative(t *testing.T) {
-	svc := NewAssignmentService(
+	svc := NewAssignmentUsecase(
 		&scoreValidationAssignmentRepo{},
 		&scoreValidationSubmissionRepo{},
 		&scoreValidationCommentRepo{},
@@ -200,7 +200,7 @@ func TestCreateAssignmentRejectsWhenMaxScoreNegative(t *testing.T) {
 		TeacherID: "teacher-1",
 		ClassID:   "class-1",
 		MaxScore:  -1,
-		Questions: []QuestionInput{{Type: domain.QuestionEssay, Prompt: "q1", Score: 1}},
+		Questions: []QuestionInput{{Type: coursework.QuestionEssay, Prompt: "q1", Score: 1}},
 	})
 	if !errors.Is(err, ErrScoreOutOfRange) {
 		t.Fatalf("expected ErrScoreOutOfRange, got %v", err)
@@ -209,13 +209,13 @@ func TestCreateAssignmentRejectsWhenMaxScoreNegative(t *testing.T) {
 
 func TestUpdateAssignmentRejectsWhenNewMaxScoreBelowQuestionTotal(t *testing.T) {
 	repo := &scoreValidationAssignmentRepo{
-		assignment: &domain.Assignment{ID: "assign-1", TeacherID: "teacher-1", MaxScore: 100},
-		questions: []domain.AssignmentQuestion{
+		assignment: &coursework.Assignment{ID: "assign-1", TeacherID: "teacher-1", MaxScore: 100},
+		questions: []coursework.AssignmentQuestion{
 			{ID: "q1", Score: 40},
 			{ID: "q2", Score: 40},
 		},
 	}
-	svc := NewAssignmentService(
+	svc := NewAssignmentUsecase(
 		repo,
 		&scoreValidationSubmissionRepo{},
 		&scoreValidationCommentRepo{},
@@ -236,10 +236,10 @@ func TestUpdateAssignmentRejectsWhenNewMaxScoreBelowQuestionTotal(t *testing.T) 
 
 func TestSubmitRejectsWhenScoreExceedsAssignmentMax(t *testing.T) {
 	repo := &scoreValidationAssignmentRepo{
-		assignment: &domain.Assignment{ID: "assign-1", MaxScore: 100},
-		questions:  []domain.AssignmentQuestion{{ID: "q1", Score: 100}},
+		assignment: &coursework.Assignment{ID: "assign-1", MaxScore: 100},
+		questions:  []coursework.AssignmentQuestion{{ID: "q1", Score: 100}},
 	}
-	svc := NewAssignmentService(
+	svc := NewAssignmentUsecase(
 		repo,
 		&scoreValidationSubmissionRepo{},
 		&scoreValidationCommentRepo{},
@@ -261,18 +261,18 @@ func TestSubmitRejectsWhenScoreExceedsAssignmentMax(t *testing.T) {
 
 func TestSubmitRejectsWhenExistingSubmissionAlreadyGraded(t *testing.T) {
 	repo := &scoreValidationAssignmentRepo{
-		assignment: &domain.Assignment{ID: "assign-1", MaxScore: 100},
-		questions:  []domain.AssignmentQuestion{{ID: "q1", Score: 100}},
+		assignment: &coursework.Assignment{ID: "assign-1", MaxScore: 100},
+		questions:  []coursework.AssignmentQuestion{{ID: "q1", Score: 100}},
 	}
 	subRepo := &scoreValidationSubmissionRepo{
-		byAssignmentStudent: &domain.AssignmentSubmission{
+		byAssignmentStudent: &coursework.AssignmentSubmission{
 			ID:           "sub-1",
 			AssignmentID: "assign-1",
 			StudentID:    "stu-1",
 			Status:       "graded",
 		},
 	}
-	svc := NewAssignmentService(
+	svc := NewAssignmentUsecase(
 		repo,
 		subRepo,
 		&scoreValidationCommentRepo{},
@@ -294,10 +294,10 @@ func TestSubmitRejectsWhenExistingSubmissionAlreadyGraded(t *testing.T) {
 
 func TestSubmitRejectsWhenItemScoreExceedsQuestionMax(t *testing.T) {
 	repo := &scoreValidationAssignmentRepo{
-		assignment: &domain.Assignment{ID: "assign-1", MaxScore: 100},
-		questions:  []domain.AssignmentQuestion{{ID: "q1", Score: 10}},
+		assignment: &coursework.Assignment{ID: "assign-1", MaxScore: 100},
+		questions:  []coursework.AssignmentQuestion{{ID: "q1", Score: 10}},
 	}
-	svc := NewAssignmentService(
+	svc := NewAssignmentUsecase(
 		repo,
 		&scoreValidationSubmissionRepo{},
 		&scoreValidationCommentRepo{},
@@ -318,10 +318,10 @@ func TestSubmitRejectsWhenItemScoreExceedsQuestionMax(t *testing.T) {
 
 func TestSubmitRejectsWhenQuestionIDInvalid(t *testing.T) {
 	repo := &scoreValidationAssignmentRepo{
-		assignment: &domain.Assignment{ID: "assign-1", MaxScore: 100},
-		questions:  []domain.AssignmentQuestion{{ID: "q1", Score: 10}},
+		assignment: &coursework.Assignment{ID: "assign-1", MaxScore: 100},
+		questions:  []coursework.AssignmentQuestion{{ID: "q1", Score: 10}},
 	}
-	svc := NewAssignmentService(
+	svc := NewAssignmentUsecase(
 		repo,
 		&scoreValidationSubmissionRepo{},
 		&scoreValidationCommentRepo{},
@@ -342,14 +342,14 @@ func TestSubmitRejectsWhenQuestionIDInvalid(t *testing.T) {
 
 func TestSubmitProgressCountsUniqueAnsweredQuestions(t *testing.T) {
 	repo := &scoreValidationAssignmentRepo{
-		assignment: &domain.Assignment{ID: "assign-1", MaxScore: 100},
-		questions: []domain.AssignmentQuestion{
+		assignment: &coursework.Assignment{ID: "assign-1", MaxScore: 100},
+		questions: []coursework.AssignmentQuestion{
 			{ID: "q1", Score: 50},
 			{ID: "q2", Score: 50},
 		},
 	}
 	subRepo := &scoreValidationSubmissionRepo{}
-	svc := NewAssignmentService(
+	svc := NewAssignmentUsecase(
 		repo,
 		subRepo,
 		&scoreValidationCommentRepo{},
@@ -379,14 +379,14 @@ func TestSubmitProgressCountsUniqueAnsweredQuestions(t *testing.T) {
 
 func TestGradeSubmissionRejectsWhenItemScoreExceedsQuestionScore(t *testing.T) {
 	repo := &scoreValidationAssignmentRepo{
-		assignment: &domain.Assignment{ID: "assign-1", TeacherID: "teacher-1", MaxScore: 100},
-		questions:  []domain.AssignmentQuestion{{ID: "q1", Score: 20}},
+		assignment: &coursework.Assignment{ID: "assign-1", TeacherID: "teacher-1", MaxScore: 100},
+		questions:  []coursework.AssignmentQuestion{{ID: "q1", Score: 20}},
 	}
 	subRepo := &scoreValidationSubmissionRepo{
-		submission: &domain.AssignmentSubmission{ID: "sub-1", AssignmentID: "assign-1"},
-		items:      []domain.SubmissionItem{{ID: "item-1", QuestionID: "q1", SubmissionID: "sub-1"}},
+		submission: &coursework.AssignmentSubmission{ID: "sub-1", AssignmentID: "assign-1"},
+		items:      []coursework.SubmissionItem{{ID: "item-1", QuestionID: "q1", SubmissionID: "sub-1"}},
 	}
-	svc := NewAssignmentService(
+	svc := NewAssignmentUsecase(
 		repo,
 		subRepo,
 		&scoreValidationCommentRepo{},
@@ -407,14 +407,14 @@ func TestGradeSubmissionRejectsWhenItemScoreExceedsQuestionScore(t *testing.T) {
 
 func TestGradeSubmissionRejectsWhenTotalScoreExceedsAssignmentMax(t *testing.T) {
 	repo := &scoreValidationAssignmentRepo{
-		assignment: &domain.Assignment{ID: "assign-1", TeacherID: "teacher-1", MaxScore: 100},
-		questions:  []domain.AssignmentQuestion{{ID: "q1", Score: 100}},
+		assignment: &coursework.Assignment{ID: "assign-1", TeacherID: "teacher-1", MaxScore: 100},
+		questions:  []coursework.AssignmentQuestion{{ID: "q1", Score: 100}},
 	}
 	subRepo := &scoreValidationSubmissionRepo{
-		submission: &domain.AssignmentSubmission{ID: "sub-1", AssignmentID: "assign-1"},
-		items:      []domain.SubmissionItem{{ID: "item-1", QuestionID: "q1", SubmissionID: "sub-1"}},
+		submission: &coursework.AssignmentSubmission{ID: "sub-1", AssignmentID: "assign-1"},
+		items:      []coursework.SubmissionItem{{ID: "item-1", QuestionID: "q1", SubmissionID: "sub-1"}},
 	}
-	svc := NewAssignmentService(
+	svc := NewAssignmentUsecase(
 		repo,
 		subRepo,
 		&scoreValidationCommentRepo{},
@@ -435,12 +435,12 @@ func TestGradeSubmissionRejectsWhenTotalScoreExceedsAssignmentMax(t *testing.T) 
 
 func TestGetSubmissionForTeacherRejectsWhenTeacherDoesNotOwnAssignment(t *testing.T) {
 	repo := &scoreValidationAssignmentRepo{
-		assignment: &domain.Assignment{ID: "assign-1", TeacherID: "teacher-1"},
+		assignment: &coursework.Assignment{ID: "assign-1", TeacherID: "teacher-1"},
 	}
 	subRepo := &scoreValidationSubmissionRepo{
-		submission: &domain.AssignmentSubmission{ID: "sub-1", AssignmentID: "assign-1"},
+		submission: &coursework.AssignmentSubmission{ID: "sub-1", AssignmentID: "assign-1"},
 	}
-	svc := NewAssignmentService(
+	svc := NewAssignmentUsecase(
 		repo,
 		subRepo,
 		&scoreValidationCommentRepo{},
@@ -457,14 +457,14 @@ func TestGetSubmissionForTeacherRejectsWhenTeacherDoesNotOwnAssignment(t *testin
 
 func TestGradeSubmissionRejectsWhenTeacherDoesNotOwnAssignment(t *testing.T) {
 	repo := &scoreValidationAssignmentRepo{
-		assignment: &domain.Assignment{ID: "assign-1", TeacherID: "teacher-1", MaxScore: 100},
-		questions:  []domain.AssignmentQuestion{{ID: "q1", Score: 20}},
+		assignment: &coursework.Assignment{ID: "assign-1", TeacherID: "teacher-1", MaxScore: 100},
+		questions:  []coursework.AssignmentQuestion{{ID: "q1", Score: 20}},
 	}
 	subRepo := &scoreValidationSubmissionRepo{
-		submission: &domain.AssignmentSubmission{ID: "sub-1", AssignmentID: "assign-1"},
-		items:      []domain.SubmissionItem{{ID: "item-1", QuestionID: "q1", SubmissionID: "sub-1"}},
+		submission: &coursework.AssignmentSubmission{ID: "sub-1", AssignmentID: "assign-1"},
+		items:      []coursework.SubmissionItem{{ID: "item-1", QuestionID: "q1", SubmissionID: "sub-1"}},
 	}
-	svc := NewAssignmentService(
+	svc := NewAssignmentUsecase(
 		repo,
 		subRepo,
 		&scoreValidationCommentRepo{},
@@ -484,12 +484,12 @@ func TestGradeSubmissionRejectsWhenTeacherDoesNotOwnAssignment(t *testing.T) {
 
 func TestReturnSubmissionRejectsWhenTeacherDoesNotOwnAssignment(t *testing.T) {
 	repo := &scoreValidationAssignmentRepo{
-		assignment: &domain.Assignment{ID: "assign-1", TeacherID: "teacher-1"},
+		assignment: &coursework.Assignment{ID: "assign-1", TeacherID: "teacher-1"},
 	}
 	subRepo := &scoreValidationSubmissionRepo{
-		submission: &domain.AssignmentSubmission{ID: "sub-1", AssignmentID: "assign-1"},
+		submission: &coursework.AssignmentSubmission{ID: "sub-1", AssignmentID: "assign-1"},
 	}
-	svc := NewAssignmentService(
+	svc := NewAssignmentUsecase(
 		repo,
 		subRepo,
 		&scoreValidationCommentRepo{},
@@ -509,14 +509,14 @@ func TestReturnSubmissionRejectsWhenTeacherDoesNotOwnAssignment(t *testing.T) {
 
 func TestReturnSubmissionUpdatesStatusAndCreatesComment(t *testing.T) {
 	repo := &scoreValidationAssignmentRepo{
-		assignment: &domain.Assignment{ID: "assign-1", TeacherID: "teacher-1"},
+		assignment: &coursework.Assignment{ID: "assign-1", TeacherID: "teacher-1"},
 	}
 	subRepo := &scoreValidationSubmissionRepo{
-		submission: &domain.AssignmentSubmission{ID: "sub-1", AssignmentID: "assign-1", Status: "submitted"},
-		items:      []domain.SubmissionItem{{ID: "item-1", QuestionID: "q1", SubmissionID: "sub-1"}},
+		submission: &coursework.AssignmentSubmission{ID: "sub-1", AssignmentID: "assign-1", Status: "submitted"},
+		items:      []coursework.SubmissionItem{{ID: "item-1", QuestionID: "q1", SubmissionID: "sub-1"}},
 	}
 	commentRepo := &scoreValidationCommentRepo{}
-	svc := NewAssignmentService(
+	svc := NewAssignmentUsecase(
 		repo,
 		subRepo,
 		commentRepo,
@@ -543,13 +543,13 @@ func TestReturnSubmissionUpdatesStatusAndCreatesComment(t *testing.T) {
 	if len(comments) != 1 {
 		t.Fatalf("expected 1 comment, got %d", len(comments))
 	}
-	if comments[0].AuthorRole != domain.RoleTeacher {
+	if comments[0].AuthorRole != identity.RoleTeacher {
 		t.Fatalf("expected teacher author role, got %s", comments[0].AuthorRole)
 	}
 }
 
 func TestCreateAssignmentRejectsWhenMaxScoreIsNaN(t *testing.T) {
-	svc := NewAssignmentService(
+	svc := NewAssignmentUsecase(
 		&scoreValidationAssignmentRepo{},
 		&scoreValidationSubmissionRepo{},
 		&scoreValidationCommentRepo{},
@@ -563,7 +563,7 @@ func TestCreateAssignmentRejectsWhenMaxScoreIsNaN(t *testing.T) {
 		TeacherID: "teacher-1",
 		ClassID:   "class-1",
 		MaxScore:  math.NaN(),
-		Questions: []QuestionInput{{Type: domain.QuestionEssay, Prompt: "q1", Score: 1}},
+		Questions: []QuestionInput{{Type: coursework.QuestionEssay, Prompt: "q1", Score: 1}},
 	})
 	if !errors.Is(err, ErrScoreOutOfRange) {
 		t.Fatalf("expected ErrScoreOutOfRange for NaN max score, got %v", err)
@@ -571,7 +571,7 @@ func TestCreateAssignmentRejectsWhenMaxScoreIsNaN(t *testing.T) {
 }
 
 func TestCreateAssignmentRejectsWhenQuestionScoreIsPositiveInfinity(t *testing.T) {
-	svc := NewAssignmentService(
+	svc := NewAssignmentUsecase(
 		&scoreValidationAssignmentRepo{},
 		&scoreValidationSubmissionRepo{},
 		&scoreValidationCommentRepo{},
@@ -585,7 +585,7 @@ func TestCreateAssignmentRejectsWhenQuestionScoreIsPositiveInfinity(t *testing.T
 		TeacherID: "teacher-1",
 		ClassID:   "class-1",
 		MaxScore:  100,
-		Questions: []QuestionInput{{Type: domain.QuestionEssay, Prompt: "q1", Score: math.Inf(1)}},
+		Questions: []QuestionInput{{Type: coursework.QuestionEssay, Prompt: "q1", Score: math.Inf(1)}},
 	})
 	if !errors.Is(err, ErrScoreOutOfRange) {
 		t.Fatalf("expected ErrScoreOutOfRange for infinite question score, got %v", err)
@@ -594,10 +594,10 @@ func TestCreateAssignmentRejectsWhenQuestionScoreIsPositiveInfinity(t *testing.T
 
 func TestUpdateAssignmentRejectsWhenNewMaxScoreIsNaN(t *testing.T) {
 	repo := &scoreValidationAssignmentRepo{
-		assignment: &domain.Assignment{ID: "assign-1", TeacherID: "teacher-1", MaxScore: 100},
-		questions:  []domain.AssignmentQuestion{{ID: "q1", Score: 20}},
+		assignment: &coursework.Assignment{ID: "assign-1", TeacherID: "teacher-1", MaxScore: 100},
+		questions:  []coursework.AssignmentQuestion{{ID: "q1", Score: 20}},
 	}
-	svc := NewAssignmentService(
+	svc := NewAssignmentUsecase(
 		repo,
 		&scoreValidationSubmissionRepo{},
 		&scoreValidationCommentRepo{},
@@ -619,11 +619,11 @@ func TestUpdateAssignmentRejectsWhenNewMaxScoreIsNaN(t *testing.T) {
 
 func TestSubmitAllowsScoreEqualToAssignmentMax(t *testing.T) {
 	repo := &scoreValidationAssignmentRepo{
-		assignment: &domain.Assignment{ID: "assign-1", MaxScore: 100},
-		questions:  []domain.AssignmentQuestion{{ID: "q1", Score: 100}},
+		assignment: &coursework.Assignment{ID: "assign-1", MaxScore: 100},
+		questions:  []coursework.AssignmentQuestion{{ID: "q1", Score: 100}},
 	}
 	subRepo := &scoreValidationSubmissionRepo{}
-	svc := NewAssignmentService(
+	svc := NewAssignmentUsecase(
 		repo,
 		subRepo,
 		&scoreValidationCommentRepo{},
@@ -652,10 +652,10 @@ func TestSubmitAllowsScoreEqualToAssignmentMax(t *testing.T) {
 
 func TestSubmitRejectsWhenScoreIsNaN(t *testing.T) {
 	repo := &scoreValidationAssignmentRepo{
-		assignment: &domain.Assignment{ID: "assign-1", MaxScore: 100},
-		questions:  []domain.AssignmentQuestion{{ID: "q1", Score: 100}},
+		assignment: &coursework.Assignment{ID: "assign-1", MaxScore: 100},
+		questions:  []coursework.AssignmentQuestion{{ID: "q1", Score: 100}},
 	}
-	svc := NewAssignmentService(
+	svc := NewAssignmentUsecase(
 		repo,
 		&scoreValidationSubmissionRepo{},
 		&scoreValidationCommentRepo{},
@@ -678,10 +678,10 @@ func TestSubmitRejectsWhenScoreIsNaN(t *testing.T) {
 
 func TestSubmitRejectsWhenScoreIsNegative(t *testing.T) {
 	repo := &scoreValidationAssignmentRepo{
-		assignment: &domain.Assignment{ID: "assign-1", MaxScore: 100},
-		questions:  []domain.AssignmentQuestion{{ID: "q1", Score: 100}},
+		assignment: &coursework.Assignment{ID: "assign-1", MaxScore: 100},
+		questions:  []coursework.AssignmentQuestion{{ID: "q1", Score: 100}},
 	}
-	svc := NewAssignmentService(
+	svc := NewAssignmentUsecase(
 		repo,
 		&scoreValidationSubmissionRepo{},
 		&scoreValidationCommentRepo{},
@@ -704,14 +704,14 @@ func TestSubmitRejectsWhenScoreIsNegative(t *testing.T) {
 
 func TestGradeSubmissionAllowsExactUpperBounds(t *testing.T) {
 	repo := &scoreValidationAssignmentRepo{
-		assignment: &domain.Assignment{ID: "assign-1", TeacherID: "teacher-1", MaxScore: 100},
-		questions:  []domain.AssignmentQuestion{{ID: "q1", Score: 20}},
+		assignment: &coursework.Assignment{ID: "assign-1", TeacherID: "teacher-1", MaxScore: 100},
+		questions:  []coursework.AssignmentQuestion{{ID: "q1", Score: 20}},
 	}
 	subRepo := &scoreValidationSubmissionRepo{
-		submission: &domain.AssignmentSubmission{ID: "sub-1", AssignmentID: "assign-1", Status: "submitted"},
-		items:      []domain.SubmissionItem{{ID: "item-1", QuestionID: "q1", SubmissionID: "sub-1"}},
+		submission: &coursework.AssignmentSubmission{ID: "sub-1", AssignmentID: "assign-1", Status: "submitted"},
+		items:      []coursework.SubmissionItem{{ID: "item-1", QuestionID: "q1", SubmissionID: "sub-1"}},
 	}
-	svc := NewAssignmentService(
+	svc := NewAssignmentUsecase(
 		repo,
 		subRepo,
 		&scoreValidationCommentRepo{},
@@ -747,14 +747,14 @@ func TestGradeSubmissionAllowsExactUpperBounds(t *testing.T) {
 
 func TestGradeSubmissionRejectsWhenItemScoreIsNaN(t *testing.T) {
 	repo := &scoreValidationAssignmentRepo{
-		assignment: &domain.Assignment{ID: "assign-1", TeacherID: "teacher-1", MaxScore: 100},
-		questions:  []domain.AssignmentQuestion{{ID: "q1", Score: 20}},
+		assignment: &coursework.Assignment{ID: "assign-1", TeacherID: "teacher-1", MaxScore: 100},
+		questions:  []coursework.AssignmentQuestion{{ID: "q1", Score: 20}},
 	}
 	subRepo := &scoreValidationSubmissionRepo{
-		submission: &domain.AssignmentSubmission{ID: "sub-1", AssignmentID: "assign-1"},
-		items:      []domain.SubmissionItem{{ID: "item-1", QuestionID: "q1", SubmissionID: "sub-1"}},
+		submission: &coursework.AssignmentSubmission{ID: "sub-1", AssignmentID: "assign-1"},
+		items:      []coursework.SubmissionItem{{ID: "item-1", QuestionID: "q1", SubmissionID: "sub-1"}},
 	}
-	svc := NewAssignmentService(
+	svc := NewAssignmentUsecase(
 		repo,
 		subRepo,
 		&scoreValidationCommentRepo{},
@@ -776,14 +776,14 @@ func TestGradeSubmissionRejectsWhenItemScoreIsNaN(t *testing.T) {
 
 func TestGradeSubmissionRejectsWhenTotalScoreIsNegativeInfinity(t *testing.T) {
 	repo := &scoreValidationAssignmentRepo{
-		assignment: &domain.Assignment{ID: "assign-1", TeacherID: "teacher-1", MaxScore: 100},
-		questions:  []domain.AssignmentQuestion{{ID: "q1", Score: 20}},
+		assignment: &coursework.Assignment{ID: "assign-1", TeacherID: "teacher-1", MaxScore: 100},
+		questions:  []coursework.AssignmentQuestion{{ID: "q1", Score: 20}},
 	}
 	subRepo := &scoreValidationSubmissionRepo{
-		submission: &domain.AssignmentSubmission{ID: "sub-1", AssignmentID: "assign-1"},
-		items:      []domain.SubmissionItem{{ID: "item-1", QuestionID: "q1", SubmissionID: "sub-1"}},
+		submission: &coursework.AssignmentSubmission{ID: "sub-1", AssignmentID: "assign-1"},
+		items:      []coursework.SubmissionItem{{ID: "item-1", QuestionID: "q1", SubmissionID: "sub-1"}},
 	}
-	svc := NewAssignmentService(
+	svc := NewAssignmentUsecase(
 		repo,
 		subRepo,
 		&scoreValidationCommentRepo{},

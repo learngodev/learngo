@@ -8,7 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"learn-go/internal/infra/repository"
+	"learn-go/internal/domain"
 	"learn-go/internal/usecase"
 	"learn-go/pkg/response"
 )
@@ -92,7 +92,7 @@ func (h *Handler) GetTeacherCourseChapter(c *gin.Context) {
 			response.Error(c, http.StatusNotFound, response.CodeTeacherProfileNotFound, nil)
 		case errors.Is(err, usecase.ErrTeacherCourseAccessDenied):
 			response.Error(c, http.StatusForbidden, response.CodeCourseAccessDenied, nil)
-		case errors.Is(err, repository.ErrNotFound):
+		case errors.Is(err, domain.ErrNotFound):
 			response.Error(c, http.StatusNotFound, response.CodeChapterNotFound, nil)
 		default:
 			h.respondServiceError(c, err, http.StatusInternalServerError, "unable to get chapter")
@@ -216,7 +216,7 @@ func (h *Handler) UpdateTeacherCourseChapter(c *gin.Context) {
 			response.Error(c, http.StatusNotFound, response.CodeTeacherProfileNotFound, nil)
 		case errors.Is(err, usecase.ErrTeacherCourseAccessDenied):
 			response.Error(c, http.StatusForbidden, response.CodeCourseAccessDenied, nil)
-		case errors.Is(err, repository.ErrNotFound):
+		case errors.Is(err, domain.ErrNotFound):
 			response.Error(c, http.StatusNotFound, response.CodeChapterNotFound, nil)
 		default:
 			h.respondServiceError(c, err, http.StatusInternalServerError, "unable to update chapter")
@@ -256,7 +256,7 @@ func (h *Handler) DeleteTeacherCourseChapter(c *gin.Context) {
 			response.Error(c, http.StatusNotFound, response.CodeTeacherProfileNotFound, nil)
 		case errors.Is(err, usecase.ErrTeacherCourseAccessDenied):
 			response.Error(c, http.StatusForbidden, response.CodeCourseAccessDenied, nil)
-		case errors.Is(err, repository.ErrNotFound):
+		case errors.Is(err, domain.ErrNotFound):
 			response.Error(c, http.StatusNotFound, response.CodeChapterNotFound, nil)
 		default:
 			h.respondServiceError(c, err, http.StatusInternalServerError, "unable to delete chapter")
@@ -297,7 +297,7 @@ func (h *Handler) AttachTeacherCourseChapterFile(c *gin.Context) {
 			response.Error(c, http.StatusNotFound, response.CodeTeacherProfileNotFound, nil)
 		case errors.Is(err, usecase.ErrTeacherCourseAccessDenied):
 			response.Error(c, http.StatusForbidden, response.CodeCourseAccessDenied, nil)
-		case errors.Is(err, repository.ErrNotFound):
+		case errors.Is(err, domain.ErrNotFound):
 			response.Error(c, http.StatusNotFound, "chapter or file not found", nil)
 		default:
 			h.respondServiceError(c, err, http.StatusInternalServerError, "unable to attach file")
@@ -329,7 +329,7 @@ func (h *Handler) DetachTeacherCourseChapterFile(c *gin.Context) {
 			response.Error(c, http.StatusNotFound, response.CodeTeacherProfileNotFound, nil)
 		case errors.Is(err, usecase.ErrTeacherCourseAccessDenied):
 			response.Error(c, http.StatusForbidden, response.CodeCourseAccessDenied, nil)
-		case errors.Is(err, repository.ErrNotFound):
+		case errors.Is(err, domain.ErrNotFound):
 			response.Error(c, http.StatusNotFound, response.CodeChapterNotFound, nil)
 		default:
 			h.respondServiceError(c, err, http.StatusInternalServerError, "unable to detach file")

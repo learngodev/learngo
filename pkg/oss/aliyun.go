@@ -39,14 +39,14 @@ func NewAliyunClient(endpoint, accessKeyID, accessKeySecret, bucketName string) 
 }
 
 func (c *AliyunClient) GenerateUploadCredentials(ctx context.Context, sessionName string, durationSeconds int64) (*UploadCredentials, error) {
-	// Note: For real STS, we need a separate STS client and role ARN.
-	// Since we are using simple OSS keys in config, we might not be able to generate STS tokens
-	// without an RAM role.
-	// For simplicity in this "learn-go" project, we might fallback to Presigned URL for uploads
-	// if STS is not configured, or just return error.
-	// However, the interface asks for it.
-	// Let's assume for now we use Presigned URLs primarily for this project structure
-	// as it's simpler than setting up RAM roles.
+	// 注意：真正使用 STS 需要单独的 STS 客户端和角色 ARN。
+	// 由于配置中只使用了普通 OSS 密钥，在没有 RAM 角色的情况下
+	// 可能无法生成 STS 令牌。
+	// 为简化本 "learn-go" 项目，在未配置 STS 时上传可回退为预签名 URL，
+	// 或直接返回错误。
+	// 但接口要求提供该方法。
+	// 目前本项目主要使用预签名 URL，
+	// 因为这比配置 RAM 角色更简单。
 	return nil, fmt.Errorf("STS not implemented, use SignURL for uploads")
 }
 

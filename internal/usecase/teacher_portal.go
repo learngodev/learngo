@@ -6,38 +6,43 @@ import (
 	"sort"
 	"time"
 
-	"learn-go/internal/domain"
-	"learn-go/internal/infra/repository"
+	"learn-go/internal/domain/coursework"
+	"learn-go/internal/domain/curriculum"
+	"learn-go/internal/domain/identity"
+	"learn-go/internal/domain/organization"
+	"learn-go/internal/domain/roster"
+	"learn-go/internal/domain/scheduling"
+	"learn-go/internal/domain/storage"
 )
 
-// ErrTeacherProfileNotFound indicates missing teacher profile for account.
+// ErrTeacherProfileNotFound 表示该账号没有教师档案。
 var ErrTeacherProfileNotFound = errors.New("teacher profile not found")
 
-// ErrTeacherCourseAccessDenied indicates the teacher doesn't have access to the course.
+// ErrTeacherCourseAccessDenied 表示教师无权访问该课程。
 var ErrTeacherCourseAccessDenied = errors.New("teacher course access denied")
 
-// ErrTeacherAssignmentForbidden indicates the assignment does not belong to the teacher.
+// ErrTeacherAssignmentForbidden 表示该作业不属于当前教师。
 var ErrTeacherAssignmentForbidden = errors.New("teacher assignment forbidden")
 
-// TeacherPortalService aggregates schedule and assignment data for teachers.
-type TeacherPortalService struct {
-	teachers       repository.TeacherRepository
-	assignments    repository.AssignmentRepository
-	submissions    repository.SubmissionRepository
-	students       repository.StudentRepository
-	sessions       repository.CourseSessionRepository
-	courses        repository.CourseRepository
-	classes        repository.ClassRepository
-	slots          repository.CourseSlotRepository
-	accounts       repository.AccountRepository
-	schedules      repository.CourseScheduleRepository
-	chapters       repository.CourseChapterRepository
-	courseStudents repository.CourseStudentRepository
-	courseTeachers repository.CourseTeacherRepository
+// TeacherPortalUsecase 为教师聚合课表与作业数据。
+type TeacherPortalUsecase struct {
+	teachers       roster.TeacherRepository
+	assignments    coursework.AssignmentRepository
+	submissions    coursework.SubmissionRepository
+	students       roster.StudentRepository
+	sessions       scheduling.CourseSessionRepository
+	courses        curriculum.CourseRepository
+	classes        organization.ClassRepository
+	slots          scheduling.CourseSlotRepository
+	accounts       identity.AccountRepository
+	schedules      scheduling.CourseScheduleRepository
+	chapters       curriculum.CourseChapterRepository
+	courseStudents curriculum.CourseStudentRepository
+	courseTeachers curriculum.CourseTeacherRepository
 }
 
-// GetSchoolID retrieves the school ID for a given account.
-func (s *TeacherPortalService) GetSchoolID(ctx context.Context, accountID string) (string, error) {
+// GetSchoolID 获取指定账号所属的学校 ID。
+func (s *TeacherPortalUsecase) GetSchoolID(ctx context.Context, accountID string) (string, error) {
 	account, err := s.accounts.FindByID(ctx, accountID)
 	if err != nil {
 		return "", err
@@ -48,28 +53,28 @@ func (s *TeacherPortalService) GetSchoolID(ctx context.Context, accountID string
 	return account.SchoolID, nil
 }
 
-// GetProfile retrieves the teacher profile for a given account.
-func (s *TeacherPortalService) GetProfile(ctx context.Context, accountID string) (*domain.Teacher, error) {
+// GetProfile 获取指定账号的教师档案。
+func (s *TeacherPortalUsecase) GetProfile(ctx context.Context, accountID string) (*roster.Teacher, error) {
 	return s.teachers.GetByAccountID(ctx, accountID)
 }
 
-// NewTeacherPortalService constructs TeacherPortalService.
-func NewTeacherPortalService(
-	teachers repository.TeacherRepository,
-	assignments repository.AssignmentRepository,
-	submissions repository.SubmissionRepository,
-	students repository.StudentRepository,
-	sessions repository.CourseSessionRepository,
-	courses repository.CourseRepository,
-	classes repository.ClassRepository,
-	slots repository.CourseSlotRepository,
-	accounts repository.AccountRepository,
-	schedules repository.CourseScheduleRepository,
-	chapters repository.CourseChapterRepository,
-	courseStudents repository.CourseStudentRepository,
-	courseTeachers repository.CourseTeacherRepository,
-) *TeacherPortalService {
-	return &TeacherPortalService{
+// NewTeacherPortalUsecase 构造 TeacherPortalUsecase。
+func NewTeacherPortalUsecase(
+	teachers roster.TeacherRepository,
+	assignments coursework.AssignmentRepository,
+	submissions coursework.SubmissionRepository,
+	students roster.StudentRepository,
+	sessions scheduling.CourseSessionRepository,
+	courses curriculum.CourseRepository,
+	classes organization.ClassRepository,
+	slots scheduling.CourseSlotRepository,
+	accounts identity.AccountRepository,
+	schedules scheduling.CourseScheduleRepository,
+	chapters curriculum.CourseChapterRepository,
+	courseStudents curriculum.CourseStudentRepository,
+	courseTeachers curriculum.CourseTeacherRepository,
+) *TeacherPortalUsecase {
+	return &TeacherPortalUsecase{
 		teachers:       teachers,
 		assignments:    assignments,
 		submissions:    submissions,
@@ -86,8 +91,8 @@ func NewTeacherPortalService(
 	}
 }
 
-// ensureTeacherCourseAccess validates that the teacher owns or teaches the course.
-func (s *TeacherPortalService) ensureTeacherCourseAccess(ctx context.Context, accountID, courseID string) (*domain.Teacher, *domain.Course, error) {
+// ensureTeacherCourseAccess 校验教师拥有或讲授该课程。
+func (s *TeacherPortalUsecase) ensureTeacherCourseAccess(ctx context.Context, accountID, courseID string) (*roster.Teacher, *curriculum.Course, error) {
 	teacher, err := s.teachers.GetByAccountID(ctx, accountID)
 	if err != nil {
 		return nil, nil, err
@@ -116,7 +121,7 @@ func (s *TeacherPortalService) ensureTeacherCourseAccess(ctx context.Context, ac
 	return teacher, course, nil
 }
 
-func (s *TeacherPortalService) hasCourseAccess(ctx context.Context, teacherID, courseID string) (bool, error) {
+func (s *TeacherPortalUsecase) hasCourseAccess(ctx context.Context, teacherID, courseID string) (bool, error) {
 	if s.courseTeachers != nil {
 		ids, err := s.courseTeachers.ListCourseIDsByTeacher(ctx, teacherID)
 		if err != nil {
@@ -144,7 +149,7 @@ func (s *TeacherPortalService) hasCourseAccess(ctx context.Context, teacherID, c
 	return false, nil
 }
 
-func (s *TeacherPortalService) GetAssignedCourses(ctx context.Context, accountID string) ([]domain.Course, error) {
+func (s *TeacherPortalUsecase) GetAssignedCourses(ctx context.Context, accountID string) ([]curriculum.Course, error) {
 	teacher, err := s.teachers.GetByAccountID(ctx, accountID)
 	if err != nil {
 		return nil, err
@@ -176,7 +181,7 @@ func (s *TeacherPortalService) GetAssignedCourses(ctx context.Context, accountID
 	}
 
 	if len(courseIDs) == 0 {
-		return []domain.Course{}, nil
+		return []curriculum.Course{}, nil
 	}
 
 	flat := make([]string, 0, len(courseIDs))
@@ -194,7 +199,7 @@ func (s *TeacherPortalService) GetAssignedCourses(ctx context.Context, accountID
 	return courses, nil
 }
 
-func (s *TeacherPortalService) GetCourseClasses(ctx context.Context, accountID, courseID string) ([]domain.Class, error) {
+func (s *TeacherPortalUsecase) GetCourseClasses(ctx context.Context, accountID, courseID string) ([]organization.Class, error) {
 	teacher, course, err := s.ensureTeacherCourseAccess(ctx, accountID, courseID)
 	if err != nil {
 		return nil, err
@@ -242,7 +247,7 @@ func (s *TeacherPortalService) GetCourseClasses(ctx context.Context, accountID, 
 	}
 
 	if len(flat) == 0 {
-		return []domain.Class{}, nil
+		return []organization.Class{}, nil
 	}
 
 	classes, err := s.classes.ListByIDs(ctx, flat)
@@ -250,7 +255,7 @@ func (s *TeacherPortalService) GetCourseClasses(ctx context.Context, accountID, 
 		return nil, err
 	}
 
-	filtered := make([]domain.Class, 0, len(classes))
+	filtered := make([]organization.Class, 0, len(classes))
 	for _, cls := range classes {
 		if cls.SchoolID != "" && course != nil && course.SchoolID != "" && cls.SchoolID != course.SchoolID {
 			continue
@@ -261,7 +266,7 @@ func (s *TeacherPortalService) GetCourseClasses(ctx context.Context, accountID, 
 	return filtered, nil
 }
 
-func (s *TeacherPortalService) GetClassStudents(ctx context.Context, accountID, classID string) ([]domain.Student, error) {
+func (s *TeacherPortalUsecase) GetClassStudents(ctx context.Context, accountID, classID string) ([]roster.Student, error) {
 	teacher, err := s.teachers.GetByAccountID(ctx, accountID)
 	if err != nil {
 		return nil, err
@@ -298,7 +303,7 @@ func (s *TeacherPortalService) GetClassStudents(ctx context.Context, accountID, 
 	return s.students.ListByClassID(ctx, classID)
 }
 
-// TeacherScheduleItem represents a planned lesson for a teacher.
+// TeacherScheduleItem 表示教师的一次计划课次。
 type TeacherScheduleItem struct {
 	SessionID  string    `json:"session_id"`
 	CourseID   string    `json:"course_id"`
@@ -314,63 +319,63 @@ type TeacherScheduleItem struct {
 	Source     string    `json:"source"`
 }
 
-// TeacherAssignmentItem summarizes an assignment created by a teacher.
+// TeacherAssignmentItem 概述教师创建的一份作业。
 type TeacherAssignmentItem struct {
-	ID                 string                   `json:"id"`
-	Title              string                   `json:"title"`
-	Description        string                   `json:"description"`
-	CourseID           string                   `json:"course_id"`
-	CourseName         string                   `json:"course_name"`
-	ClassID            string                   `json:"class_id"`
-	ClassName          string                   `json:"class_name"`
-	Type               domain.AssignmentType    `json:"type"`
-	StartAt            *time.Time               `json:"start_at"`
-	DueAt              *time.Time               `json:"due_at"`
-	AllowResubmit      bool                     `json:"allow_resubmit"`
-	SubmissionCount    int                      `json:"submission_count"`
-	SubmittedCount     int                      `json:"submitted_count"`
-	ClassStudentCount  int                      `json:"class_student_count"`
-	GradedCount        int                      `json:"graded_count"`
-	PendingGradeCount  int                      `json:"pending_grade_count"`
-	LatestSubmissionAt *time.Time               `json:"latest_submission_at"`
-	MissingCount       int                      `json:"missing_count"`
-	ScoreAverage       *float64                 `json:"score_average"`
-	ScoreMax           *float64                 `json:"score_max"`
-	ScoreMin           *float64                 `json:"score_min"`
-	ScoreDistribution  TeacherScoreDistribution `json:"score_distribution"`
+	ID                 string                    `json:"id"`
+	Title              string                    `json:"title"`
+	Description        string                    `json:"description"`
+	CourseID           string                    `json:"course_id"`
+	CourseName         string                    `json:"course_name"`
+	ClassID            string                    `json:"class_id"`
+	ClassName          string                    `json:"class_name"`
+	Type               coursework.AssignmentType `json:"type"`
+	StartAt            *time.Time                `json:"start_at"`
+	DueAt              *time.Time                `json:"due_at"`
+	AllowResubmit      bool                      `json:"allow_resubmit"`
+	SubmissionCount    int                       `json:"submission_count"`
+	SubmittedCount     int                       `json:"submitted_count"`
+	ClassStudentCount  int                       `json:"class_student_count"`
+	GradedCount        int                       `json:"graded_count"`
+	PendingGradeCount  int                       `json:"pending_grade_count"`
+	LatestSubmissionAt *time.Time                `json:"latest_submission_at"`
+	MissingCount       int                       `json:"missing_count"`
+	ScoreAverage       *float64                  `json:"score_average"`
+	ScoreMax           *float64                  `json:"score_max"`
+	ScoreMin           *float64                  `json:"score_min"`
+	ScoreDistribution  TeacherScoreDistribution  `json:"score_distribution"`
 }
 
-// TeacherAssignmentDetail provides full assignment context for teachers.
+// TeacherAssignmentDetail 为教师提供作业的完整信息。
 type TeacherAssignmentDetail struct {
-	ID            string                 `json:"id"`
-	Title         string                 `json:"title"`
-	Description   string                 `json:"description"`
-	CourseID      string                 `json:"course_id"`
-	CourseName    string                 `json:"course_name"`
-	ClassID       string                 `json:"class_id"`
-	ClassName     string                 `json:"class_name"`
-	Type          domain.AssignmentType  `json:"type"`
-	StartAt       *time.Time             `json:"start_at"`
-	DueAt         *time.Time             `json:"due_at"`
-	AllowResubmit bool                   `json:"allow_resubmit"`
-	MaxScore      float64                `json:"max_score"`
-	Questions     []TeacherQuestionItem  `json:"questions"`
-	Stats         TeacherAssignmentStats `json:"stats"`
-	Attachments   []domain.File          `json:"attachments"`
+	ID            string                    `json:"id"`
+	Title         string                    `json:"title"`
+	Description   string                    `json:"description"`
+	CourseID      string                    `json:"course_id"`
+	CourseName    string                    `json:"course_name"`
+	ClassID       string                    `json:"class_id"`
+	ClassName     string                    `json:"class_name"`
+	Type          coursework.AssignmentType `json:"type"`
+	StartAt       *time.Time                `json:"start_at"`
+	DueAt         *time.Time                `json:"due_at"`
+	AllowResubmit bool                      `json:"allow_resubmit"`
+	MaxScore      float64                   `json:"max_score"`
+	Questions     []TeacherQuestionItem     `json:"questions"`
+	Stats         TeacherAssignmentStats    `json:"stats"`
+	Attachments   []storage.File            `json:"attachments"`
 }
 
-// TeacherQuestionItem mirrors assignment questions.
+// TeacherQuestionItem 对应作业中的题目。
 type TeacherQuestionItem struct {
-	ID         string              `json:"id"`
-	Type       domain.QuestionType `json:"type"`
-	Prompt     string              `json:"prompt"`
-	Options    string              `json:"options,omitempty"`
-	Answer     string              `json:"answer,omitempty"`
-	Score      float64             `json:"score"`
-	OrderIndex int                 `json:"order_index"`
+	ID         string                  `json:"id"`
+	Type       coursework.QuestionType `json:"type"`
+	Prompt     string                  `json:"prompt"`
+	Options    string                  `json:"options,omitempty"`
+	Answer     string                  `json:"answer,omitempty"`
+	Score      float64                 `json:"score"`
+	OrderIndex int                     `json:"order_index"`
 }
 
-// TeacherAssignmentStats aggregates submission metrics.
+// TeacherAssignmentStats 汇总提交指标。
 type TeacherAssignmentStats struct {
 	SubmissionCount    int                      `json:"submission_count"`
 	SubmittedCount     int                      `json:"submitted_count"`
@@ -385,7 +390,7 @@ type TeacherAssignmentStats struct {
 	ScoreDistribution  TeacherScoreDistribution `json:"score_distribution"`
 }
 
-// TeacherScoreDistribution exposes graded score buckets.
+// TeacherScoreDistribution 表示已批改成绩的分数段分布。
 type TeacherScoreDistribution struct {
 	Below60        int `json:"below_60"`
 	Between60And70 int `json:"between_60_70"`
@@ -394,7 +399,7 @@ type TeacherScoreDistribution struct {
 	Above90        int `json:"above_90"`
 }
 
-// TeacherAssignmentGradeExport describes grade export metadata and rows.
+// TeacherAssignmentGradeExport 描述成绩导出的元数据与数据行。
 type TeacherAssignmentGradeExport struct {
 	AssignmentID    string                            `json:"assignment_id"`
 	AssignmentTitle string                            `json:"assignment_title"`
@@ -402,12 +407,12 @@ type TeacherAssignmentGradeExport struct {
 	CourseName      string                            `json:"course_name"`
 	ClassID         string                            `json:"class_id"`
 	ClassName       string                            `json:"class_name"`
-	Type            domain.AssignmentType             `json:"type"`
+	Type            coursework.AssignmentType         `json:"type"`
 	MaxScore        float64                           `json:"max_score"`
 	Rows            []TeacherAssignmentGradeExportRow `json:"rows"`
 }
 
-// TeacherAssignmentGradeExportRow represents a student's grade record.
+// TeacherAssignmentGradeExportRow 表示一名学生的成绩记录。
 type TeacherAssignmentGradeExportRow struct {
 	StudentID     string     `json:"student_id"`
 	StudentNumber string     `json:"student_number"`
@@ -417,7 +422,7 @@ type TeacherAssignmentGradeExportRow struct {
 	SubmittedAt   *time.Time `json:"submitted_at"`
 }
 
-// TeacherAgendaItem merges sessions and assignment deadlines.
+// TeacherAgendaItem 合并课次与作业截止时间。
 type TeacherAgendaItem struct {
 	ID          string     `json:"id"`
 	Kind        string     `json:"kind"`
@@ -436,8 +441,8 @@ type TeacherAgendaItem struct {
 	Source      string     `json:"source"`
 }
 
-// ListSchedule returns teaching sessions for the authenticated teacher.
-func (s *TeacherPortalService) ListSchedule(ctx context.Context, accountID string, start, end time.Time) ([]TeacherScheduleItem, error) {
+// ListSchedule 返回当前认证教师的授课课次。
+func (s *TeacherPortalUsecase) ListSchedule(ctx context.Context, accountID string, start, end time.Time) ([]TeacherScheduleItem, error) {
 	teacher, err := s.teachers.GetByAccountID(ctx, accountID)
 	if err != nil {
 		return nil, err
@@ -453,8 +458,8 @@ func (s *TeacherPortalService) ListSchedule(ctx context.Context, accountID strin
 	return s.buildScheduleItems(ctx, sessions)
 }
 
-// ListAssignments returns assignments authored by the teacher.
-func (s *TeacherPortalService) ListAssignments(ctx context.Context, accountID string, limit int, classID string, types []domain.AssignmentType) ([]TeacherAssignmentItem, error) {
+// ListAssignments 返回该教师布置的作业。
+func (s *TeacherPortalUsecase) ListAssignments(ctx context.Context, accountID string, limit int, classID string, types []coursework.AssignmentType) ([]TeacherAssignmentItem, error) {
 	teacher, err := s.teachers.GetByAccountID(ctx, accountID)
 	if err != nil {
 		return nil, err
@@ -470,13 +475,13 @@ func (s *TeacherPortalService) ListAssignments(ctx context.Context, accountID st
 	return s.buildAssignmentItems(ctx, assignments)
 }
 
-// ListExams returns exam-type assignments authored by the teacher.
-func (s *TeacherPortalService) ListExams(ctx context.Context, accountID string, limit int, classID string) ([]TeacherAssignmentItem, error) {
-	return s.ListAssignments(ctx, accountID, limit, classID, []domain.AssignmentType{domain.AssignmentExam})
+// ListExams 返回该教师布置的考试。
+func (s *TeacherPortalUsecase) ListExams(ctx context.Context, accountID string, limit int, classID string) ([]TeacherAssignmentItem, error) {
+	return s.ListAssignments(ctx, accountID, limit, classID, []coursework.AssignmentType{coursework.AssignmentExam})
 }
 
-// ListAgenda combines schedule sessions and assignment deadlines.
-func (s *TeacherPortalService) ListAgenda(ctx context.Context, accountID string, start, end time.Time, includeAssignments bool) ([]TeacherAgendaItem, error) {
+// ListAgenda 合并课次与作业截止时间。
+func (s *TeacherPortalUsecase) ListAgenda(ctx context.Context, accountID string, start, end time.Time, includeAssignments bool) ([]TeacherAgendaItem, error) {
 	teacher, err := s.teachers.GetByAccountID(ctx, accountID)
 	if err != nil {
 		return nil, err
@@ -566,8 +571,8 @@ func (s *TeacherPortalService) ListAgenda(ctx context.Context, accountID string,
 	return agenda, nil
 }
 
-// GetAssignmentDetail returns a fully-hydrated assignment for the teacher.
-func (s *TeacherPortalService) GetAssignmentDetail(ctx context.Context, accountID, assignmentID string, includeAnswers bool) (*TeacherAssignmentDetail, error) {
+// GetAssignmentDetail 为教师返回包含完整信息的作业。
+func (s *TeacherPortalUsecase) GetAssignmentDetail(ctx context.Context, accountID, assignmentID string, includeAnswers bool) (*TeacherAssignmentDetail, error) {
 	teacher, err := s.teachers.GetByAccountID(ctx, accountID)
 	if err != nil {
 		return nil, err
@@ -659,8 +664,8 @@ func (s *TeacherPortalService) GetAssignmentDetail(ctx context.Context, accountI
 	}, nil
 }
 
-// ExportAssignmentGrades aggregates submission rows for CSV export.
-func (s *TeacherPortalService) ExportAssignmentGrades(ctx context.Context, accountID, assignmentID string) (*TeacherAssignmentGradeExport, error) {
+// ExportAssignmentGrades 汇总提交数据，用于导出 CSV。
+func (s *TeacherPortalUsecase) ExportAssignmentGrades(ctx context.Context, accountID, assignmentID string) (*TeacherAssignmentGradeExport, error) {
 	teacher, err := s.teachers.GetByAccountID(ctx, accountID)
 	if err != nil {
 		return nil, err
@@ -759,7 +764,7 @@ func (s *TeacherPortalService) ExportAssignmentGrades(ctx context.Context, accou
 	}, nil
 }
 
-func (s *TeacherPortalService) buildScheduleItems(ctx context.Context, sessions []domain.CourseSession) ([]TeacherScheduleItem, error) {
+func (s *TeacherPortalUsecase) buildScheduleItems(ctx context.Context, sessions []scheduling.CourseSession) ([]TeacherScheduleItem, error) {
 	if len(sessions) == 0 {
 		return []TeacherScheduleItem{}, nil
 	}
@@ -804,7 +809,7 @@ func (s *TeacherPortalService) buildScheduleItems(ctx context.Context, sessions 
 	return items, nil
 }
 
-func (s *TeacherPortalService) buildAssignmentItems(ctx context.Context, assignments []domain.Assignment) ([]TeacherAssignmentItem, error) {
+func (s *TeacherPortalUsecase) buildAssignmentItems(ctx context.Context, assignments []coursework.Assignment) ([]TeacherAssignmentItem, error) {
 	if len(assignments) == 0 {
 		return []TeacherAssignmentItem{}, nil
 	}
@@ -881,8 +886,8 @@ func (s *TeacherPortalService) buildAssignmentItems(ctx context.Context, assignm
 	return items, nil
 }
 
-// SearchAssignments finds assignments by keyword.
-func (s *TeacherPortalService) SearchAssignments(ctx context.Context, accountID string, query string) ([]TeacherAssignmentItem, error) {
+// SearchAssignments 按关键字搜索作业。
+func (s *TeacherPortalUsecase) SearchAssignments(ctx context.Context, accountID string, query string) ([]TeacherAssignmentItem, error) {
 	teacher, err := s.teachers.GetByAccountID(ctx, accountID)
 	if err != nil {
 		return nil, err
@@ -898,7 +903,7 @@ func (s *TeacherPortalService) SearchAssignments(ctx context.Context, accountID 
 	return s.buildAssignmentItems(ctx, assignments)
 }
 
-func (s *TeacherPortalService) loadCourseNames(ctx context.Context, ids []string) (map[string]string, error) {
+func (s *TeacherPortalUsecase) loadCourseNames(ctx context.Context, ids []string) (map[string]string, error) {
 	result := make(map[string]string)
 	unique := uniqueStrings(ids)
 	if len(unique) == 0 {
@@ -914,7 +919,7 @@ func (s *TeacherPortalService) loadCourseNames(ctx context.Context, ids []string
 	return result, nil
 }
 
-func (s *TeacherPortalService) loadClassNames(ctx context.Context, ids []string) (map[string]string, error) {
+func (s *TeacherPortalUsecase) loadClassNames(ctx context.Context, ids []string) (map[string]string, error) {
 	result := make(map[string]string)
 	unique := uniqueStrings(ids)
 	if len(unique) == 0 {
@@ -930,7 +935,7 @@ func (s *TeacherPortalService) loadClassNames(ctx context.Context, ids []string)
 	return result, nil
 }
 
-func (s *TeacherPortalService) loadSlotNames(ctx context.Context, ids []string) (map[string]string, error) {
+func (s *TeacherPortalUsecase) loadSlotNames(ctx context.Context, ids []string) (map[string]string, error) {
 	result := make(map[string]string)
 	unique := uniqueStrings(ids)
 	if len(unique) == 0 {
@@ -946,8 +951,8 @@ func (s *TeacherPortalService) loadSlotNames(ctx context.Context, ids []string) 
 	return result, nil
 }
 
-func (s *TeacherPortalService) loadStudentProfiles(ctx context.Context, ids []string) (map[string]*domain.Student, error) {
-	result := make(map[string]*domain.Student)
+func (s *TeacherPortalUsecase) loadStudentProfiles(ctx context.Context, ids []string) (map[string]*roster.Student, error) {
+	result := make(map[string]*roster.Student)
 	unique := uniqueStrings(ids)
 	if len(unique) == 0 {
 		return result, nil
@@ -964,8 +969,8 @@ func (s *TeacherPortalService) loadStudentProfiles(ctx context.Context, ids []st
 	return result, nil
 }
 
-// GetTeacherID resolves the teacher ID for a given account ID.
-func (s *TeacherPortalService) GetTeacherID(ctx context.Context, accountID string) (string, error) {
+// GetTeacherID 根据账号 ID 解析教师 ID。
+func (s *TeacherPortalUsecase) GetTeacherID(ctx context.Context, accountID string) (string, error) {
 	teacher, err := s.teachers.GetByAccountID(ctx, accountID)
 	if err != nil {
 		return "", err
@@ -976,8 +981,8 @@ func (s *TeacherPortalService) GetTeacherID(ctx context.Context, accountID strin
 	return teacher.ID, nil
 }
 
-func (s *TeacherPortalService) loadAccounts(ctx context.Context, ids []string) (map[string]*domain.Account, error) {
-	result := make(map[string]*domain.Account)
+func (s *TeacherPortalUsecase) loadAccounts(ctx context.Context, ids []string) (map[string]*identity.Account, error) {
+	result := make(map[string]*identity.Account)
 	if s.accounts == nil {
 		return result, nil
 	}
@@ -997,7 +1002,7 @@ func (s *TeacherPortalService) loadAccounts(ctx context.Context, ids []string) (
 	return result, nil
 }
 
-func collectCourseIDsFromAssignments(assignments []domain.Assignment) []string {
+func collectCourseIDsFromAssignments(assignments []coursework.Assignment) []string {
 	ids := make([]string, 0, len(assignments))
 	for _, assignment := range assignments {
 		ids = append(ids, assignment.CourseID)
@@ -1005,7 +1010,7 @@ func collectCourseIDsFromAssignments(assignments []domain.Assignment) []string {
 	return ids
 }
 
-func collectClassIDsFromAssignments(assignments []domain.Assignment) []string {
+func collectClassIDsFromAssignments(assignments []coursework.Assignment) []string {
 	ids := make([]string, 0, len(assignments))
 	for _, assignment := range assignments {
 		ids = append(ids, assignment.ClassID)
@@ -1013,7 +1018,7 @@ func collectClassIDsFromAssignments(assignments []domain.Assignment) []string {
 	return ids
 }
 
-func collectClassIDsFromSessions(sessions []domain.CourseSession) []string {
+func collectClassIDsFromSessions(sessions []scheduling.CourseSession) []string {
 	ids := make([]string, 0, len(sessions))
 	for _, session := range sessions {
 		ids = append(ids, session.ClassID)
@@ -1021,7 +1026,7 @@ func collectClassIDsFromSessions(sessions []domain.CourseSession) []string {
 	return ids
 }
 
-func collectAssignmentIDs(assignments []domain.Assignment) []string {
+func collectAssignmentIDs(assignments []coursework.Assignment) []string {
 	ids := make([]string, 0, len(assignments))
 	for _, assignment := range assignments {
 		ids = append(ids, assignment.ID)
@@ -1029,7 +1034,7 @@ func collectAssignmentIDs(assignments []domain.Assignment) []string {
 	return ids
 }
 
-func toTeacherScoreDistribution(dist repository.AssignmentScoreDistribution) TeacherScoreDistribution {
+func toTeacherScoreDistribution(dist coursework.AssignmentScoreDistribution) TeacherScoreDistribution {
 	return TeacherScoreDistribution{
 		Below60:        int(dist.Below60),
 		Between60And70: int(dist.Between60And70),
@@ -1039,8 +1044,8 @@ func toTeacherScoreDistribution(dist repository.AssignmentScoreDistribution) Tea
 	}
 }
 
-func (s *TeacherPortalService) loadSubmissionStats(ctx context.Context, assignmentIDs []string) (map[string]repository.AssignmentSubmissionStats, error) {
-	result := make(map[string]repository.AssignmentSubmissionStats)
+func (s *TeacherPortalUsecase) loadSubmissionStats(ctx context.Context, assignmentIDs []string) (map[string]coursework.AssignmentSubmissionStats, error) {
+	result := make(map[string]coursework.AssignmentSubmissionStats)
 	unique := uniqueStrings(assignmentIDs)
 	if len(unique) == 0 {
 		return result, nil
@@ -1055,7 +1060,7 @@ func (s *TeacherPortalService) loadSubmissionStats(ctx context.Context, assignme
 	return result, nil
 }
 
-func (s *TeacherPortalService) loadClassStudentCounts(ctx context.Context, classIDs []string) (map[string]int64, error) {
+func (s *TeacherPortalUsecase) loadClassStudentCounts(ctx context.Context, classIDs []string) (map[string]int64, error) {
 	result := make(map[string]int64)
 	unique := uniqueStrings(classIDs)
 	if len(unique) == 0 {

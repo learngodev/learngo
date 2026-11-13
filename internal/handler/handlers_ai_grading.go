@@ -5,7 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"learn-go/internal/domain"
+	"learn-go/internal/domain/identity"
 	"learn-go/internal/usecase"
 	"learn-go/pkg/middleware"
 	"learn-go/pkg/response"
@@ -25,7 +25,7 @@ type explainQuestionRequest struct {
 	ExtraContext string   `json:"extra_context"`
 }
 
-// CheckAssignment handles student assignment pre-check.
+// CheckAssignment 处理学生作业的提交前检查。
 func (h *Handler) CheckAssignment(c *gin.Context) {
 	var req checkAssignmentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -39,15 +39,15 @@ func (h *Handler) CheckAssignment(c *gin.Context) {
 	}
 
 	accountID := getAccountID(c)
-	role := domain.Role(c.GetString(middleware.ContextRole))
+	role := identity.Role(c.GetString(middleware.ContextRole))
 	schoolID, err := h.teacher.GetSchoolID(c.Request.Context(), accountID)
 	if err != nil {
 		h.respondServiceError(c, err, http.StatusInternalServerError, response.CodeFailedToResolveSchoolContext)
 		return
 	}
 
-	// Optional: Check if student has permission, etc.
-	// For now, we just use the usecase.
+	// 可选：检查学生是否有权限等。
+	// 目前直接调用用例即可。
 
 	input := usecase.CheckAssignmentInput{
 		SchoolID:    schoolID,
@@ -67,7 +67,7 @@ func (h *Handler) CheckAssignment(c *gin.Context) {
 	response.Success(c, http.StatusOK, result)
 }
 
-// ExplainQuestion handles AI question explanation for students.
+// ExplainQuestion 处理面向学生的 AI 题目讲解。
 func (h *Handler) ExplainQuestion(c *gin.Context) {
 	var req explainQuestionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -81,7 +81,7 @@ func (h *Handler) ExplainQuestion(c *gin.Context) {
 	}
 
 	accountID := getAccountID(c)
-	role := domain.Role(c.GetString(middleware.ContextRole))
+	role := identity.Role(c.GetString(middleware.ContextRole))
 	schoolID, err := h.teacher.GetSchoolID(c.Request.Context(), accountID)
 	if err != nil {
 		h.respondServiceError(c, err, http.StatusInternalServerError, response.CodeFailedToResolveSchoolContext)
@@ -115,7 +115,7 @@ type gradeAssignmentRequest struct {
 	Rubrics     string `json:"rubrics"`
 }
 
-// GradeAssignment handles teacher assignment grading.
+// GradeAssignment 处理教师的作业批改请求。
 func (h *Handler) GradeAssignment(c *gin.Context) {
 	var req gradeAssignmentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -129,7 +129,7 @@ func (h *Handler) GradeAssignment(c *gin.Context) {
 	}
 
 	accountID := getAccountID(c)
-	role := domain.Role(c.GetString(middleware.ContextRole))
+	role := identity.Role(c.GetString(middleware.ContextRole))
 	schoolID, err := h.teacher.GetSchoolID(c.Request.Context(), accountID)
 	if err != nil {
 		h.respondServiceError(c, err, http.StatusInternalServerError, response.CodeFailedToResolveSchoolContext)
@@ -161,7 +161,7 @@ type generateQuestionsRequest struct {
 	Difficulty string `json:"difficulty"`
 }
 
-// GenerateQuestions handles AI question generation.
+// GenerateQuestions 处理 AI 出题请求。
 func (h *Handler) GenerateQuestions(c *gin.Context) {
 	var req generateQuestionsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -175,7 +175,7 @@ func (h *Handler) GenerateQuestions(c *gin.Context) {
 	}
 
 	accountID := getAccountID(c)
-	role := domain.Role(c.GetString(middleware.ContextRole))
+	role := identity.Role(c.GetString(middleware.ContextRole))
 	schoolID, err := h.teacher.GetSchoolID(c.Request.Context(), accountID)
 	if err != nil {
 		h.respondServiceError(c, err, http.StatusInternalServerError, response.CodeFailedToResolveSchoolContext)

@@ -1,21 +1,22 @@
 package grpcserver
 
 import (
+	"learn-go/internal/domain/notification"
 	"learn-go/internal/interface/grpcpb"
-	"learn-go/internal/infra/realtime"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type NotificationServer struct {
 	grpcpb.UnimplementedNotificationServiceServer
-	hub *realtime.NotificationHub
+	subscriber notification.Subscriber
 }
 
-func NewNotificationServer(hub *realtime.NotificationHub) *NotificationServer {
-	return &NotificationServer{hub: hub}
+func NewNotificationServer(subscriber notification.Subscriber) *NotificationServer {
+	return &NotificationServer{subscriber: subscriber}
 }
 
 func (s *NotificationServer) Subscribe(_ *emptypb.Empty, stream grpcpb.NotificationService_SubscribeServer) error {
@@ -25,18 +26,36 @@ func (s *NotificationServer) Subscribe(_ *emptypb.Empty, stream grpcpb.Notificat
 		return status.Error(codes.Unauthenticated, "missing account context")
 	}
 
-	client := realtime.NewNotificationStream(userID)
-	s.hub.Register(client)
-	defer s.hub.Unregister(client)
+	notifications, cancel := s.subscriber.Subscribe(userID)
+	defer cancel()
 
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case msg := <-client.Messages():
-			if err := stream.Send(msg); err != nil {
+		case n, ok := <-notifications:
+			if !ok {
+				return nil
+			}
+			if err := stream.Send(toNotificationStreamResponse(n)); err != nil {
 				return err
 			}
 		}
+	}
+}
+
+func toNotificationStreamResponse(n *notification.Notification) *grpcpb.NotificationStreamResponse {
+	return &grpcpb.NotificationStreamResponse{
+		Payload: &grpcpb.NotificationStreamResponse_Notification{
+			Notification: &grpcpb.NotificationEvent{
+				Id:          n.ID,
+				Title:       n.Title,
+				Content:     n.Content,
+				Type:        string(n.Type),
+				ReferenceId: n.ReferenceID,
+				IsRead:      n.IsRead,
+				CreatedAt:   timestamppb.New(n.CreatedAt),
+			},
+		},
 	}
 }

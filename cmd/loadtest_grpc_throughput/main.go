@@ -176,7 +176,7 @@ func main() {
 		}(i)
 	}
 
-	// Global sender: pace total rate across all connections.
+	// 全局发送器：在所有连接间控制总发送速率。
 	var seq atomic.Uint64
 	go func() {
 		if *rate == 0 {
@@ -198,14 +198,14 @@ func main() {
 			case now := <-t.C:
 				s := seq.Add(1)
 				item := sendItem{seq: s, at: now}
-				// Round-robin distribute.
+				// 轮询分发。
 				connsH[i%len(connsH)].sendCh <- item
 				i++
 			}
 		}
 	}()
 
-	// Reporter
+	// 统计上报
 	last := time.Now()
 	var lastSent, lastAck, lastEvent int64
 	for {
@@ -396,7 +396,7 @@ func runConn(
 	active.Add(1)
 	defer active.Add(-1)
 
-	// Join
+	// 加入会话
 	if err := stream.Send(&grpcpb.ConversationStreamRequest{
 		Payload: &grpcpb.ConversationStreamRequest_Join{
 			Join: &grpcpb.JoinConversation{ConversationId: conversationID},
@@ -413,7 +413,7 @@ func runConn(
 	}
 	c.joinOK.Add(1)
 
-	// Receiver
+	// 接收端
 	recvDone := make(chan struct{})
 	go func() {
 		defer close(recvDone)
@@ -422,7 +422,7 @@ func runConn(
 			if err != nil {
 				if ctx.Err() != nil {
 					c.endedOK.Add(1)
-					// Normal shutdown due to context timeout/cancel.
+					// 因 context 超时或取消而正常退出。
 					return
 				}
 				c.endedWithError.Add(1)
@@ -454,7 +454,7 @@ func runConn(
 		}
 	}()
 
-	// Sender
+	// 发送端
 	for {
 		select {
 		case <-ctx.Done():
@@ -491,12 +491,12 @@ func runConn(
 }
 
 func formatMetadata(seq uint64, at time.Time) string {
-	// Intentionally plain format to avoid JSON parse overhead: seq=<n>;ts=<unixnano>
+	// 刻意使用纯文本格式以避免 JSON 解析开销：seq=<n>;ts=<unixnano>
 	return "seq=" + strconv.FormatUint(seq, 10) + ";ts=" + strconv.FormatInt(at.UnixNano(), 10)
 }
 
 func parseSeqFromMetadata(s string) (uint64, bool) {
-	// Expect: seq=<n>;ts=<...>
+	// 期望格式：seq=<n>;ts=<...>
 	s = strings.TrimSpace(s)
 	if s == "" {
 		return 0, false
