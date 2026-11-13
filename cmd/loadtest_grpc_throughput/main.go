@@ -22,7 +22,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 
-	"learn-go/internal/api/grpcpb"
+	"learn-go/internal/interface/grpcpb"
 )
 
 type counters struct {

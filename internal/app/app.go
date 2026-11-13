@@ -12,14 +12,15 @@ import (
 	"github.com/rs/cors"
 	"google.golang.org/grpc"
 
-	apigrpc "learn-go/internal/api/grpcpb"
-	"learn-go/internal/api/grpcserver"
-	apihandlers "learn-go/internal/api/http"
-	"learn-go/internal/config"
 	"learn-go/internal/domain"
-	"learn-go/internal/realtime"
-	gormrepo "learn-go/internal/repository/gorm"
-	"learn-go/internal/service"
+	"learn-go/internal/infra/config"
+	"learn-go/internal/infra/realtime"
+	gormrepo "learn-go/internal/infra/repository/gorm"
+	apigrpc "learn-go/internal/interface/grpcpb"
+	"learn-go/internal/interface/grpcserver"
+	apihandlers "learn-go/internal/handler"
+	"learn-go/internal/route"
+	"learn-go/internal/usecase"
 	"learn-go/pkg/logger"
 	"learn-go/pkg/middleware"
 
@@ -106,24 +107,24 @@ func New() (*Application, error) {
 	resourceFileRepo := gormrepo.NewResourceFileStore(db)
 	resourceFavoriteRepo := gormrepo.NewResourceFavoriteStore(db)
 
-	authService := service.NewAuthService(accountRepo, passwordResetRepo, cfg)
-	aiModel := service.NewOpenAIChatModel()
+	authService := usecase.NewAuthService(accountRepo, passwordResetRepo, cfg)
+	aiModel := usecase.NewOpenAIChatModel()
 	streamHub := realtime.NewHub()
 	notificationHub := realtime.NewNotificationHub()
-	notificationService := service.NewNotificationService(notificationRepo, notificationHub)
-	fileService := service.NewFileService(db, ossCredentialRepo)
-	assignmentService := service.NewAssignmentService(assignmentRepo, submissionRepo, submissionCommentRepo, studentRepo, notificationService, fileService)
+	notificationService := usecase.NewNotificationService(notificationRepo, notificationHub)
+	fileService := usecase.NewFileService(db, ossCredentialRepo)
+	assignmentService := usecase.NewAssignmentService(assignmentRepo, submissionRepo, submissionCommentRepo, studentRepo, notificationService, fileService)
 
-	adminService := service.NewAdminService(accountRepo, teacherRepo, studentRepo, departmentRepo, classRepo, courseScheduleRepo, teacherStudentRepo, aiModel, aiSettingRepo)
-	teacherPortalService := service.NewTeacherPortalService(teacherRepo, assignmentRepo, submissionRepo, studentRepo, courseSessionRepo, courseRepo, classRepo, courseSlotRepo, accountRepo, courseScheduleRepo, courseChapterRepo, courseStudentRepo, courseTeacherRepo)
-	studentPortalService := service.NewStudentPortalService(studentRepo, assignmentRepo, submissionRepo, courseRepo, courseChapterRepo, courseSlotRepo, courseSessionRepo, teacherRepo, accountRepo, studentReminderRepo)
-	conversationService := service.NewConversationService(conversationRepo, messageRepo, receiptRepo, accountRepo)
-	noteService := service.NewNoteService(noteRepo, accountRepo)
-	noteCommentService := service.NewNoteCommentService(noteRepo, noteCommentRepo, accountRepo)
-	ossService := service.NewAdminOssService(ossCredentialRepo, ossPolicyRepo, ossAuditRepo, accountRepo)
-	systemService := service.NewAdminSystemService(systemSwitchRepo, systemParameterRepo, systemBroadcastRepo, systemAuditRepo)
-	aiSettingsService := service.NewAISettingsService(aiSettingRepo, aiAuditRepo, accountRepo)
-	aiGradingService := service.NewAIGradingService(aiSettingRepo, aiUsageLogRepo, aiModel)
+	adminService := usecase.NewAdminService(accountRepo, teacherRepo, studentRepo, departmentRepo, classRepo, courseScheduleRepo, teacherStudentRepo, aiModel, aiSettingRepo)
+	teacherPortalService := usecase.NewTeacherPortalService(teacherRepo, assignmentRepo, submissionRepo, studentRepo, courseSessionRepo, courseRepo, classRepo, courseSlotRepo, accountRepo, courseScheduleRepo, courseChapterRepo, courseStudentRepo, courseTeacherRepo)
+	studentPortalService := usecase.NewStudentPortalService(studentRepo, assignmentRepo, submissionRepo, courseRepo, courseChapterRepo, courseSlotRepo, courseSessionRepo, teacherRepo, accountRepo, studentReminderRepo)
+	conversationService := usecase.NewConversationService(conversationRepo, messageRepo, receiptRepo, accountRepo)
+	noteService := usecase.NewNoteService(noteRepo, accountRepo)
+	noteCommentService := usecase.NewNoteCommentService(noteRepo, noteCommentRepo, accountRepo)
+	ossService := usecase.NewAdminOssService(ossCredentialRepo, ossPolicyRepo, ossAuditRepo, accountRepo)
+	systemService := usecase.NewAdminSystemService(systemSwitchRepo, systemParameterRepo, systemBroadcastRepo, systemAuditRepo)
+	aiSettingsService := usecase.NewAISettingsService(aiSettingRepo, aiAuditRepo, accountRepo)
+	aiGradingService := usecase.NewAIGradingService(aiSettingRepo, aiUsageLogRepo, aiModel)
 
 	engine := gin.New()
 	engine.Use(gin.Recovery())
@@ -136,19 +137,19 @@ func New() (*Application, error) {
 	apigrpc.RegisterConversationServiceServer(grpcServer, grpcserver.NewConversationServer(conversationService, streamHub))
 	apigrpc.RegisterNotificationServiceServer(grpcServer, grpcserver.NewNotificationServer(notificationHub))
 
-	schoolService := service.NewSchoolService(schoolRepo, timeSlotRepo)
-	courseService := service.NewCourseService(courseRepo, courseStudentRepo, courseTeacherRepo, studentRepo, teacherRepo)
-	scheduleService := service.NewScheduleService(timeSlotRepo, courseScheduleRepo, courseSessionRepo, courseRepo, teacherRepo, classroomRepo)
-	classroomService := service.NewClassroomService(classroomRepo)
-	resourceService := service.NewResourceService(resourceRepo, resourceFileRepo, resourceFavoriteRepo, teacherRepo, fileService, departmentRepo, db)
+	schoolService := usecase.NewSchoolService(schoolRepo, timeSlotRepo)
+	courseService := usecase.NewCourseService(courseRepo, courseStudentRepo, courseTeacherRepo, studentRepo, teacherRepo)
+	scheduleService := usecase.NewScheduleService(timeSlotRepo, courseScheduleRepo, courseSessionRepo, courseRepo, teacherRepo, classroomRepo)
+	classroomService := usecase.NewClassroomService(classroomRepo)
+	resourceService := usecase.NewResourceService(resourceRepo, resourceFileRepo, resourceFavoriteRepo, teacherRepo, fileService, departmentRepo, db)
 
-	handler := apihandlers.NewHandler(cfg.JWTSecret, authService, adminService, assignmentService, teacherPortalService, studentPortalService, conversationService, noteService, noteCommentService, ossService, systemService, aiSettingsService, aiGradingService, schoolService, courseService, scheduleService, classroomService, fileService, notificationService, streamHub, resourceService)
+	httpHandler := apihandlers.NewHandler(cfg.JWTSecret, authService, adminService, assignmentService, teacherPortalService, studentPortalService, conversationService, noteService, noteCommentService, ossService, systemService, aiSettingsService, aiGradingService, schoolService, courseService, scheduleService, classroomService, fileService, notificationService, streamHub, resourceService)
 
 	adminGuard := middleware.JWTAuth(middleware.AuthConfig{Secret: cfg.JWTSecret, AllowedRoles: []string{string(domain.RoleAdmin)}})
 	teacherGuard := middleware.JWTAuth(middleware.AuthConfig{Secret: cfg.JWTSecret, AllowedRoles: []string{string(domain.RoleTeacher), string(domain.RoleAdmin)}})
 	studentGuard := middleware.JWTAuth(middleware.AuthConfig{Secret: cfg.JWTSecret, AllowedRoles: []string{string(domain.RoleStudent), string(domain.RoleTeacher), string(domain.RoleAdmin)}})
 
-	handler.RegisterRoutes(engine, adminGuard, teacherGuard, studentGuard)
+	route.Register(engine, httpHandler, adminGuard, teacherGuard, studentGuard)
 
 	return &Application{cfg: cfg, engine: engine, db: db, log: log, grpc: grpcServer}, nil
 }
